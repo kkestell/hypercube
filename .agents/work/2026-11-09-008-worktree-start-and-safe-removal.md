@@ -3,7 +3,7 @@
 - Task ID: 2026-11-09-008-worktree-start-and-safe-removal
 - Plan (repository-relative): `.agents/plans/2026-11-09-008-worktree-start-and-safe-removal.md`, blob `3513c30fa4431709cbd4742ecd24e967f8064e14`; no guidance blobs
 - Author: xwork worker p1-work (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5
-- Status: implemented
+- Status: complete
 - Code base: 1273b36947232e3b9a436111a7f9d08cb35c6c2a
 - Code head: 1f8799f470635cb964e43b9499ad9b808b842cd9
 - Implementation commits: 8bb30c99d1d440ed3c1c8f5347bb8b96ff1e84c6 (work), 1f8799f470635cb964e43b9499ad9b808b842cd9 (fix)
@@ -37,6 +37,7 @@ Responsibilities as in the plan.
 | --- | --- | --- | --- | --- |
 | parent | 777ef702 (Hypercube session) | Claude Code | 209b0949-92b0-42bc-8596-4341a4bf0785 | Opus 5.5 |
 | work | p1-work (child of 777ef702) | Claude Code | 24081c1b-5d43-4bab-8800-82f2facb6744 (from the harness's task-output path for this session) | claude-opus-5-5 |
+| review | p1-review (child of 777ef702) | Claude Code | a58716f7-b64e-461b-a3e3-37cb246f7a4c | claude-opus-5-5 |
 
 ## Limitations
 
@@ -54,3 +55,9 @@ Verification at Code head 1f8799f…, macOS, git 2.56.0:
 
 - `go test ./internal/workspace/` and `go test ./internal/session/ -run 'Unarchive|Archive|WorktreeSession'`: pass.
 - `make check` from the repository root on the committed tree with a clean status: exit 0 (output in `/tmp/p1-work-make-check-fix.log`).
+
+## Completion
+
+- Reviews: `.agents/reviews/2026-11-09-008-worktree-start-and-safe-removal.md`, round 1 `changes-required`, round 2 `accept` at Code head 1f8799f470635cb964e43b9499ad9b808b842cd9.
+- Final reviewed range: 1273b36947232e3b9a436111a7f9d08cb35c6c2a..1f8799f470635cb964e43b9499ad9b808b842cd9; later commits change workflow records only.
+- Checks: `make check` exit 0 at the final Code head (reused, `/tmp/p1-work-make-check-fix.log`).
