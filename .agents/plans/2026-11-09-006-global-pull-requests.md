@@ -118,7 +118,9 @@ selected (`state.selected === null`, no unsent session, no editor). A new
 **Pull Requests** button at the top of the sidebar's Sessions tab body, above
 the workspaces, opens it; it shows the git-pull-request icon, the label, the
 total **Your move** count across accounts when non-zero, and `aria-pressed` while
-the home view is shown. It renders only when `accounts` is non-empty. Opening
+the home view is shown. It renders only when there are workspaces and
+`accounts` is non-empty. With no workspaces, the home case shows the existing
+"Add a workspace" invitation alone; otherwise it shows the global view. Opening
 the app without a hash keeps today's behavior of selecting a session.
 
 **Global rows.** Only **Your move** pull requests, for every account, each
@@ -141,7 +143,9 @@ the count is non-zero: the git-pull-request icon and the number in the same
 
 1. **`pulls.go`.** Replace `pullRequestsQuery` and `pullRequests` with
    `accountPullRequests(ctx, token, login) ([]PullRequest, error)` per the query
-   above; `fromNode` sets `Repo` and otherwise is unchanged. The failing list
+   above; `fromNode` sets `Repo` and otherwise is unchanged. The read loop's
+   not-a-pull-request guard becomes `n.URL == ""`; no map or set is keyed by
+   number any more. The failing list
    stays "own pull requests with FAILURE or ERROR checks". Rewrite
    `requiredFailures` as decided. Update the comments.
 2. **`watcher.go`.** Add `Account`, the `accounts` field (guarded by `mu`),
@@ -152,7 +156,12 @@ the count is non-zero: the git-pull-request icon and the number in the same
    `involved:search` instead of `pullRequests`. `SetRequiredFailures(urls ...)`
    answers under the `r…`/`p…` aliases, which it reads from the request body
    with a regexp, marking a failure for each alias whose repository and number
-   form one of the URLs.
+   form one of the URLs. The stand-in stays shared: every token reads the same
+   pull requests. Existing fixtures follow: each node in `watcher_test.go` (the
+   `node()` helper in `TestPullRequestsDescribeTheAccountsPart` and the nodes in
+   `TestPullRequestsMapAndKeepOnFailure`) gains a unique `url` and
+   `"repository": {"nameWithOwner": "o/r"}`, and the existing
+   `SetRequiredFailures` call passes node 1's URL.
 4. **`internal/ui`.** `stateMessage` gains `Accounts []github.Account
    \`json:"accounts"\``, filled from `d.gh.Accounts()` in `sendState`.
 5. **Browser data.** `types.ts`: `repo` on `PullRequest`, new `GitHubAccount`,
@@ -166,8 +175,9 @@ the count is non-zero: the git-pull-request icon and the number in the same
    the global view, `aria-label="Your move across accounts"`.
 8. **Home and sidebar.** `selection.ts` gains
    `showHome = (state) => attach({...parkUnsent(state), selected: null, pending: null})`.
-   `SessionView` renders the global view in the home case, before the existing
-   no-workspaces invitation. Add the sidebar button and the workspace count.
+   In the home case `SessionView` renders the global view when workspaces exist
+   and the existing invitation alone when none do. Add the sidebar button
+   (hidden with no workspaces) and the workspace count.
 9. **Docs.** `docs/interface.md` GitHub section: per-account reading, the global
    view and its sidebar button, the sidebar count, the filter, the new link.
    `docs/dev/architecture.md` watcher paragraph: per-account reads and
@@ -182,8 +192,8 @@ Go, in `internal/github/watcher_test.go`, through `Run`/`Statuses`/`Accounts`:
   `Repo`; the workspace for `o/r` has only its own. After `Fail(true)`, both the
   account and the workspace keep data and `Updated`, with `Error` set.
 - Repo match is case-insensitive (`O/R` node, `o/r` remote).
-- Two logins each get an account with its own list; the same URL under both stays
-  in both.
+- Two logins are both read and each gets an account; the same URL appears under
+  both (the shared stand-in gives every token the same answer).
 - Direct versus team: `requested` keyed by URL across repos with equal numbers
   (`o/r#1` direct, `o/s#1` team).
 - Required failures across two repos mark only the listed URLs.
@@ -191,7 +201,9 @@ Go, in `internal/github/watcher_test.go`, through `Run`/`Statuses`/`Accounts`:
   another login still reads; a workspace on `broken` reports the error once.
 - A workspace pending a choice has an empty list and `Updated` 0 while
   `Accounts()` is filled.
-- Keep `TestPullRequestsDescribeTheAccountsPart` passing with the new stand-in.
+- Keep `TestPullRequestsDescribeTheAccountsPart` passing with the new stand-in,
+  its fixtures updated as in step 3 (unique `url`, `repository.nameWithOwner`,
+  `SetRequiredFailures` given node 1's URL).
 
 `internal/ui/github_test.go`: the state carries `accounts`. Snapshot icon test
 stays as is.
@@ -202,7 +214,8 @@ covers rows from two accounts and two repos with the place line, duplicates
 across accounts, rank order, waiting rows excluded, a failed-account warning,
 "Checking GitHub.", and "Nothing needs you."; `turns.test.ts` covers
 `yourMoves`; `sidebar.test.tsx` covers the count's accessible name, its absence
-at zero, and that the Pull Requests button shows the home view.
+at zero, that the Pull Requests button shows the home view, and that the button
+is absent with no workspaces.
 
 Commands: `go test -race ./internal/github ./internal/ui`, `bunx tsc -p .` and
 `bun test` in `internal/ui`, then `make check`. Live: the running `make dev` on
