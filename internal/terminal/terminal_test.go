@@ -81,7 +81,7 @@ func TestInputOutputAndAdopt(t *testing.T) {
 	next := newSet(t, "/bin/cat")
 	// The first set belongs to an app that exits without ending its shells.
 	set := &Set{Dir: next.Dir, Command: next.Command, Holder: holdtest.Path}
-	sh, err := set.Open("s", t.TempDir(), 80, 24)
+	sh, err := set.Open("s", t.TempDir(), nil, 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestInputOutputAndAdopt(t *testing.T) {
 	}
 	first := pid()
 	// The browser can open the shell before the restarted app adopts it.
-	again, err := next.Open("s", t.TempDir(), 80, 24)
+	again, err := next.Open("s", t.TempDir(), nil, 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestInputOutputAndAdopt(t *testing.T) {
 func TestStartsInDirectoryAtSize(t *testing.T) {
 	set := newSet(t, "/bin/sh", "-c", "pwd -P; stty size; read line; stty size")
 	dir := t.TempDir()
-	sh, err := set.Open("s", dir, 100, 30)
+	sh, err := set.Open("s", dir, nil, 100, 30)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestStartsInDirectoryAtSize(t *testing.T) {
 }
 func TestShellExitAndNewShell(t *testing.T) {
 	set := newSet(t, "/bin/sh", "-c", "read line; echo bye; exit 3")
-	sh, err := set.Open("s", t.TempDir(), 80, 24)
+	sh, err := set.Open("s", t.TempDir(), nil, 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,18 +153,18 @@ func TestShellExitAndNewShell(t *testing.T) {
 	if code := exitCode(t, sh); code != 3 {
 		t.Fatal(code)
 	}
-	next, err := set.Open("s", t.TempDir(), 80, 24)
+	next, err := set.Open("s", t.TempDir(), nil, 80, 24)
 	if err != nil || next == sh {
 		t.Fatalf("new shell: %v", err)
 	}
 }
 func TestStopAndClose(t *testing.T) {
 	set := newSet(t, "/bin/sleep", "300")
-	a, err := set.Open("a", t.TempDir(), 80, 24)
+	a, err := set.Open("a", t.TempDir(), nil, 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := set.Open("b", t.TempDir(), 80, 24)
+	b, err := set.Open("b", t.TempDir(), nil, 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestStopAndClose(t *testing.T) {
 	if !gone(set, "b") {
 		t.Fatal("Close left a shell")
 	}
-	if _, err = set.Open("c", t.TempDir(), 80, 24); err == nil {
+	if _, err = set.Open("c", t.TempDir(), nil, 80, 24); err == nil {
 		t.Fatal("closed set opened shell")
 	}
 }

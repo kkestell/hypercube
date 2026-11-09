@@ -27,7 +27,7 @@ func (r *Runtime) WorkspaceShell(id string, cols, rows int) (*terminal.Shell, er
 	if err != nil {
 		return nil, err
 	}
-	return r.Terminals.Open(workspaceShellOwner(id), dir, cols, rows)
+	return r.Terminals.Open(workspaceShellOwner(id), dir, r.env(id), cols, rows)
 }
 
 // Shell opens the session's shell in its own directory. The shell outlives the
@@ -41,7 +41,7 @@ func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 	if r.closing {
 		return nil, errClosing
 	}
-	var dir string
+	var dir, workspace string
 	err := r.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -53,13 +53,13 @@ func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 		if r.deleting[id] || r.deleting[s.Parent] {
 			return errDeleting
 		}
-		dir = s.Dir
+		dir, workspace = s.Dir, s.Workspace
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.Terminals.Open(id, dir, cols, rows)
+	return r.Terminals.Open(id, dir, r.env(workspace), cols, rows)
 }
 
 // stopShells ends the root's shell and all its children's shells.
@@ -72,4 +72,12 @@ func (r *Runtime) stopShells(id string) {
 	for _, c := range children {
 		r.Terminals.Stop(c.ID)
 	}
+}
+
+// env is the extra environment for new launches and shells in the workspace.
+func (r *Runtime) env(workspace string) []string {
+	if r.Env == nil {
+		return nil
+	}
+	return r.Env(workspace)
 }

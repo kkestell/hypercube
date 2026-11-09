@@ -118,3 +118,16 @@ positions, and terminal visibility across switches and restarts. The app also
 remembers each workspace dashboard’s tabs, splits, open files, folders, scroll
 positions, and terminal visibility. Overall panel sizes, sidebar choices, and the
 last selected session or workspace are saved too.
+
+## GitHub
+
+Hypercube uses the GitHub CLI, signed in to github.com, for a workspace whose
+current branch tracks a github.com remote, or whose `origin` is one.
+
+Each workspace uses one gh account, chosen in this order: the checkout's
+`credential.githubAccount` Git setting; the one signed-in account that can push
+to the repository; or the account you choose for the workspace.
+
+New agents and panel shells in the workspace get `GH_TOKEN` for that account, so
+`gh` and Git pushes through `gh auth git-credential` use it. A running agent or
+shell keeps the account it started with until it restarts.

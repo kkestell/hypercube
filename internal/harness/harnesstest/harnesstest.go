@@ -27,6 +27,7 @@
 //	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
 //	!crash     reply, then exit
+//	!env NAME  a quick turn whose final text is the plugin's $NAME
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
 // or the model "invalid" fails, and a start without an effort reports the
@@ -297,6 +298,10 @@ func (p *standIn) input(cmd harness.Command) {
 	p.turn = fmt.Sprintf("t%d", p.turns)
 	has := func(word string) bool { return strings.Contains(cmd.Text, "!"+word) }
 	switch {
+	case strings.HasPrefix(cmd.Text, "!env "):
+		p.reply(cmd.ID, "")
+		p.state(harness.Working)
+		p.state(harness.Idle, text(p.turn, os.Getenv(strings.TrimPrefix(cmd.Text, "!env ")), true))
 	case strings.HasPrefix(cmd.Text, "!report "):
 		var answer string
 		if err := json.Unmarshal([]byte(strings.TrimPrefix(cmd.Text, "!report ")), &answer); err != nil {

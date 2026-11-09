@@ -24,9 +24,10 @@ type Client struct {
 	closed bool
 }
 
-// Launch starts the plugin's serve command under a detached holder.
-func Launch(holder, dir, plugin string) (*Client, error) {
-	h, err := hold.Start(holder, dir, []string{plugin, "serve"}, os.Environ(), "", nil)
+// Launch starts the plugin's serve command under a detached holder, with env
+// added to the backend's environment.
+func Launch(holder, dir, plugin string, env []string) (*Client, error) {
+	h, err := hold.Start(holder, dir, []string{plugin, "serve"}, append(os.Environ(), env...), "", nil)
 	if err != nil {
 		return nil, err
 	}

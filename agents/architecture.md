@@ -149,6 +149,11 @@ bounded scrollback, which browser connections read directly. A shell ends on
 exit, deletion of its owner, or the backend’s SIGINT. Archiving a session also
 ends its shell.
 
+The [GitHub watcher](../internal/github/watcher.go) resolves each workspace's gh
+account. New agents and panel shells get that account's `GH_TOKEN` through
+their holder's environment, which the runtime's `Env` hook supplies; a running
+agent or shell keeps the token it started with.
+
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without
 restricting an agent's access to the local filesystem. Git resource handling

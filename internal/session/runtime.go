@@ -59,6 +59,10 @@ type Runtime struct {
 	// Terminals holds each session's shell. Archive, Delete, EndChild, and
 	// Quit end them.
 	Terminals terminal.Set
+	// Env returns extra environment for a workspace's new agent launches and
+	// panel shells. It is called with the runtime's lock held, so it never
+	// blocks. Set it before Restore; nil adds nothing.
+	Env func(workspace string) []string
 
 	db       *store.DB
 	url      string

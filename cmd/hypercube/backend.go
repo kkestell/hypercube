@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/desktop"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -26,7 +27,11 @@ type app struct {
 	cancel  context.CancelFunc
 	// done receives the server's result.
 	done chan error
-	once sync.Once
+	// github finds each workspace's GitHub account; githubDone closes when its
+	// run ends.
+	github     *github.Watcher
+	githubDone chan struct{}
+	once       sync.Once
 }
 
 // startApp finds the installed harnesses and registers saved launches, then
@@ -45,7 +50,10 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 	if _, err := rt.ScanHarnesses(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube: finding harness plugins:", err)
 	}
-	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1)}
+	watcher := &github.Watcher{DB: db}
+	rt.Env = watcher.Env
+	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1),
+		github: watcher, githubDone: make(chan struct{})}
 	a.server = &http.Server{Handler: handler(db, rt, desktop)}
 	if err := rt.Restore(func() {
 		go func() { a.done <- a.server.Serve(listener) }()
@@ -54,6 +62,7 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 		_ = db.Close()
 		return nil, err
 	}
+	go func() { watcher.Run(ctx); close(a.githubDone) }()
 	go watchAlerts(ctx, rt, desktop)
 	return a, nil
 }
@@ -71,6 +80,7 @@ func (a *app) close(quit bool) {
 		a.desktop.Shutdown()
 		_ = a.server.Close()
 		a.cancel()
+		<-a.githubDone
 		_ = a.db.Close()
 	})
 }
