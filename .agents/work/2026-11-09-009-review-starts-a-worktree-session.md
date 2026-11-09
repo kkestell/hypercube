@@ -5,8 +5,8 @@
 - Author: xwork worker p2-work (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5
 - Status: implemented
 - Code base: 72ccc1dcd099890f4aa759210ff2f39f99a5a34e
-- Code head: cbe99753bc5cc2e10a0dcbd815f68b745eaba512
-- Implementation commits: cbe99753bc5cc2e10a0dcbd815f68b745eaba512 (work)
+- Code head: 78e76b8e7fa485d1c091e63d011c657b18731866
+- Implementation commits: cbe99753bc5cc2e10a0dcbd815f68b745eaba512 (work), 78e76b8e7fa485d1c091e63d011c657b18731866 (fix)
 
 ## Changes
 
@@ -41,4 +41,15 @@ Responsibilities as in the plan.
 ## Limitations
 
 - Manual `make dev` check not run (above).
-- Awaiting independent review.
+- Awaiting independent review of the repair.
+
+## Repair 1
+
+Review: `.agents/reviews/2026-11-09-009-review-starts-a-worktree-session.md`, round 1 (`changes-required`, commit d701c71).
+
+- F1: plan step 5 is replaced, at the parent's direction: once the session exists, the review action answers like `"new"`, with JSON `{"session": id}`, or 409 JSON `{"session": id, "error": msg}` when its first input fails. Failures before creation stay plain-text 400 or 409. `writeCreated` in `internal/ui/actions.go` writes that answer for both actions. `review.ts` reads it with `submitPrompt`, selects any returned session, and shows any error. New `pull-requests.test.tsx` case: a 409 carrying a session selects it and shows the error. The refused-review test still covers a 409 without one.
+
+Verification at Code head 78e76b8e…, macOS, git 2.56.0:
+
+- `bunx tsc -p .` and `bun test web/github` in `internal/ui`: pass.
+- `make check` from the repository root on the tree that was then committed unchanged: exit 0, output in `/tmp/p2-work-make-check-fix.log`.
