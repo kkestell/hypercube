@@ -1,17 +1,17 @@
 ---
 name: kplan
-description: Plan a Hypercube code or behavior change in `agents/plans/` when the development workflow or user calls for a plan. Do not use for standalone documentation edits.
+description: Plan a Hypercube code or behavior change in `.agents/plans/` when the development workflow or user calls for a plan. Do not use for standalone documentation edits.
 argument-hint: "[feature idea, bug report, or change to plan]"
 ---
 
 # Plan
 
-Use this skill when the [development workflow](../../../agents/development.md)
+Use this skill when the [development workflow](../../../docs/dev/development.md)
 calls for a plan or when the user asks for one.
 
 1. Read the request and `$ARGUMENTS`. If the change to plan is unclear, ask the
    user what they want to plan.
-2. Read comparable plans in `agents/plans/` to establish the repository's
+2. Read comparable plans in `.agents/plans/` to establish the repository's
    level of implementation detail. Inspect the relevant code, behavior,
    callers, and test fixtures. When revising existing work, use findings
    already established and investigate gaps or changed assumptions. Brainstorm
@@ -19,8 +19,8 @@ calls for a plan or when the user asks for one.
    remains. Ask one focused question at a time, with options, trade-offs, and
    a recommendation; wait for the answer. Resolve ordinary details from the
    repository.
-3. Read `agents/plans/_template.md` if present, otherwise
-   [assets/_template.md](assets/_template.md). Write the plan in `agents/plans/`
+3. Read `.agents/plans/_template.md` if present, otherwise
+   [assets/_template.md](assets/_template.md). Write the plan in `.agents/plans/`
    as `YYYY-MM-DD-NNN-slug.md`, using the next sequence for the day. The plan
    must carry the decisions into concrete implementation instructions, so
    the implementer can begin without repeating the design investigation.

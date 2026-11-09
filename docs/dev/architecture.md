@@ -37,9 +37,9 @@ backend to attach without replacing the plugin. MCP requests go directly
 from the bridge to the backend over loopback HTTP, with the session ID in a
 header; neither helpers nor plugins write Hypercube's database.
 
-See [program discovery](../cmd/hypercube/programs.go),
-[the plugin client](../internal/harnessclient/client.go), and
-[the MCP bridge](../internal/mcpbridge/bridge.go).
+See [program discovery](../../cmd/hypercube/programs.go),
+[the plugin client](../../internal/harnessclient/client.go), and
+[the MCP bridge](../../internal/mcpbridge/bridge.go).
 
 ## Plugin protocol
 
@@ -48,13 +48,13 @@ starts it with `serve` under a holder and exchanges commands and events as
 JSON Lines. The plugin owns the native protocol; the core and browser interface
 do not name individual harnesses.
 
-The [protocol types](../internal/harness/protocol.go) define commands, replies,
+The [protocol types](../../internal/harness/protocol.go) define commands, replies,
 transcript items, and usage fields. Native mappings live in the
-[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode), and
-[Pi](../plugins/pi) plugins. Use Restart Agent to
+[Claude Code](../../plugins/claude), [OpenCode](../../plugins/opencode), and
+[Pi](../../plugins/pi) plugins. Use Restart Agent to
 load a newly installed plugin.
 
-Two one-shot commands, defined in [discovery](../internal/harness/discovery.go),
+Two one-shot commands, defined in [discovery](../../internal/harness/discovery.go),
 describe the harness. `describe` reports whether the native executable is
 installed; the app runs it for every plugin at startup, for the Settings model
 entry form, and for `list_models`, and gives the installed names to new sessions'
@@ -67,14 +67,14 @@ report the settings the harness accepted.
 
 A session saves its harness, model, and effort. A child takes its parent's
 current settings, with any overrides its parent passes, resolved in
-[selection](../internal/session/selection.go) when the child is created or
+[selection](../../internal/session/selection.go) when the child is created or
 proposed; a proposal saves the resolved settings. A launch counts as started
 once the transaction that saves its start reply commits.
 
 Integration research for the supported harnesses is in
-[Claude Code](research/harnesses/claude-code.md),
-[OpenCode](research/harnesses/opencode.md), and
-[Pi](research/harnesses/pi.md). These are version-specific research notes;
+[Claude Code](../../.agents/research/harnesses/claude-code.md),
+[OpenCode](../../.agents/research/harnesses/opencode.md), and
+[Pi](../../.agents/research/harnesses/pi.md). These are version-specific research notes;
 the plugin code defines the current integration.
 
 For the removed harness, see [why Codex support was dropped](codex-retirement.md):
@@ -99,8 +99,8 @@ conversation. Three quick exits—within ten seconds of starting—stop automati
 relaunches. A failed start stays exited with an error in its transcript. The
 app never substitutes a new conversation for one it cannot resume.
 
-See [hold](../internal/hold/hold.go) and
-[session launch](../internal/session/launch.go).
+See [hold](../../internal/hold/hold.go) and
+[session launch](../../internal/session/launch.go).
 
 ## One owner for user actions and agent tools
 
@@ -116,9 +116,9 @@ commands are resent in ID order. Queued messages are delivered one at a time
 and removed when the plugin accepts them. Acceptance means the harness took the input,
 including into a native queue; it does not mean the model processed it.
 
-The [session runtime](../internal/session/runtime.go),
-[delivery code](../internal/session/deliver.go), and
-[store](../internal/store/store.go) define these transitions.
+The [session runtime](../../internal/session/runtime.go),
+[delivery code](../../internal/session/deliver.go), and
+[store](../../internal/store/store.go) define these transitions.
 
 ## Saved state and the interface
 
@@ -139,8 +139,8 @@ rather than the image data, and the page loads an image when it shows it. A
 reconnect takes fresh snapshots.
 Requests to open a file wait until a page views that session.
 
-See [transcripts](../internal/session/transcript.go) and
-[the browser interface](../internal/ui/ui.go).
+See [transcripts](../../internal/session/transcript.go) and
+[the browser interface](../../internal/ui/ui.go).
 
 ## Backend, desktop app, and terminals
 
@@ -167,10 +167,10 @@ dials again after a restart. The backend sends an alert for each new request or
 reply that the notification preferences in `config.json` allow. Without a
 desktop app, alerts are dropped. The page shows current requests when the app
 opens. The backend's side is in
-[internal/desktop](../internal/desktop/desktop.go) and the app in
-[desktop](../desktop/main.js).
+[internal/desktop](../../internal/desktop/desktop.go) and the app in
+[desktop](../../desktop/main.js).
 
-[Panel terminals](../internal/terminal/terminal.go) start on demand for each
+[Panel terminals](../../internal/terminal/terminal.go) start on demand for each
 session or workspace. Session shells use their working directories; workspace
 shells use the registered checkout. Their holders own the pseudo-terminals and
 bounded scrollback, which browser connections read directly. A shell ends on
@@ -180,4 +180,4 @@ ends its shell.
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without
 restricting an agent's access to the local filesystem. Git resource handling
-lives in [workspace](../internal/workspace/workspace.go).
+lives in [workspace](../../internal/workspace/workspace.go).

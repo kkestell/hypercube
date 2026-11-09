@@ -11,7 +11,7 @@ URL until deployment. Follow the root `AGENTS.md`.
 - `content/` holds website-specific pages and the docs landing page. User guides
   live only in `../docs/*.md`, mounted at `content/docs`; screenshots live only
   in `../docs/images/`, mounted at `static/docs/images`. Never publish the
-  capture fixtures in `../docs/screenshots/`.
+  developer references in `../docs/dev/` or capture fixtures in `../docs/screenshots/`.
 - Shared guides keep their Markdown H1 and have no frontmatter; each guide's
   title and weight come from a `[[cascade]]` entry in `hugo.toml`. Hextra
   renders the page title; the heading render hook suppresses the duplicate guide
@@ -24,4 +24,4 @@ URL until deployment. Follow the root `AGENTS.md`.
 - `public/`, `resources/`, `.hugo_build.lock`, and `bin/` are generated and
   gitignored. Never edit them. `make check` includes the website build.
 
-Deployment settings are in `../agents/documentation.md` under Website.
+Deployment settings are in `../docs/dev/documentation.md` under Website.

@@ -94,9 +94,9 @@ The important sequence is **pollution → private-storage workaround → removal
 of that workaround → removal of the harness**. The final plugin did not still
 contain private-home code or promise clean Recents.
 
-Sources: [private-storage plan](plans/2026-11-02-003-codex-private-storage.md),
-[account-selection plan](plans/2026-11-04-002-codex-account-selection.md), and
-[supported-integrations decision](plans/2026-11-04-006-supported-integrations.md).
+Sources: [private-storage plan](../../.agents/plans/2026-11-02-003-codex-private-storage.md),
+[account-selection plan](../../.agents/plans/2026-11-04-002-codex-account-selection.md), and
+[supported-integrations decision](../../.agents/plans/2026-11-04-006-supported-integrations.md).
 
 ## Why the adapter was difficult to reason about
 
@@ -158,13 +158,13 @@ upstream defect. Commit IDs can be inspected with `git show <id>`.
 | Nov 7 | `e36f05b` | Add installed-Codex smoke tests proving steering keeps a tool running and Stop terminates it. |
 | Nov 7 | `0ab5ca7` | Remove the harness and machinery with no remaining production caller. |
 
-The [state-lifetime review](reviews/2026-11-02-003-plugin-state-lifetimes.md)
+The [state-lifetime review](../../.agents/reviews/2026-11-02-003-plugin-state-lifetimes.md)
 documents the late-completion reproduction. The
-[whole-project review](reviews/2026-11-06-003-whole-project.md#3-give-overlapping-codex-input-calls-a-coherent-lifetime)
+[whole-project review](../../.agents/reviews/2026-11-06-003-whole-project.md#3-give-overlapping-codex-input-calls-a-coherent-lifetime)
 records a deterministic Stop escape: an old steer remained outstanding, another
 input completed, Stop targeted the old turn, and the held steer then fell back
 to a new turn that kept running. These were confirmed bugs, not hypothetical
-races. The [native smoke-test review](reviews/2026-11-07-013-codex-native-smoke.md)
+races. The [native smoke-test review](../../.agents/reviews/2026-11-07-013-codex-native-smoke.md)
 records successful checks with `codex-cli 0.167.0` and a local provider, without
 paid model calls. Passing those tests is compatible with deciding the ongoing
 support burden was too high.
@@ -180,12 +180,12 @@ make its session-list behavior acceptable again.
 Removal did **not** delete the user's native Codex executable, credentials,
 settings, native history, or saved Hypercube sessions and transcripts. Old
 records remain readable; Hypercube no longer launches, resumes, or converts
-those conversations. See [stored-data behavior](../docs/storage.md) and the
-[removal plan](plans/2026-11-07-012-remove-codex-integration.md),
-[work log](work/2026-11-07-009-remove-codex-integration.md), and
-[review](reviews/2026-11-07-014-remove-codex-integration.md).
+those conversations. See [stored-data behavior](../storage.md) and the
+[removal plan](../../.agents/plans/2026-11-07-012-remove-codex-integration.md),
+[work log](../../.agents/work/2026-11-07-009-remove-codex-integration.md), and
+[review](../../.agents/reviews/2026-11-07-014-remove-codex-integration.md).
 
-The old [Codex research](research/harnesses/codex.md) is retained as
+The old [Codex research](../../.agents/research/harnesses/codex.md) is retained as
 version-specific background, not a promise of support. Any future proposal to
 restore the harness should address these demonstrated costs, especially native
 history visibility and coherent steering/Stop/question lifetimes, rather than

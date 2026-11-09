@@ -1,8 +1,9 @@
 # Documentation maintenance
 
-User documentation starts in [README.md](../README.md) and lives in `docs/`.
-Contributor setup starts in [CONTRIBUTING.md](../CONTRIBUTING.md); architecture
-and project rules live in `agents/`. Keep these audiences separate.
+User documentation starts in [README.md](../../README.md) and lives in `docs/*.md`.
+Contributor setup starts in [CONTRIBUTING.md](../../CONTRIBUTING.md); architecture
+and project rules live in `docs/dev/`. Research, plans, reviews, scratch work,
+and work logs live in `.agents/`. Keep these audiences separate.
 
 ## Structure and writing
 
@@ -39,13 +40,13 @@ For prose-only changes, inspect the diff and links; do not run code checks.
 
 ## Architecture diagram
 
-The diagram in `agents/architecture.md` uses `agents/images/architecture.png`,
-rendered from the editable `agents/images/architecture.svg`. Update the SVG
+The diagram in `docs/dev/architecture.md` uses `docs/dev/images/architecture.png`,
+rendered from the editable `docs/dev/images/architecture.svg`. Update the SVG
 against the current executable names, process ownership, and transports, then
 regenerate the PNG from the repository root with librsvg:
 
 ```sh
-rsvg-convert --zoom 2 -o agents/images/architecture.png agents/images/architecture.svg
+rsvg-convert --zoom 2 -o docs/dev/images/architecture.png docs/dev/images/architecture.svg
 ```
 
 Open the PNG to check labels and arrows. Commit both source and rendered image.
@@ -56,8 +57,8 @@ Run `make screenshots` only when captures need changing. It regenerates
 `docs/images/<scene>-light.png` and `-dark.png` from scenes in
 `docs/screenshots/`.
 
-The [capture driver](../scripts/screenshots/main.js) runs a real backend with
-the [scripted plugin](../plugins/scripted/main.go), opens the desktop app,
+The [capture driver](../../scripts/screenshots/main.js) runs a real backend with
+the [scripted plugin](../../plugins/scripted/main.go), opens the desktop app,
 and captures that window, including its native buttons and rounded corners,
 then adds a transparent margin with a drop shadow.
 Temporary resources are deleted afterward.
@@ -112,7 +113,8 @@ with their scene changes.
   the website build.
 
 Hugo publishes `docs/*.md` at `/docs/` and `docs/images/` at `/docs/images/`.
-Screenshot scenes and fixtures are not published. Guides use relative `.md`
+Developer references in `docs/dev/`, screenshot scenes, and fixtures are not
+published. Guides use relative `.md`
 links to one another; links outside the published guides use GitHub URLs.
 Guides have no frontmatter. Keep each Markdown H1; the website suppresses
 duplicate H1s. Page titles and menu order live in `[[cascade]]` entries in
@@ -126,5 +128,5 @@ website. Do not regenerate screenshots just for prose changes.
 
 For Cloudflare Pages, use the repository root, build command `make web-build`,
 and output directory `web/public`. That build does not capture screenshots.
-Keep generated output gitignored. See [website instructions](../web/AGENTS.md)
+Keep generated output gitignored. See [website instructions](../../web/AGENTS.md)
 before changing site configuration or layouts.

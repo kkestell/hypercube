@@ -1,10 +1,10 @@
 # Development and releases
 
-Start with [AGENTS.md](../AGENTS.md) for project scope and document routing.
+Start with [AGENTS.md](../../AGENTS.md) for project scope and document routing.
 For source setup, local builds, and installing a checkout, use
-[Contributing](../CONTRIBUTING.md). This reference covers project conventions,
+[Contributing](../../CONTRIBUTING.md). This reference covers project conventions,
 workflow, testing, and releases. App users should start with the
-[user documentation](../README.md#start-here).
+[user documentation](../../README.md#start-here).
 Documentation procedures are in [documentation](documentation.md).
 
 ## Code
@@ -29,9 +29,10 @@ Documentation procedures are in [documentation](documentation.md).
 - `scripts/linux/` — the Linux test container (`scripts/linux/run`).
 - `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
   and `make web-serve`.
-- `docs/` — user tutorials, how-to guides, reference, and explanations, indexed
+- `docs/*.md` — user tutorials, how-to guides, reference, and explanations, indexed
   by `README.md` and the website's documentation landing page.
-- `agents/` — developer references, research, plans, work logs, and reviews.
+- `docs/dev/` — developer references and the architecture diagram.
+- `.agents/` — research, plans, design records, reviews, work logs, and scratch work.
 
 ## Code style
 
@@ -138,18 +139,18 @@ staged files from the previous one. Give each agent the user's requirements
 and the relevant artifact path. The parent assesses each result and keeps the
 task within the user's scope.
 
-1. Have a fresh agent run the local [kplan](../.claude/skills/kplan/SKILL.md)
-   skill. It writes and stages a plan in `agents/plans/`. The parent checks the
+1. Have a fresh agent run the local [kplan](../../.claude/skills/kplan/SKILL.md)
+   skill. It writes and stages a plan in `.agents/plans/`. The parent checks the
    plan. For a new subsystem or architectural change, the parent independently
    reviews it against the whole system and a simpler baseline, records any
-   findings in `agents/reviews/`, and resolves justified concerns before work.
-2. Have a different fresh agent run [kwork](../.claude/skills/kwork/SKILL.md)
+   findings in `.agents/reviews/`, and resolves justified concerns before work.
+2. Have a different fresh agent run [kwork](../../.claude/skills/kwork/SKILL.md)
    with the plan path. It implements the plan, validates the change, writes a
-   work log in `agents/work/`, and stages the related files.
-3. Have another fresh agent run [kreview](../.claude/skills/kreview/SKILL.md)
+   work log in `.agents/work/`, and stages the related files.
+3. Have another fresh agent run [kreview](../../.claude/skills/kreview/SKILL.md)
    on the staged changes and plan. It reviews the whole touched files, fixes
    confirmed medium and high severity issues itself, validates the fixes,
-   writes a review in `agents/reviews/`, and stages it with the fixes. The
+   writes a review in `.agents/reviews/`, and stages it with the fixes. The
    parent checks the review and has the reviewer resolve any medium or high
    finding still open before committing.
 
@@ -250,14 +251,14 @@ installs.
 
 ## Develop without replacing the installed app
 
-Follow [Run a development copy](../CONTRIBUTING.md#run-a-development-copy).
+Follow [Run a development copy](../../CONTRIBUTING.md#run-a-development-copy).
 Additional controls:
 
 - `make dev-clean` also removes disposable state, holders left by a crash, and
   Claude Code and OpenCode development conversations.
 - `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.
 
-See [scripts/dev](../scripts/dev) for cleanup details.
+See [scripts/dev](../../scripts/dev) for cleanup details.
 
 ## Prepare an official beta
 
@@ -297,5 +298,5 @@ are under `bin/release/`; it does not install the app or restart the service.
 Go embeds the release tag or commit-based version, adding `+dirty` for
 uncommitted changes. Builds without Git metadata report `devel`. The bundle's
 `CFBundleGetInfoString` records the full identity; its numeric version fields
-contain the version's three-number core. See [build identification](../docs/storage.md#build-identities)
+contain the version's three-number core. See [build identification](../storage.md#build-identities)
 for the user-visible checks.
