@@ -4,11 +4,15 @@ import type {ModelEntry, Settings} from '../agent/types.ts';
 // Config is config.json: the user's preferences. default_selection starts new
 // sessions with its settings; child_model_guidance tells agents when a child
 // should use other settings than theirs; default_worktree starts new sessions
-// in Git workspaces in a worktree; models lists the model picker's entries.
+// in Git workspaces in a worktree; review_selection, when set, starts pull
+// request reviews with its settings, and review_prompt is their first prompt;
+// models lists the model picker's entries.
 export interface Config {
   default_selection?: Settings;
   child_model_guidance: string;
   default_worktree: boolean;
+  review_selection?: Settings;
+  review_prompt: string;
   theme: Theme;
   terminal_font_size: number;
   notifications: Notifications;
@@ -42,6 +46,7 @@ export interface Workbench {
   sidebarTab: SidebarTab;
   collapsedWorkspaces: Record<string, true>;
   collapsedSessions: Record<string, true>;
+  collapsedPullRequestGroups: Record<string, true>;
   sidebarScroll: Record<SidebarTab, number>;
 }
 
@@ -73,5 +78,5 @@ export interface Grant {
   harness: string;
   tool: string;
 }
-export const sections = ['General', 'Agents', 'Notifications', 'Permissions'] as const;
+export const sections = ['General', 'Agents', 'Review', 'Notifications', 'Permissions'] as const;
 export type SettingsSection = typeof sections[number];

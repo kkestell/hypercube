@@ -43,6 +43,20 @@ Editing or deleting an entry does not change existing session settings or saved
 defaults. Agents can still discover and choose models that are not in this
 list.
 
+## Pull request reviews
+
+**Settings › Review** chooses the model and prompt that
+[**Review**](interface.md#github) starts a pull request review session with.
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `review_selection` | Object with `harness`, `model`, and `effort` for review sessions. **Use default model** clears it. | Not set |
+| `review_prompt` | The review session's first prompt. `{number}` becomes the pull request's number and `{url}` its link. It cannot be empty. | Asks the agent to review the pull request with `gh`, report what it finds, and post nothing to GitHub |
+
+Without `review_selection`, a review uses `default_selection`, or else the
+first listed model at its default effort. With neither, **Review** shows an
+error.
+
 ## Appearance
 
 | Field | Values | Default |

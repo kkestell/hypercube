@@ -4,9 +4,8 @@ import type {Workspace} from '../sessions/types.ts';
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-// tracks is whether a workspace's GitHub repository is repo.
-export const tracks = (workspaces: Workspace[], repo: string) => workspaces.some(w => w.github && same(w.github.repo, repo));
-
+// tracking is the first workspace whose GitHub repository is repo.
+export const tracking = (workspaces: Workspace[], repo: string) => workspaces.find(w => w.github && same(w.github.repo, repo));
 const parent = (path: string) => path.slice(0, Math.max(path.lastIndexOf('/'), 0));
 
 // suggestedFolder puts the clone beside the first workspace owned by the same

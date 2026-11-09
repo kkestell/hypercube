@@ -172,10 +172,12 @@ requested changes and the author has not responded. Below the lists,
 **All open pull requests** opens the repository's pull requests on GitHub.
 
 In the sidebar's Sessions tab, **Pull Requests** opens a view of the pull
-requests that need each signed-in account, from every repository, including
-ones without a workspace. It shows the same **Your move** rows in the same order,
-with the repository and the account on each row, and a warning for each account
-that could not be read. The view also shows when nothing is selected. The button
+requests of each signed-in account, from every repository, including ones
+without a workspace, with the repository and the account on each row and a
+warning for each account that could not be read. It groups them, with a count
+on each heading, under **Your pull requests to fix**, **Replies and
+re-reviews**, **Ready to merge**, **Reviews to do**, and **Waiting on others**.
+Click a heading to collapse or expand its group; the choice is remembered. The view also shows when nothing is selected. The button
 shows how many pull requests need you across accounts. Each workspace's row in
 the sidebar shows the number of pull requests that need its account.
 
@@ -186,14 +188,13 @@ its own `credential.githubAccount` setting, becomes a workspace, and opens its
 dashboard. The dialog shows Git's error if the clone fails, and closing it
 cancels the clone. In the desktop app, **Choose…** picks the parent folder.
 
-The account's own pull requests show the actions that apply: **Merge** when
-GitHub allows merging, **Address review** when changes were requested or
-comments are unanswered, and **Fix checks** when its checks are failing. An
-action opens a list of the workspace's sessions that have not ended, with the
-sessions on that pull request first. Choose a session to send it the
-instruction; its agent does the work with `gh` and the workspace's account.
-Choose **New Session** to open a new session with the instruction ready to
-send.
+A pull request whose review was requested from the account shows **Review**.
+It fetches the pull request's head commit, starts a new worktree session at that
+commit, and opens the session. The session's model and first prompt come from
+[**Settings › Review**](configuration.md#pull-request-reviews). The pull
+request's own commits do not count as the session's unmerged work, so
+**Merge into …** appears only after the agent commits. On the Pull Requests
+view, **Review** is disabled until a workspace holds the repository.
 
 A session whose branch has an open pull request involving the account shows a pull request icon at the
 right edge of its row. Hover over the icon for the pull request's number, title,

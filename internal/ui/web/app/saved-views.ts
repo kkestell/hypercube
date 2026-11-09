@@ -44,6 +44,7 @@ function workbench(value: unknown) {
   return (value.rightTab === 'files' || value.rightTab === 'git' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
     && record(sizes) && ['sidebar', 'rightPanel', 'panel', 'editor'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
     && flags(value.collapsedWorkspaces) && flags(value.collapsedSessions)
+    && (value.collapsedPullRequestGroups === undefined || flags(value.collapsedPullRequestGroups))
     && record(value.sidebarScroll) && nonnegative(value.sidebarScroll.sessions) && nonnegative(value.sidebarScroll.archived);
 }
 
@@ -51,5 +52,7 @@ export function readSavedViews(text: string): SavedViews {
   const value: unknown = JSON.parse(text);
   if (!record(value) || !(value.selected === null || typeof value.selected === 'string')
     || !workbench(value.workbench) || !entries(value.sessionViews, sessionView) || !entries(value.workspaceViews, editorView)) throw new Error('Invalid saved view state.');
-  return value as unknown as SavedViews;
+  const saved = value as unknown as SavedViews;
+  saved.workbench.collapsedPullRequestGroups ??= {};
+  return saved;
 }

@@ -5,6 +5,7 @@ package workspace
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -240,14 +241,20 @@ func WorktreeDir(root, parent, name string) string {
 	return filepath.Join(root, ".hypercube", parent+"-"+name)
 }
 
-// AddWorktree creates a session's branch from HEAD and checks it out in dir.
-// It adds .hypercube/ to the checkout's local excludes.
-func AddWorktree(root, dir, branch string) error {
+// AddWorktree creates a session's branch at start and checks it out in dir.
+// start is any commit or ref that resolves in root; empty means HEAD. It adds
+// .hypercube/ to the checkout's local excludes.
+func AddWorktree(root, dir, branch, start string) error {
+	start = cmp.Or(start, "HEAD")
+	commit, err := git(root, "rev-parse", "--verify", "--end-of-options", start+"^{commit}")
+	if err != nil {
+		return fmt.Errorf("starting point %s is not a commit: %w", start, err)
+	}
 	if err := excludeWorktrees(root); err != nil {
 		return err
 	}
 	existed := exists(root, branch)
-	if _, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
+	if _, err := git(root, "worktree", "add", "-b", branch, dir, commit); err != nil {
 		if !existed {
 			_, deleteErr := git(root, "branch", "-D", branch)
 			err = errors.Join(err, deleteErr)
@@ -361,12 +368,15 @@ func cloneFlag() string {
 }
 
 // Removable returns an error if the worktree has uncommitted changes, or its
-// branch or checked-out commit is not merged into HEAD. A worktree or branch
-// that no longer exists passes.
-func Removable(root, dir, branch string) error {
+// branch or checked-out commit has commits that no kept ref reaches. The kept
+// refs are root's HEAD, base when it is not empty, and every remote-tracking
+// branch. A worktree or branch that no longer exists passes.
+func Removable(root, dir, branch, base string) error {
 	if exists(root, branch) {
-		if _, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD"); err != nil {
-			return fmt.Errorf("branch %s is not merged into HEAD", branch)
+		if n, err := unkept(root, "refs/heads/"+branch, base); err != nil {
+			return err
+		} else if n > 0 {
+			return fmt.Errorf("branch %s has commits that are not on %s", branch, keptRefs(base))
 		}
 	}
 	if !isWorktree(dir) {
@@ -376,8 +386,10 @@ func Removable(root, dir, branch string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := git(root, "merge-base", "--is-ancestor", head, "HEAD"); err != nil {
-		return fmt.Errorf("worktree %s has commits not merged into HEAD", dir)
+	if n, err := unkept(root, head, base); err != nil {
+		return err
+	} else if n > 0 {
+		return fmt.Errorf("worktree %s has commits that are not on %s", dir, keptRefs(base))
 	}
 	n, err := uncommitted(dir)
 	if err != nil {
@@ -387,6 +399,27 @@ func Removable(root, dir, branch string) error {
 		return fmt.Errorf("worktree %s has uncommitted changes", dir)
 	}
 	return nil
+}
+
+// keptRefs names the refs whose commits Removable keeps for base.
+func keptRefs(base string) string {
+	if base == "" {
+		return "the checkout's branch or a remote branch"
+	}
+	return "the checkout's branch, the session's starting commit, or a remote branch"
+}
+
+// unkept counts the commits reachable from tip that no kept ref reaches.
+func unkept(root, tip, base string) (int, error) {
+	args := []string{"rev-list", "--count", tip, "--not", "HEAD"}
+	if base != "" {
+		args = append(args, base)
+	}
+	count, err := git(root, append(args, "--remotes")...)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(count)
 }
 
 // uncommitted counts the changed and untracked files in the checkout in dir,
@@ -405,7 +438,7 @@ func uncommitted(dir string) (int, error) {
 type Merge struct {
 	Branch      string `json:"branch"`
 	Target      string `json:"target"`      // the checkout's branch
-	Unmerged    int    `json:"unmerged"`    // branch commits not in the target
+	Unmerged    int    `json:"unmerged"`    // commits made after base that are not in the target
 	Committed   bool   `json:"committed"`   // the branch has moved past its base
 	Uncommitted int    `json:"uncommitted"` // changed and untracked files in the worktree
 	// Error is why the status could not be read; the other fields but Branch
@@ -421,7 +454,13 @@ func MergeStatus(root, dir, branch, base string) (Merge, error) {
 	if m.Target, err = Branch(root); err != nil {
 		return Merge{}, err
 	}
-	count, err := git(root, "rev-list", "--count", "HEAD.."+branch)
+	// Commits on the way to base are not the session's work, so a session
+	// started at a pull request's head counts only the commits it made.
+	args := []string{"rev-list", "--count", branch, "--not", "HEAD"}
+	if base != "" {
+		args = append(args, base)
+	}
+	count, err := git(root, args...)
 	if err != nil {
 		return Merge{}, err
 	}
@@ -440,12 +479,12 @@ func MergeStatus(root, dir, branch, base string) (Merge, error) {
 }
 
 // RemoveWorktree removes the worktree and deletes its branch if Removable
-// allows it. Removable has checked the branch against HEAD, so the deletion
-// ignores the branch's upstream, and has checked the worktree, so --force
-// only lets Git remove a worktree with submodules. A worktree or branch that
-// is already gone is skipped.
-func RemoveWorktree(root, dir, branch string) error {
-	if err := Removable(root, dir, branch); err != nil {
+// allows it with base. Removable has checked that a kept ref reaches every
+// commit on the branch, so the deletion ignores the branch's upstream, and has
+// checked the worktree, so --force only lets Git remove a worktree with
+// submodules. A worktree or branch that is already gone is skipped.
+func RemoveWorktree(root, dir, branch, base string) error {
+	if err := Removable(root, dir, branch, base); err != nil {
 		return err
 	}
 	if isWorktree(dir) {
@@ -489,6 +528,21 @@ func removeEmptyParents(dir string) error {
 // exists reports whether the branch exists.
 func exists(root, branch string) bool {
 	_, err := git(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+// BranchTip returns the commit at the tip of the branch, or "" when the branch
+// does not exist.
+func BranchTip(root, branch string) (string, error) {
+	if !exists(root, branch) {
+		return "", nil
+	}
+	return git(root, "rev-parse", "refs/heads/"+branch)
+}
+
+// HasCommit reports whether the commit's object is in root's repository.
+func HasCommit(root, commit string) bool {
+	_, err := git(root, "cat-file", "-e", "--end-of-options", commit+"^{commit}")
 	return err == nil
 }
 

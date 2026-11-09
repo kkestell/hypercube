@@ -71,6 +71,9 @@ type Session struct {
 	// Base is the commit a top-level worktree session's branch started from.
 	// It is empty for every other session.
 	Base string
+	// Tip is the tip of an archived top-level worktree session's branch, which
+	// unarchiving restores. It is empty for every other session.
+	Tip string
 }
 
 // Message is a queued message. From is empty for Hypercube's own messages.
@@ -127,7 +130,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
-  base TEXT NOT NULL DEFAULT '',
+  base TEXT NOT NULL DEFAULT '', tip TEXT NOT NULL DEFAULT '',
   -- Required inert field in the current schema; initialized to created.
   last_active INTEGER NOT NULL, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
@@ -165,8 +168,9 @@ CREATE TABLE IF NOT EXISTS limits (
 // DB is the open database.
 type DB struct{ sql *sql.DB }
 
-// Open opens the database in Dir, creating its tables if they are missing and
-// moving model entries saved by earlier builds to config.json.
+// Open opens the database in Dir, creating its tables if they are missing,
+// adding the session column earlier builds lacked, and moving model entries
+// saved by earlier builds to config.json.
 // Writes take the database lock when they begin and wait up to five seconds
 // for it.
 func Open() (*DB, error) {
@@ -183,7 +187,12 @@ func Open() (*DB, error) {
 		return nil, err
 	}
 	d := &DB{db}
-	if err := d.Tx(func(tx *Tx) error { return tx.exec(schema) }); err != nil {
+	if err := d.Tx(func(tx *Tx) error {
+		if err := tx.exec(schema); err != nil {
+			return err
+		}
+		return tx.addTip()
+	}); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("%s: %w", dbPath(), err)
 	}
@@ -232,6 +241,15 @@ type Tx struct{ tx *sql.Tx }
 func (t *Tx) exec(query string, args ...any) error {
 	_, err := t.tx.Exec(query, args...)
 	return err
+}
+
+// addTip adds the sessions table's tip column to a database created without it.
+func (t *Tx) addTip() error {
+	var found bool
+	if err := t.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'tip')`).Scan(&found); err != nil || found {
+		return err
+	}
+	return t.exec(`ALTER TABLE sessions ADD COLUMN tip TEXT NOT NULL DEFAULT ''`)
 }
 
 func (t *Tx) AddWorkspace(w Workspace) error {
@@ -300,34 +318,34 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base, fork, input_pending)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base, tip, fork, input_pending)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Ended,
 		s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Fork, s.InputPending)
+		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Tip, s.Fork, s.InputPending)
 }
 
 // SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
 	return t.exec(`UPDATE sessions SET title = ?, ended = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ?, base = ? WHERE id = ?`,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ?, base = ?, tip = ? WHERE id = ?`,
 		s.Title, s.Ended, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.Base, s.ID)
+		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.Base, s.Tip, s.ID)
 }
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick, base, fork, input_pending`
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Ended,
 		&s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Fork, &s.InputPending)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Tip, &s.Fork, &s.InputPending)
 	return s, err
 }
 

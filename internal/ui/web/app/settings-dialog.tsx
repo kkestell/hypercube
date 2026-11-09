@@ -6,7 +6,7 @@ import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
-import {SettingsAgents, SettingsGeneral, SettingsNotifications} from './settings-preferences.tsx';
+import {SettingsAgents, SettingsGeneral, SettingsNotifications, SettingsReview} from './settings-preferences.tsx';
 import {sections, type Config} from './types.ts';
 
 export function SettingsDialog() {
@@ -69,6 +69,7 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
             {draft && section === 'General' && <SettingsGeneral draft={draft} onChange={edit} />}
             {draft && section === 'Notifications' && <SettingsNotifications draft={draft} onChange={edit} />}
             {draft && section === 'Agents' && <SettingsAgents draft={draft} onChange={edit} />}
+            {draft && section === 'Review' && <SettingsReview draft={draft} onChange={edit} />}
           </fieldset>
           {section === 'Permissions' && <SettingsPermissions />}
         </div>

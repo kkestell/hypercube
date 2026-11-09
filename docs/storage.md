@@ -38,13 +38,16 @@ harness.
 | Archive | Kept read-only and searchable; family leaves the active list. | Removed after Git checks. |
 | Delete | Family's chats deleted. | Removed after Git checks. |
 | End child | Kept read-only; child cannot resume. | Removed after Git checks. |
-| Unarchive | Returns to active use. | If the session had a managed worktree, it is recreated on its branch from the original checkout's HEAD. |
+| Unarchive | Returns to active use. | If the session had a managed worktree, it is recreated with its branch at the commit the branch held when archived. If Git no longer has that commit, the branch starts from the original checkout's HEAD. |
 
-Before removing a managed worktree, Hypercube checks for uncommitted files and
-unmerged commits. A child's commits must be merged into its parent; a top-level
-worktree's commits must be merged into the original checkout's HEAD. Removal
-is refused without changes if checks fail. Checks honor Git's submodule
-settings, including settings that ignore submodule changes.
+Before removing a managed worktree, Hypercube checks that no work would be
+lost: the worktree has no uncommitted files, and Git keeps each of its commits
+elsewhere. A child's commits must be on its parent's branch or a remote
+branch. A top-level worktree's commits must be on the original checkout's
+branch, in the history of the commit the session started from, or on a remote
+branch, such as one you pushed. Removal is refused without changes if checks
+fail. Checks honor Git's submodule settings, including settings that ignore
+submodule changes.
 
 Original project folders and existing directories assigned to children are
 not removed. Ended children can be deleted individually.

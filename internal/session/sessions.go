@@ -53,19 +53,24 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 // With worktree, the session runs in its own worktree on a new branch from
 // the checkout's HEAD.
 func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree bool, text string, images ...harness.Image) (store.Session, error) {
-	return r.create(workspaceID, settings, worktree, "", text, images...)
+	return r.create(workspaceID, settings, worktree, "", "", text, images...)
 }
 
 // CreateSubmission retains the created session even if its first input fails,
-// and correlates that input with the browser's provisional prompt.
-func (r *Runtime) CreateSubmission(workspaceID string, settings harness.Settings, worktree bool, submission, text string, images ...harness.Image) (store.Session, error) {
+// and correlates that input with the browser's provisional prompt. A worktree
+// session's branch starts at start, any commit or ref that resolves in the
+// checkout; empty means the checkout's HEAD.
+func (r *Runtime) CreateSubmission(workspaceID string, settings harness.Settings, worktree bool, start, submission, text string, images ...harness.Image) (store.Session, error) {
 	if err := CheckSubmissionID(submission); err != nil {
 		return store.Session{}, err
 	}
-	return r.create(workspaceID, settings, worktree, submission, text, images...)
+	return r.create(workspaceID, settings, worktree, start, submission, text, images...)
 }
 
-func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree bool, submission, text string, images ...harness.Image) (store.Session, error) {
+func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree bool, start, submission, text string, images ...harness.Image) (store.Session, error) {
+	if start != "" && !worktree {
+		return store.Session{}, errors.New("a starting point needs a worktree session")
+	}
 	if err := checkPrompt(text, images); err != nil {
 		return store.Session{}, err
 	}
@@ -101,17 +106,17 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 			return store.Session{}, errors.New("a worktree session needs a Git checkout")
 		}
 		s.Dir, s.Branch = workspace.SessionDir(w.Path, s.ID), workspace.SessionBranch(s.ID)
-		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch); err != nil {
+		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch, start); err != nil {
 			return store.Session{}, err
 		}
 		var err error
 		if s.Base, err = workspace.Head(s.Dir); err != nil {
-			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
+			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, start))
 		}
 	}
 	if err := r.save(func(tx *write) error { return tx.AddSession(s) }); err != nil {
 		if worktree {
-			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
+			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, s.Base))
 		}
 		return store.Session{}, err
 	}

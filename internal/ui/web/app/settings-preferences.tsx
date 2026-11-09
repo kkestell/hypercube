@@ -1,7 +1,8 @@
-// The Settings sections that edit preferences: General, Agents, and
+// The Settings sections that edit preferences: General, Agents, Review, and
 // Notifications.
 import type {ReactNode} from 'react';
 import {ModelSelect} from '../agent/model-select.tsx';
+import {Button} from '../components/ui/button';
 import {Label} from '../components/ui/label';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
 import {Switch} from '../components/ui/switch';
@@ -83,6 +84,27 @@ export function SettingsAgents({draft, onChange}: SectionProps) {
         <p className="text-sm text-muted-foreground">A child session uses its parent's harness, model, and effort unless the user asks for others or this guidance calls for them. Agents follow it as an instruction; it does not limit which models they can choose.</p>
       </Field>
     </Group>
+  </div>;
+}
+
+// SettingsReview chooses the model and prompt that Review starts a pull request
+// review session with.
+export function SettingsReview({draft, onChange}: SectionProps) {
+  return <div className="grid gap-10">
+    <div className="grid gap-3">
+      <span className="text-sm font-medium leading-none">Review model</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <ModelSelect value={draft.review_selection ?? null} label="Review model" entries={draft.models}
+          onChange={review_selection => onChange({review_selection})} />
+        {draft.review_selection && <Button type="button" variant="ghost" size="sm" onClick={() => onChange({review_selection: undefined})}>Use default model</Button>}
+      </div>
+      <p className="text-sm text-muted-foreground">Review starts a new session with this model. Without one, it uses the default model.</p>
+    </div>
+    <Field id="review-prompt" label="Review prompt">
+      <Textarea id="review-prompt" rows={8} value={draft.review_prompt}
+        onChange={e => onChange({review_prompt: e.target.value})} />
+      <p className="text-sm text-muted-foreground"><code>{'{number}'}</code> becomes the pull request's number and <code>{'{url}'}</code> its link. The pull request's head is checked out in the session's worktree.</p>
+    </Field>
   </div>;
 }
 

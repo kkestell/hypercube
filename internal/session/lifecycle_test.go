@@ -220,6 +220,24 @@ func TestRestart(t *testing.T) {
 	}
 }
 
+// setTip changes the branch tip saved with an archived session.
+func (f *fixture) setTip(id, tip string) {
+	f.t.Helper()
+	err := f.db.Tx(func(tx *store.Tx) error {
+		s, err := tx.Session(id)
+		if err != nil {
+			return err
+		}
+		s.Tip = tip
+		return tx.SaveSession(s)
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// Unarchiving a session whose recorded tip is gone from the repository
+// recreates its branch from the checkout's HEAD.
 func TestUnarchive(t *testing.T) {
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
@@ -235,6 +253,7 @@ func TestUnarchive(t *testing.T) {
 	if err := f.rt.Unarchive(child.ID); err == nil || !strings.Contains(err.Error(), "top-level") {
 		t.Fatalf("unarchived a child: %v", err)
 	}
+	f.setTip(s.ID, "0123456789abcdef0123456789abcdef01234567")
 	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "later")
 	head, err := workspace.Head(f.root)
 	if err != nil {
@@ -244,7 +263,7 @@ func TestUnarchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := f.storedSession(s.ID)
-	if got.Ended || got.Base != head || f.awake(s.ID) || !f.storedSession(child.ID).Ended {
+	if got.Ended || got.Base != head || got.Tip != "" || f.awake(s.ID) || !f.storedSession(child.ID).Ended {
 		t.Fatalf("unarchived session = %+v", got)
 	}
 	if b, err := workspace.Branch(s.Dir); err != nil || b != s.Branch {
@@ -266,6 +285,8 @@ func TestFailedUnarchiveCanBeRetried(t *testing.T) {
 	if err := f.rt.Archive(s.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Without a recorded tip, unarchiving reads the new worktree's HEAD.
+	f.setTip(s.ID, "")
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +311,45 @@ func TestFailedUnarchiveCanBeRetried(t *testing.T) {
 	}
 	if got := f.storedSession(s.ID); got.Ended || got.Base == "" {
 		t.Fatalf("unarchived session = %+v", got)
+	}
+}
+
+// A worktree session whose commits are on a remote branch archives, and
+// unarchiving restores its branch and starting commit.
+func TestArchiveRestoresPushedWork(t *testing.T) {
+	f := newFixture(t)
+	f.idleAfter(time.Hour)
+	s := f.worktreeSession()
+	remote := t.TempDir()
+	f.git(remote, "init", "-q", "--bare")
+	f.git(f.root, "remote", "add", "origin", remote)
+	f.git(s.Dir, "commit", "-q", "--allow-empty", "-m", "work")
+	f.git(s.Dir, "push", "-q", "origin", s.Branch)
+	tip, err := workspace.Head(s.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Archive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.storedSession(s.ID); !got.Ended || got.Tip != tip {
+		t.Fatalf("archived session = %+v, want tip %s", got, tip)
+	}
+	if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+s.Branch).Run() == nil {
+		t.Fatal("branch remains")
+	}
+	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "later")
+	if err := f.rt.Unarchive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.storedSession(s.ID); got.Ended || got.Base != s.Base || got.Tip != "" {
+		t.Fatalf("unarchived session = %+v, want base %s", got, s.Base)
+	}
+	if head, err := workspace.Head(s.Dir); err != nil || head != tip {
+		t.Fatalf("worktree HEAD = %s, %v; want %s", head, err, tip)
+	}
+	if b, err := workspace.Branch(s.Dir); err != nil || b != s.Branch {
+		t.Fatalf("worktree branch = %q, %v", b, err)
 	}
 }
 

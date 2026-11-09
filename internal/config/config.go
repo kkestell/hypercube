@@ -18,12 +18,17 @@ import (
 // Config is config.json: the user's preferences. DefaultSelection, when set,
 // starts new sessions with that harness, model, and effort. ChildGuidance
 // tells agents when a child session should use other settings than theirs.
-// DefaultWorktree starts new sessions in Git workspaces in a worktree. Models
-// lists the model picker's entries in the order they were added.
+// DefaultWorktree starts new sessions in Git workspaces in a worktree.
+// ReviewSelection, when set, starts pull request reviews with that harness,
+// model, and effort; ReviewPrompt is their first prompt, with {number} and
+// {url} standing for the pull request's number and link. Models lists the model
+// picker's entries in the order they were added.
 type Config struct {
 	DefaultSelection *harness.Settings `json:"default_selection,omitempty"`
 	ChildGuidance    string            `json:"child_model_guidance"`
 	DefaultWorktree  bool              `json:"default_worktree"`
+	ReviewSelection  *harness.Settings `json:"review_selection,omitempty"`
+	ReviewPrompt     string            `json:"review_prompt"`
 	Theme            string            `json:"theme"`
 	TerminalFontSize int               `json:"terminal_font_size"`
 	Notifications    Notifications     `json:"notifications"`
@@ -89,6 +94,10 @@ type Notifications struct {
 	Sound    bool `json:"sound"`
 }
 
+// DefaultReviewPrompt is the review prompt until the user changes it.
+const DefaultReviewPrompt = "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. " +
+	"Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub."
+
 // DefaultNotifications enables every alert.
 var DefaultNotifications = Notifications{Requests: true, Replies: true, Desktop: true, Sound: true}
 
@@ -99,7 +108,7 @@ var (
 
 // defaults supplies preferences omitted from config.json.
 func defaults() Config {
-	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
+	return Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 }
 
 func path() string {
@@ -132,7 +141,8 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// Validate checks the configuration's values and trims model entries.
+// Validate checks the configuration's values and trims model entries and the
+// review prompt.
 func (c *Config) Validate() error {
 	if !slices.Contains(themes, c.Theme) {
 		return fmt.Errorf("theme %q is not one of %v", c.Theme, themes)
@@ -144,6 +154,15 @@ func (c *Config) Validate() error {
 		if err := c.DefaultSelection.Check(); err != nil {
 			return fmt.Errorf("default selection: %w", err)
 		}
+	}
+	if c.ReviewSelection != nil {
+		if err := c.ReviewSelection.Check(); err != nil {
+			return fmt.Errorf("review selection: %w", err)
+		}
+	}
+	c.ReviewPrompt = strings.TrimSpace(c.ReviewPrompt)
+	if c.ReviewPrompt == "" {
+		return errors.New("review prompt is required")
 	}
 	if c.Models == nil {
 		c.Models = []ModelEntry{}

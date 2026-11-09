@@ -3,6 +3,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
@@ -57,13 +58,36 @@ func Remote(dir string) (name, url string, err error) {
 // environment variables such as a token, until ctx ends. It leaves FETCH_HEAD
 // alone so that it cannot disturb a fetch and merge an agent is running.
 func Fetch(ctx context.Context, dir, remote string, env []string) error {
-	cmd := exec.CommandContext(ctx, "git", "fetch", "--quiet", "--no-write-fetch-head", remote)
+	return fetch(ctx, dir, env, remote)
+}
+
+// FetchPullRequest fetches pull request number's head commit from the GitHub
+// remote into dir and returns the commit ID. It fetches into a temporary ref,
+// rather than FETCH_HEAD, so that it cannot disturb a fetch an agent is
+// running, and deletes that ref before returning.
+func FetchPullRequest(ctx context.Context, dir, remote string, number int, env []string) (string, error) {
+	ref := "refs/hypercube/fetch/" + rand.Text()
+	refspec := fmt.Sprintf("+refs/pull/%d/head:%s", number, ref)
+	if err := fetch(ctx, dir, env, remote, refspec); err != nil {
+		return "", err
+	}
+	commit, err := git(dir, "rev-parse", "--verify", ref+"^{commit}")
+	if _, deleteErr := git(dir, "update-ref", "-d", ref); deleteErr != nil {
+		return "", errors.Join(err, deleteErr)
+	}
+	return commit, err
+}
+
+// fetch runs git fetch in dir with extra environment variables until ctx ends,
+// leaving FETCH_HEAD alone.
+func fetch(ctx context.Context, dir string, env []string, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"fetch", "--quiet", "--no-write-fetch-head"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(append(os.Environ(), env...), "GIT_TERMINAL_PROMPT=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return &gitError{[]string{"fetch", remote}, strings.TrimSpace(stderr.String()), err}
+		return &gitError{append([]string{"fetch"}, args...), strings.TrimSpace(stderr.String()), err}
 	}
 	return nil
 }

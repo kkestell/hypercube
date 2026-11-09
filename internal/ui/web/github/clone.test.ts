@@ -1,7 +1,7 @@
 import {expect, test} from 'bun:test';
 import {testWorkspace} from '../../test-state.ts';
 import type {Workspace} from '../sessions/types.ts';
-import {suggestedFolder, tracks} from './clone.ts';
+import {suggestedFolder, tracking} from './clone.ts';
 
 const github = (repo: string): Workspace['github'] => ({repo, url: '', account: '', branch: '', ahead: 0, behind: 0, pullRequests: [], updated: 0});
 const workspaces = [
@@ -11,9 +11,9 @@ const workspaces = [
 ];
 
 test('a repository is tracked regardless of case, and workspaces without GitHub track nothing', () => {
-  expect(tracks(workspaces, 'minneapolisstartribune/A')).toBe(true);
-  expect(tracks(workspaces, 'me/c')).toBe(false);
-  expect(tracks([workspaces[0]], 'plain/plain')).toBe(false);
+  expect(tracking(workspaces, 'minneapolisstartribune/A')?.id).toBe('a');
+  expect(tracking(workspaces, 'me/c')).toBeUndefined();
+  expect(tracking([workspaces[0]], 'plain/plain')).toBeUndefined();
 });
 
 test('the suggested folder sits beside a workspace of the same owner', () => {

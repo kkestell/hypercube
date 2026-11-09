@@ -83,6 +83,25 @@ test('guidance saves with the config', async () => {
   expect(posts).toEqual([{...config, child_model_guidance: 'Use opus for design.'}]);
 });
 
+test('the review model and prompt save with the config', async () => {
+  const posts: Config[] = [];
+  stubFetch((url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    return url === 'version' ? new Response('build') : Response.json({...config, models: [sol]});
+  });
+  await open();
+  await click('Review');
+  const prompt = element(document, '#review-prompt', HTMLTextAreaElement);
+  expect(prompt.value).toBe(config.review_prompt);
+  act(() => { setValue(prompt, 'Review {url} carefully.'); prompt.dispatchEvent(new Event('input', {bubbles: true})); });
+  clickControl(element(document, 'button[aria-label="Review model"]', HTMLButtonElement));
+  await settle(); await settle();
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'Sol')!);
+  await settle(); await settle();
+  await click('Save changes');
+  expect(posts).toEqual([{...config, models: [sol], review_prompt: 'Review {url} carefully.', review_selection: {harness: 'opencode', model: 'sol', effort: 'low'}}]);
+});
+
 test('cancel discards edits and reopening reloads the saved config', async () => {
   const fetches = stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
   await open();

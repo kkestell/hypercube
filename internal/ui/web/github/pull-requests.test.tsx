@@ -2,11 +2,9 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
 import {clickControl, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testPullRequest, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {draftOf, unsentKey} from '../agent/drafts.ts';
 import {selectWorkspace} from '../sessions/selection.ts';
 import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {createStore} from '../store.ts';
-import {instruction} from './instructions.ts';
 import type {GitHubStatus, PullRequest} from './types.ts';
 
 afterEach(() => {
@@ -39,9 +37,9 @@ test('rows say why they are the account’s move or a wait, and link GitHub', ()
   expect(link.textContent).toBe('#8 Theirs');
   expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/8');
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.#7 Add itReady to merge.Merge');
+  expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.Review#7 Add itReady to merge.');
   expect(list(root, 'Waiting on others').textContent).toBe('#9 MineWaiting for review.');
-  expect(buttons(root).map(b => b.textContent)).toEqual(['Merge']);
+  expect(buttons(root).map(b => b.textContent)).toEqual(['Review']);
 });
 
 test('empty states say what is happening', () => {
@@ -69,35 +67,37 @@ test('an empty list says nothing needs the account', () => {
   expect(find(root, 'section section').textContent).toContain('Nothing needs you.');
 });
 
-test('Fix checks lists new session and live sessions, matching ones first', () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root} = dashboard(github({pullRequests: [failing]}), [
-    testSession({id: 'a', title: 'Other'}),
-    testSession({id: 'b', title: 'Done', ended: true}),
-    testSession({id: 'c', title: 'On it', pullRequest: failing}),
-  ]);
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
-  const items = findAll(document.body, '[cmdk-item]').map(item => item.textContent);
-  expect(items).toEqual(['New Session', 'On it', 'Other']);
-});
+const requested = () => pr({author: 'bob', requested: 'user'});
 
-test('choosing a session sends the instruction and shows it', async () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const stub = stubFetch(() => new Response(''));
-  const {root, store} = dashboard(github({pullRequests: [failing]}), [testSession({id: 'a', title: 'Other'})]);
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
-  await act(async () => clickControl(findAll(document.body, '[cmdk-item]').find(item => item.textContent === 'Other')!));
+test('Review starts a review session, disabled until the server answers, then shows it', async () => {
+  let answer!: (response: Response) => void;
+  const stub = stubFetch(() => new Promise<Response>(resolve => { answer = resolve; }));
+  const {root, store} = dashboard(github({pullRequests: [requested()]}));
+  const review = () => buttons(root).find(b => b.textContent === 'Review') as HTMLButtonElement;
+  act(() => clickControl(review()));
   const request = new URL(stub.mock.calls[0][0], 'http://x/');
-  expect(Object.fromEntries(request.searchParams)).toEqual({action: 'input', id: 'a'});
-  expect(JSON.parse(String(stub.mock.calls[0][1]?.body)).text).toBe(instruction('checks', failing));
-  expect(store.get().selected).toBe('a');
+  expect(request.pathname).toBe('/session');
+  expect(Object.fromEntries(request.searchParams)).toEqual({action: 'review', workspace: 'w', number: '7'});
+  expect(stub.mock.calls[0][1]?.method).toBe('POST');
+  expect(review().disabled).toBe(true);
+  await act(async () => answer(Response.json({session: 'new-session'})));
+  expect(store.get().pending).toBe('new-session');
 });
 
-test('choosing New Session opens the unsent session with the instruction', async () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root, store} = dashboard(github({pullRequests: [failing]}));
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
-  await act(async () => clickControl(find(document.body, '[cmdk-item]')));
-  expect(store.get().unsent?.workspace).toBe('w');
-  expect(draftOf(store.get(), unsentKey('w')).text).toBe(instruction('checks', failing));
+test('a review session whose prompt failed is still shown, with the error', async () => {
+  stubFetch(() => Response.json({session: 'new-session', error: 'the agent did not start'}, {status: 409}));
+  const {root, store} = dashboard(github({pullRequests: [requested()]}));
+  await act(async () => clickControl(buttons(root).find(b => b.textContent === 'Review')!));
+  expect(store.get().errors.map(error => error.message)).toEqual(['the agent did not start']);
+  expect(store.get().pending).toBe('new-session');
+});
+
+test('a refused review shows why and keeps the selection', async () => {
+  stubFetch(() => new Response('Choose a model in Settings to start a review', {status: 409}));
+  const {root, store} = dashboard(github({pullRequests: [requested()]}));
+  const {selected, pending} = store.get();
+  await act(async () => clickControl(buttons(root).find(b => b.textContent === 'Review')!));
+  expect(store.get().errors.map(error => error.message)).toEqual(['Choose a model in Settings to start a review']);
+  expect({selected: store.get().selected, pending: store.get().pending}).toEqual({selected, pending});
+  expect((buttons(root).find(b => b.textContent === 'Review') as HTMLButtonElement).disabled).toBe(false);
 });

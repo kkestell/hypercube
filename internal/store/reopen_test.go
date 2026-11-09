@@ -207,6 +207,33 @@ INSERT INTO model_entries VALUES ('b', 'claude', 'opus', 'Opus', '["low","high"]
 	}
 }
 
+func TestOpenAddsTipToSavedSessions(t *testing.T) {
+	writeConfig(t, `{}`)
+	createCurrentDatabase(t, `
+INSERT INTO workspaces VALUES ('w', '/repo', 0, 10);
+INSERT INTO sessions (id, workspace, title, ended, harness, model, effort, dir, branch, activity, created, base, last_active)
+ VALUES ('archived', 'w', 'Archived session', 1, 'opencode', 'provider/model', 'high', '/worktree', 'hypercube/archived', 'exited', 100, 'base-commit', 100);`)
+	db := reopen(t)
+	want := Session{ID: "archived", Workspace: "w", Title: "Archived session", Ended: true,
+		Harness: "opencode", Model: "provider/model", Effort: "high", Dir: "/worktree", Branch: "hypercube/archived",
+		Activity: Exited, Created: 100, Base: "base-commit"}
+	read := func() (s Session) {
+		t.Helper()
+		if err := db.Read(func(tx *Tx) error { var err error; s, err = tx.Session(want.ID); return err }); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if got := read(); got != want {
+		t.Fatalf("saved session = %+v, want %+v", got, want)
+	}
+	want.Tip = "tip-commit"
+	tx(t, db, func(tx *Tx) error { return tx.SaveSession(want) })
+	if got := read(); got != want {
+		t.Fatalf("session with a tip = %+v, want %+v", got, want)
+	}
+}
+
 func TestOpenKeepsModelEntriesWhenConfigIsInvalid(t *testing.T) {
 	configPath := writeConfig(t, `{"theme":"blue"}`)
 	createCurrentDatabase(t, `INSERT INTO model_entries VALUES ('b', 'claude', 'opus', 'Opus', '[]', '');`)

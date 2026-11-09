@@ -20,7 +20,7 @@ var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 func TestSaveConfig(t *testing.T) {
 	a := newApp(t)
 	cfg := config.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
-		Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true},
+		ReviewPrompt: config.DefaultReviewPrompt, Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true},
 		Models: []config.ModelEntry{{Harness: "test", Model: "next", Title: "Next", Efforts: []string{"low", "high"}, DefaultEffort: "high"}}}
 	body, err := json.Marshal(cfg)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestSaveConfigFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := handler(t, open(t))
-	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"theme":"system","terminal_font_size":13}`))
+	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"review_prompt":"Review #{number}.","theme":"system","terminal_font_size":13}`))
 	req.Header.Set("Origin", "http://localhost:4280")
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, req)

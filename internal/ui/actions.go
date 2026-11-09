@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
@@ -113,14 +115,11 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
-		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", in.Submission, in.Text, in.Images...)
-		w.Header().Set("Content-Type", "application/json")
-		result := map[string]string{"session": created.ID}
-		if err != nil {
-			result["error"] = err.Error()
-			w.WriteHeader(http.StatusConflict)
-		}
-		_ = json.NewEncoder(w).Encode(result)
+		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", q.Get("start"), in.Submission, in.Text, in.Images...)
+		writeCreated(w, created.ID, err)
+		return
+	case "review":
+		s.startReview(w, r)
 		return
 	case "delete":
 		err = s.rt.Delete(id)
@@ -172,6 +171,77 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refused(w, err)
+}
+
+// startReview fetches a pull request's head commit, starts a worktree session
+// at it with the review model and prompt, and answers like a new session.
+// Failures before creation are plain text.
+func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	number, err := strconv.Atoi(q.Get("number"))
+	if err != nil || number <= 0 {
+		http.Error(w, "a pull request number is required", http.StatusBadRequest)
+		return
+	}
+	workspaceID := q.Get("workspace")
+	var dir string
+	err = s.db.Read(func(tx *store.Tx) error {
+		ws, err := tx.Workspace(workspaceID)
+		dir = ws.Path
+		return err
+	})
+	if refused(w, err) {
+		return
+	}
+	cfg, err := config.Load()
+	if refused(w, err) {
+		return
+	}
+	settings, err := reviewSettings(cfg)
+	if refused(w, err) {
+		return
+	}
+	commit, url, err := s.gh.FetchPullRequest(r.Context(), workspaceID, dir, number)
+	if refused(w, err) {
+		return
+	}
+	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", reviewPrompt(cfg.ReviewPrompt, number, url))
+	writeCreated(w, created.ID, err)
+}
+
+// writeCreated answers a session creation with the session's ID and the error,
+// if any, as JSON. Creation can fail after saving the session, which then still
+// belongs to the page; an empty ID means nothing was created.
+func writeCreated(w http.ResponseWriter, id string, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	result := map[string]string{"session": id}
+	if err != nil {
+		result["error"] = err.Error()
+		w.WriteHeader(http.StatusConflict)
+	}
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// reviewSettings is the model a review starts with: the review selection, the
+// default selection, or else the first listed model at its default effort.
+func reviewSettings(cfg config.Config) (harness.Settings, error) {
+	if cfg.ReviewSelection != nil {
+		return *cfg.ReviewSelection, nil
+	}
+	if cfg.DefaultSelection != nil {
+		return *cfg.DefaultSelection, nil
+	}
+	if len(cfg.Models) == 0 {
+		return harness.Settings{}, errors.New("Choose a model in Settings to start a review")
+	}
+	m := cfg.Models[0]
+	return harness.Settings{Harness: m.Harness, Model: m.Model, Effort: m.DefaultEffort}, nil
+}
+
+// reviewPrompt fills a review prompt's {number} and {url} with the pull
+// request's number and link.
+func reviewPrompt(prompt string, number int, url string) string {
+	return strings.NewReplacer("{number}", strconv.Itoa(number), "{url}", url).Replace(prompt)
 }
 
 // grants returns saved always-allow choices.
