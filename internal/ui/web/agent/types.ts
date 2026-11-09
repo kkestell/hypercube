@@ -21,7 +21,6 @@ export interface Harness {
 
 // ModelEntry is a manually configured picker choice, independent of sessions.
 export interface ModelEntry {
-  id: string;
   harness: string;
   model: string;
   title: string;

@@ -40,7 +40,7 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
       <CardContent className="px-4">
         <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
           summary={<><span className="truncate font-medium">{item.text}</span>
-            <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, state.modelEntries)}><SelectionName settings={options.settings} /></span></Detail><span className="truncate">{outcome}</span></span></>}>
+            <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, state.config?.models ?? null)}><SelectionName settings={options.settings} /></span></Detail><span className="truncate">{outcome}</span></span></>}>
           {options.message && <Markdown text={options.message} style="chat" />}
         </Disclosure>
       </CardContent>
@@ -50,7 +50,7 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
     <div className="space-y-3" role="group" aria-label="Proposed child session">
       <div className="font-medium">{item.text}</div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, state.modelEntries)}><SelectionName settings={options.settings} /></span></Detail>
+        <Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, state.config?.models ?? null)}><SelectionName settings={options.settings} /></span></Detail>
         <Detail><Icon name="comment-discussion" />{options.fork ? 'Forked context' : 'Fresh context'}</Detail>
         {!options.fork && (options.dir
           ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>

@@ -2,115 +2,50 @@ package store
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
-	"strings"
+	"slices"
+
+	"github.com/kkestell/hypercube/internal/config"
 )
 
-// ModelEntry gives a harness's native model ID a title and ordered effort levels.
-// Sessions keep their own settings, not a reference to this entry.
-type ModelEntry struct {
-	ID            string   `json:"id"`
-	Harness       string   `json:"harness"`
-	Model         string   `json:"model"`
-	Title         string   `json:"title"`
-	Efforts       []string `json:"efforts"`
-	DefaultEffort string   `json:"default_effort"`
-}
-
-// ErrDuplicateModel identifies an already listed harness and model.
-var ErrDuplicateModel = errors.New("model already listed")
-
-// Check trims fields and validates the entry without asking a harness.
-func (e *ModelEntry) Check() error {
-	e.ID = strings.TrimSpace(e.ID)
-	e.Harness = strings.TrimSpace(e.Harness)
-	e.Model = strings.TrimSpace(e.Model)
-	e.Title = strings.TrimSpace(e.Title)
-	e.DefaultEffort = strings.TrimSpace(e.DefaultEffort)
-	if e.Harness == "" || e.Model == "" || e.Title == "" {
-		return errors.New("harness, model, and title are required")
-	}
-	seen := make(map[string]bool)
-	if e.Efforts == nil {
-		e.Efforts = []string{}
-	}
-	for i, level := range e.Efforts {
-		level = strings.TrimSpace(level)
-		if level == "" {
-			return errors.New("effort levels must not be empty")
-		}
-		if seen[level] {
-			return fmt.Errorf("effort level %q repeats", level)
-		}
-		seen[level], e.Efforts[i] = true, level
-	}
-	if len(e.Efforts) == 1 {
-		e.DefaultEffort = e.Efforts[0]
-	}
-	if len(e.Efforts) == 0 {
-		if e.DefaultEffort != "" {
-			return errors.New("a model without effort levels cannot have a default effort")
-		}
-	} else if !seen[e.DefaultEffort] {
-		return errors.New("default effort must be one of the effort levels")
-	}
-	return nil
-}
-
-// ModelEntries lists entries by harness, then model.
-func (t *Tx) ModelEntries() ([]ModelEntry, error) {
-	rows, err := t.tx.Query(`SELECT id, harness, model, title, efforts, default_effort FROM model_entries ORDER BY harness, model`)
-	if err != nil {
-		return nil, err
-	}
-	list, err := collect(rows, func(row interface{ Scan(...any) error }) (ModelEntry, error) {
-		var e ModelEntry
-		var levels string
-		if err := row.Scan(&e.ID, &e.Harness, &e.Model, &e.Title, &levels, &e.DefaultEffort); err != nil {
-			return e, err
-		}
-		err := json.Unmarshal([]byte(levels), &e.Efforts)
-		return e, err
-	})
-	if list == nil && err == nil {
-		list = []ModelEntry{}
-	}
-	return list, err
-}
-
-// SaveModelEntry adds an entry without an ID, or replaces an existing entry.
-func (t *Tx) SaveModelEntry(e ModelEntry) error {
-	if err := e.Check(); err != nil {
-		return err
-	}
-	if e.ID != "" {
+// moveModelEntries moves the model list from the model_entries table, where
+// earlier builds saved it, to config.json, then drops the table. The config is
+// saved before the drop commits, and rows the config already lists are
+// skipped, so an interrupted move neither loses nor repeats an entry.
+func (d *DB) moveModelEntries() error {
+	return d.Tx(func(tx *Tx) error {
 		var found bool
-		if err := t.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM model_entries WHERE id = ?)`, e.ID).Scan(&found); err != nil {
+		if err := tx.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'model_entries')`).Scan(&found); err != nil || !found {
 			return err
 		}
-		if !found {
-			return ErrNotFound
+		rows, err := tx.tx.Query(`SELECT harness, model, title, efforts, default_effort FROM model_entries ORDER BY harness, model`)
+		if err != nil {
+			return err
 		}
-	}
-	var duplicate bool
-	if err := t.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM model_entries WHERE harness = ? AND model = ? AND id != ?)`, e.Harness, e.Model, e.ID).Scan(&duplicate); err != nil {
-		return err
-	}
-	if duplicate {
-		return fmt.Errorf("%s already lists model %q: %w", e.Harness, e.Model, ErrDuplicateModel)
-	}
-	if e.ID == "" {
-		e.ID = NewID()
-	}
-	levels, err := json.Marshal(e.Efforts)
-	if err != nil {
-		return err
-	}
-	return t.exec(`INSERT INTO model_entries (id, harness, model, title, efforts, default_effort) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, model = excluded.model, title = excluded.title, efforts = excluded.efforts, default_effort = excluded.default_effort`, e.ID, e.Harness, e.Model, e.Title, string(levels), e.DefaultEffort)
-}
-
-// DeleteModelEntry removes an entry without changing session settings.
-func (t *Tx) DeleteModelEntry(id string) error {
-	return t.exec(`DELETE FROM model_entries WHERE id = ?`, id)
+		entries, err := collect(rows, func(row interface{ Scan(...any) error }) (config.ModelEntry, error) {
+			var e config.ModelEntry
+			var levels string
+			if err := row.Scan(&e.Harness, &e.Model, &e.Title, &levels, &e.DefaultEffort); err != nil {
+				return e, err
+			}
+			return e, json.Unmarshal([]byte(levels), &e.Efforts)
+		})
+		if err != nil {
+			return err
+		}
+		if len(entries) > 0 {
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
+				if !slices.ContainsFunc(cfg.Models, func(m config.ModelEntry) bool { return m.Harness == e.Harness && m.Model == e.Model }) {
+					cfg.Models = append(cfg.Models, e)
+				}
+			}
+			if err := config.Save(cfg); err != nil {
+				return err
+			}
+		}
+		return tx.exec(`DROP TABLE model_entries`)
+	})
 }

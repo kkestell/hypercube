@@ -19,14 +19,17 @@ interface ModelSelectProps {
   disabled?: boolean;
   label?: string;
   className?: string;
+  // entries is the list to choose from; the saved list when omitted.
+  entries?: ModelEntry[];
 }
 
-export function ModelSelect({value, onChange, fixedHarness = false, disabled = false, label = 'Model', className = ''}: ModelSelectProps) {
+export function ModelSelect({value, onChange, fixedHarness = false, disabled = false, label = 'Model', className = '', entries: given}: ModelSelectProps) {
   const [state, store] = useStore();
   const [open, setOpen] = useState(false);
   const [browsed, setBrowsed] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const entries = state.modelEntries ?? [];
+  const list = given ?? state.config?.models ?? null;
+  const entries = list ?? [];
   const harnesses = [...new Set(entries.map(e => e.harness))];
   const harness = fixedHarness ? value?.harness : browsed && harnesses.includes(browsed) ? browsed
     : harnesses.includes(value?.harness ?? '') ? value?.harness : harnesses[0];
@@ -38,7 +41,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
       <Button type="button" variant="ghost" size="sm" disabled={disabled}
         className={`h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground ${className}`}
         aria-label={value ? `${label}: ${settingsText(value, entries)}` : label} title={value ? settingsText(value, entries) : undefined}>
-        {value ? <SelectionName settings={value} /> : 'Choose a model'}<Icon name="chevron-down" />
+        {value ? <SelectionName settings={value} entries={entries} /> : 'Choose a model'}<Icon name="chevron-down" />
       </Button>
     </PopoverTrigger>
     <PopoverContent side="top" align="start" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2"
@@ -48,20 +51,20 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
           {harnessIcon(id) ?? displayName(id)}
         </TabsTrigger>)}</TabsList>
       </Tabs>}
-      {state.modelEntries === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
+      {list === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
         <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => ({...s, settings: 'Agents'})); }}>Open Settings</Button>
       </div> : <>
         <Command key={harness} loop>
           <CommandInput ref={input} placeholder="Search models" aria-label="Search models" />
           <CommandList className="max-h-64">
             <CommandEmpty>No models match.</CommandEmpty>
-            {models.map(entry => <CommandItem key={entry.id} value={entry.model} keywords={[entry.title]} aria-selected={current?.id === entry.id}
-              onSelect={() => { if (current?.id !== entry.id) onChange({harness: entry.harness, model: entry.model, effort: entry.default_effort}); }}>
-              <span className="min-w-0 flex-1 truncate">{entry.title}</span><Icon name="check" className={current?.id === entry.id ? '' : 'invisible'} />
+            {models.map(entry => <CommandItem key={entry.model} value={entry.model} keywords={[entry.title]} aria-selected={current?.model === entry.model}
+              onSelect={() => { if (current?.model !== entry.model) onChange({harness: entry.harness, model: entry.model, effort: entry.default_effort}); }}>
+              <span className="min-w-0 flex-1 truncate">{entry.title}</span><Icon name="check" className={current?.model === entry.model ? '' : 'invisible'} />
             </CommandItem>)}
           </CommandList>
         </Command>
-        {current && value && current.efforts.length > 0 && <Effort key={`${current.id}:${current.efforts.join(',')}:${value.effort}`} entry={current} value={value} onChange={onChange} />}
+        {current && value && current.efforts.length > 0 && <Effort key={`${current.model}:${current.efforts.join(',')}:${value.effort}`} entry={current} value={value} onChange={onChange} />}
       </>}
     </PopoverContent>
   </Popover>;

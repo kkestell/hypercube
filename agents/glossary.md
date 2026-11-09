@@ -20,8 +20,8 @@ implementation details are in [architecture](architecture.md).
 - **plugin**: A `hypercube-harness-<name>` executable that translates between
   Hypercube's plugin protocol and one harness's native protocol.
 - **model entry**: A harness, native model ID, ordered effort levels, and default
-  effort saved in Settings for the model picker. Sessions save their own
-  settings, not a reference to an entry.
+  effort saved in `config.json` from Settings for the model picker. Sessions
+  save their own settings, not a reference to an entry.
 - **workspace**: A project folder registered with Hypercube that groups
   sessions; in Git, its path is the top level of the registered checkout.
 - **checkout**: A Git working copy with its own working files, index, and

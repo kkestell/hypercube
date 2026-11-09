@@ -1,10 +1,10 @@
 // The page's layout and the window and account details it shows.
-import type {Settings} from '../agent/types.ts';
+import type {ModelEntry, Settings} from '../agent/types.ts';
 
 // Config is config.json: the user's preferences. default_selection starts new
 // sessions with its settings; child_model_guidance tells agents when a child
 // should use other settings than theirs; default_worktree starts new sessions
-// in Git workspaces in a worktree.
+// in Git workspaces in a worktree; models lists the model picker's entries.
 export interface Config {
   default_selection?: Settings;
   child_model_guidance: string;
@@ -12,6 +12,7 @@ export interface Config {
   theme: Theme;
   terminal_font_size: number;
   notifications: Notifications;
+  models: ModelEntry[];
 }
 
 export type Theme = 'system' | 'light' | 'dark';

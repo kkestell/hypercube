@@ -32,10 +32,10 @@ installed; the app runs it for every plugin at startup, for the Settings model
 entry form, and for `list_models`, and gives the installed names to new sessions'
 instructions. `models` serves `list_models` only: it lists the models a harness
 offers in a directory and, for one model, its efforts, saving nothing. The
-browser lists model entries the user saves in SQLite and never asks a plugin
-for models. The plugin, not the core, checks a session's model and effort in
-its native start and configure, and its start and configure replies report the
-settings the harness accepted.
+browser lists model entries the user saves in `config.json` and never asks a
+plugin for models. The plugin, not the core, checks a session's model and
+effort in its native start and configure, and its start and configure replies
+report the settings the harness accepted.
 
 A session saves its harness, model, and effort. A child takes its parent's
 current settings, with any overrides its parent passes, resolved in

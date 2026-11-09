@@ -32,5 +32,5 @@ function SettingsDiffer({child, parent}: {child: Settings; parent: Settings}) {
   const [state] = useStore();
   if (sameSettings(child, parent)) return null;
   return <Icon name="differs" role="img" className="text-muted-foreground"
-    title={`Settings differ from the parent's: ${settingsText(child, state.modelEntries)}; parent ${settingsText(parent, state.modelEntries)}`} />;
+    title={`Settings differ from the parent's: ${settingsText(child, state.config?.models ?? null)}; parent ${settingsText(parent, state.config?.models ?? null)}`} />;
 }

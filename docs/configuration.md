@@ -13,6 +13,8 @@ The file is `~/.config/hypercube/config.json`, or
 `$XDG_CONFIG_HOME/hypercube/config.json` when that variable is set.
 Direct file edits while Hypercube runs are unsupported: a Settings save
 replaces the file. Stop Hypercube before editing by hand.
+[An example configuration](https://github.com/kkestell/hypercube/blob/main/docs/examples/config.json)
+shows every field.
 
 ## Session defaults
 
@@ -33,9 +35,13 @@ a harness, its exact model ID, effort levels ordered from lowest to highest,
 and a default effort. Leave levels empty for a model without an effort control.
 One level is its own default; several levels require a default from the list.
 
-Entries are saved globally in Hypercube's database, not `config.json`. Adding,
-editing, and deleting apply immediately, without **Save changes**. Entries are
-checked against the harness only when a session starts or changes model.
+The `models` field holds the list, empty by default. Each entry is an object
+with `harness`, `model`, `title`, `efforts` (lowest first), and
+`default_effort`. A harness lists each model once.
+
+Entries are saved in `config.json` and apply on **Save changes**, like other
+settings. Entries are checked against the harness only when a session starts
+or changes model.
 Editing or deleting an entry does not change existing session settings or saved
 defaults. Agents can still discover and choose models that are not in this
 list.

@@ -1,0 +1,124 @@
+{
+  "default_selection": {
+    "harness": "claude",
+    "model": "opus",
+    "effort": "medium"
+  },
+  "child_model_guidance": "",
+  "default_worktree": false,
+  "theme": "system",
+  "terminal_font_size": 13,
+  "notifications": {
+    "requests": true,
+    "replies": true,
+    "desktop": true,
+    "sound": true
+  },
+  "models": [
+    {
+      "harness": "claude",
+      "model": "haiku",
+      "title": "Haiku",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "medium"
+    },
+    {
+      "harness": "claude",
+      "model": "opus",
+      "title": "Opus",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "medium"
+    },
+    {
+      "harness": "claude",
+      "model": "sonnet",
+      "title": "Sonnet",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "medium"
+    },
+    {
+      "harness": "opencode",
+      "model": "openai/gpt-6-luna",
+      "title": "openai/gpt-6-luna",
+      "efforts": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "default"
+      ],
+      "default_effort": "default"
+    },
+    {
+      "harness": "opencode",
+      "model": "openai/gpt-6.1-sol",
+      "title": "openai/gpt-6.1-sol",
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_effort": "high"
+    },
+    {
+      "harness": "opencode",
+      "model": "openai/gpt-6.1-terra",
+      "title": "openai/gpt-6.1-terra",
+      "efforts": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_effort": "high"
+    },
+    {
+      "harness": "opencode",
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "title": "opencode-go/deepseek-v4.1-flash",
+      "efforts": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_effort": "max"
+    },
+    {
+      "harness": "opencode",
+      "model": "opencode-go/muse-spark-1.3-contributor",
+      "title": "opencode-go/muse-spark-1.3-contributor",
+      "efforts": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "default_effort": "medium"
+    }
+  ]
+}

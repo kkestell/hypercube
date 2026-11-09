@@ -20,7 +20,8 @@ var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 func TestSaveConfig(t *testing.T) {
 	a := newApp(t)
 	cfg := config.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
-		Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true}}
+		Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true},
+		Models: []config.ModelEntry{{Harness: "test", Model: "next", Title: "Next", Efforts: []string{"low", "high"}, DefaultEffort: "high"}}}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +37,8 @@ func TestSaveConfig(t *testing.T) {
 		"incomplete default": strings.Replace(string(body), `"model":"next"`, `"model":""`, 1),
 		"unknown setting":    strings.Replace(string(body), `{`, `{"font":"Menlo",`, 1),
 		"second document":    string(body) + `{}`,
+		"repeated model":     strings.Replace(string(body), `"models":[`, `"models":[{"harness":"test","model":"next","title":"Again","efforts":[],"default_effort":""},`, 1),
+		"entry id":           strings.Replace(string(body), `"models":[{`, `"models":[{"id":"e",`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			a.post("/config", body, http.StatusBadRequest)

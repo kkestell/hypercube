@@ -60,11 +60,12 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
   </div>;
 }
 
-// DefaultSelection chooses from the globally configured model entries.
+// DefaultSelection chooses from the draft's model entries, so entries added in
+// this Settings visit can be chosen before they are saved.
 function DefaultSelection({draft, onChange}: SectionProps) {
   return <div className="grid gap-3">
     <span className="text-sm font-medium leading-none">Default model</span>
-    <ModelSelect value={draft.default_selection ?? null} label="Default model"
+    <ModelSelect value={draft.default_selection ?? null} label="Default model" entries={draft.models}
       className="self-start" onChange={default_selection => onChange({default_selection})} />
     <p className="text-sm text-muted-foreground">
       New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.
@@ -74,7 +75,7 @@ function DefaultSelection({draft, onChange}: SectionProps) {
 
 export function SettingsAgents({draft, onChange}: SectionProps) {
   return <div className="grid gap-10">
-    <SettingsModels />
+    <SettingsModels models={draft.models} onChange={models => onChange({models})} />
     <Group title="Child sessions">
       <Field id="child-model-guidance" label="Guidance for choosing child models">
         <Textarea id="child-model-guidance" rows={8} value={draft.child_model_guidance}
