@@ -103,9 +103,9 @@ export function App({store}: {store: Store}) {
     <StoreContext.Provider value={context}>
       <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)}>
         <div className="app-body min-h-0 flex-1">
-          <Split fixed="start" size={sizes.sidebar} onResize={size => store.update(s => resizeRegion(s, 'sidebar', size))} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
+          <Split fixed="start" size={sizes.sidebar} onResize={size => store.update(s => resizeRegion(s, 'sidebar', size))} minStart="280px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => store.update(s => ({...s, settings: 'General'}))} />
-            <Split fixed="end" size={sizes.rightPanel} onResize={size => store.update(s => resizeRegion(s, 'rightPanel', size))} minStart="60%" collapsed={rightPanel ? null : 'end'}>
+            <Split fixed="end" size={sizes.rightPanel} onResize={size => store.update(s => resizeRegion(s, 'rightPanel', size))} minEnd="280px" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={sizes.panel} onResize={size => store.update(s => resizeRegion(s, 'panel', size))} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.editor?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.editor?.id ?? ''} />

@@ -56,6 +56,36 @@ function geometry() {
 }
 
 test.each([
+  'start', 'end',
+] as const)('%s panel enforces its minimum on restore and keyboard resizing', fixed => {
+  const layout = geometry();
+  try {
+    const store = createStore(testState());
+    function View() {
+      const [state] = useStore();
+      return <Split fixed={fixed} size={160} minStart={fixed === 'start' ? '280px' : undefined}
+        minEnd={fixed === 'end' ? '280px' : undefined} collapsed={state.workbench.sidebar ? null : fixed}>
+        <div>First</div><div>Last</div>
+      </Split>;
+    }
+    const root = mount(store, <View />);
+    layout.resize();
+    const panel = root.querySelectorAll<HTMLElement>('[data-panel]')[fixed === 'start' ? 0 : 1];
+    expect(panel.offsetWidth).toBeGreaterThanOrEqual(280);
+    act(() => find(root, '[role=separator]').dispatchEvent(new KeyboardEvent('keydown', {
+      key: fixed === 'start' ? 'ArrowLeft' : 'ArrowRight', bubbles: true, cancelable: true,
+    })));
+    // Collapsible panels may close entirely, but must not remain partly open
+    // below their minimum.
+    expect(panel.offsetWidth === 0 || panel.offsetWidth >= 280).toBe(true);
+    act(() => store.update(state => toggle(state, 'sidebar')));
+    act(() => store.update(state => toggle(state, 'sidebar')));
+    layout.resize();
+    expect(panel.offsetWidth).toBeGreaterThanOrEqual(280);
+  } finally { unmountAll(); layout.restore(); }
+});
+
+test.each([
   {fixed: 'start', size: 260},
   {fixed: 'end', size: 320},
   {fixed: 'none', size: 50},

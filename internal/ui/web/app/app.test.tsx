@@ -265,6 +265,8 @@ test('workspace heading opens recent sessions and shared tools; its chevron coll
   const root = mount(store, <App store={store} />);
   await act(async () => clickControl(find(root, '.workspace-section-toggle')));
   const dashboard = find(root, '[aria-label="Workspace dashboard"]');
+  expect(dashboard.className).not.toContain('max-w-');
+  expect(dashboard.querySelector('[class*="max-w-"]')).toBeNull();
   expect([...dashboard.querySelectorAll('li')].map(li => li.textContent)).toEqual(sessions.slice(0, 10).map(s => s.title));
   expect(store.get().session).toBeNull();
   expect(document.title).toBe('repo — Hypercube');
