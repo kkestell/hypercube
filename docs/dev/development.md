@@ -131,31 +131,25 @@ Before planning, inspect related code for existing behavior, duplicate paths,
 and the right owner for the change. Revise a flawed boundary when needed, and
 delete obsolete paths so the result is one coherent design.
 
-The parent session owns a task branch and gives all three agents the same
-checkout. Use a new agent for each step, in order, so the next agent sees the
-staged files from the previous one. Give each agent the user's requirements
-and the relevant artifact path. The parent assesses each result and keeps the
-task within the user's scope.
+Run planned work with the `xauto` skill from the
+[xskills](https://github.com/kkestell/xskills) suite. It coordinates `xplan`,
+`xwork`, and `xreview` and follows the suite's workflow contract for task IDs,
+`.agents/` records, commit stages, and trailers.
 
-1. Have a fresh agent run the local [kplan](../../.claude/skills/kplan/SKILL.md)
-   skill. It writes and stages a plan in `.agents/plans/`. The parent checks the
-   plan. For a new subsystem or architectural change, the parent independently
-   reviews it against the whole system and a simpler baseline, records any
-   findings in `.agents/reviews/`, and resolves justified concerns before work.
-2. Have a different fresh agent run [kwork](../../.claude/skills/kwork/SKILL.md)
-   with the plan path. It implements the plan, validates the change, writes a
-   work log in `.agents/work/`, and stages the related files.
-3. Have another fresh agent run [kreview](../../.claude/skills/kreview/SKILL.md)
-   on the staged changes and plan. It reviews the whole touched files, fixes
-   confirmed medium and high severity issues itself, validates the fixes,
-   writes a review in `.agents/reviews/`, and stages it with the fixes. The
-   parent checks the review and has the reviewer resolve any medium or high
-   finding still open before committing.
+1. Start `xauto` in a top-level worktree session. That worktree and its branch
+   are the task checkout; `main` and other sessions' edits stay untouched.
+2. The parent creates each stage worker as a fresh child in the task checkout
+   (`dir: "."`), one at a time: a planner running `xplan`, an implementer
+   running `xwork`, and a reviewer running `xreview` that did not write the
+   code. The reviewer is never a fork. The parent reuses the implementer for
+   fixes and the reviewer for re-review.
+3. The implementer runs `make check`, then commits the code and its work log.
+   The parent commits plan and review records and the final `complete` records.
+4. Only independent units of a split plan run in children with their own
+   worktrees, and each is merged into the task branch before its child ends.
 
-After the required checks and review are complete, the parent commits the
-task's changes unless the user asks otherwise. Merge the task branch into
-`main` only when the user asks. Do not delegate the commit or merge to the
-three agents.
+Merge the task branch into `main` only when the user asks, using **Merge into
+main** in the Git panel.
 
 ## Validation
 
