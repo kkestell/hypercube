@@ -18,7 +18,7 @@
     {
       "harness": "claude",
       "model": "haiku",
-      "title": "Haiku",
+      "title": "Haiku 5.5",
       "efforts": [
         "low",
         "medium",
@@ -31,7 +31,7 @@
     {
       "harness": "claude",
       "model": "opus",
-      "title": "Opus",
+      "title": "Opus 5.5",
       "efforts": [
         "low",
         "medium",
@@ -44,7 +44,7 @@
     {
       "harness": "claude",
       "model": "sonnet",
-      "title": "Sonnet",
+      "title": "Sonnet 5.5",
       "efforts": [
         "low",
         "medium",
