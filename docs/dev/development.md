@@ -27,10 +27,8 @@ Documentation procedures are in [documentation](documentation.md).
   bundle's `resources/` as `install`, `install-service`, and `uninstall` and run
   by `make install`, `make install-service`, and `make uninstall`.
 - `scripts/linux/` — the Linux test container (`scripts/linux/run`).
-- `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
-  and `make web-serve`.
 - `docs/*.md` — user tutorials, how-to guides, reference, and explanations, indexed
-  by `README.md` and the website's documentation landing page.
+  by `README.md`.
 - `docs/dev/` — developer references and the architecture diagram.
 - `.agents/` — research, plans, design records, reviews, work logs, and scratch work.
 

@@ -46,14 +46,14 @@ a second one. Internal development controls are in the
 | --- | --- |
 | Find the relevant package or follow project conventions | [Development reference](docs/dev/development.md) |
 | Understand backend, plugins, and process ownership | [Architecture](docs/dev/architecture.md) |
-| Change guides, screenshots, or website content | [Documentation maintenance](docs/dev/documentation.md) |
+| Change guides or screenshots | [Documentation maintenance](docs/dev/documentation.md) |
 | Test packaging and desktop behavior on Linux | [Linux testing](docs/dev/development.md#test-on-linux) |
 | Package an official beta | [Release procedure](docs/dev/development.md#prepare-an-official-beta) |
 | Work as a coding agent | [AGENTS.md](AGENTS.md) |
 
 ## Validate a change
 
-- **Code:** run `make check`. This builds the interface and website, checks
+- **Code:** run `make check`. This builds the interface, checks
   types and formatting, and runs the test suites, including Go's race detector.
 - **Documentation only:** inspect the diff, links, and described behavior.
   Do not run code checks for prose changes.
