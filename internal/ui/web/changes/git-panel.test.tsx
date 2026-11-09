@@ -132,6 +132,13 @@ test.each([
   expect(root.textContent).not.toContain('uncommitted failed');
 });
 
+test('a branch without commits shows one empty message', () => {
+  const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 0, committed: false, uncommitted: 0}});
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})],
+    editor: {...emptyEditor({session: 's'}), gitComparison: 'branch', branchChanges: {branch: 'feature', target: 'main', files: []}}}));
+  expect(find(mount(store, <GitPanel />), '[role="tabpanel"][data-state="active"]').textContent).toBe('No commits ahead of main.');
+});
+
 test('merge sits below both comparisons and asks the agent to merge into the checkout', async () => {
   const fetches = stubFetch(() => new Response(''));
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 2, committed: true, uncommitted: 0}});

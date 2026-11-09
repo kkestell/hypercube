@@ -60,10 +60,14 @@ export function GitPanel() {
         </TabsList>
         <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
         <TabsContent value="branch">
-          {editor.branchChanges && 'files' in editor.branchChanges && <p className="mb-2 border-b px-2 pt-1 pb-3 text-xs text-muted-foreground">
-            {ahead === undefined ? 'Compared with' : `${ahead || 'No'} ${ahead === 1 ? 'commit' : 'commits'} ahead of`} <span className="font-medium text-foreground">{editor.branchChanges.target}</span>
-          </p>}
-          <ChangeRows changes={editor.branchChanges} comparison="branch" />
+          {editor.branchChanges && 'files' in editor.branchChanges && ahead === 0 && !editor.branchChanges.files.length
+            ? <p className="px-2 text-sm text-muted-foreground">No commits ahead of <span className="font-medium text-foreground">{editor.branchChanges.target}</span>.</p>
+            : <>
+              {editor.branchChanges && 'files' in editor.branchChanges && <p className="mb-2 border-b px-2 pt-1 pb-3 text-xs text-muted-foreground">
+                {ahead === undefined ? 'Compared with' : `${ahead} ${ahead === 1 ? 'commit' : 'commits'} ahead of`} <span className="font-medium text-foreground">{editor.branchChanges.target}</span>
+              </p>}
+              <ChangeRows changes={editor.branchChanges} comparison="branch" />
+            </>}
         </TabsContent>
       </Tabs>}
     </div>
