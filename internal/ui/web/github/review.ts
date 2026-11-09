@@ -1,7 +1,8 @@
 // Reviewing a pull request: the server starts a worktree session at its head
 // commit and sends it the review prompt; the page then shows that session.
 import {useState} from 'react';
-import {post} from '../api.ts';
+import {submitPrompt} from '../api.ts';
+import {showError} from '../notifications/errors.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import type {Store} from '../store.ts';
 import type {PullRequest} from './types.ts';
@@ -10,11 +11,12 @@ import type {PullRequest} from './types.ts';
 // request.
 export const canReview = (pr: PullRequest) => pr.requested === 'user';
 
-// startReview starts the review session in the workspace and shows it. A
-// refusal is shown as an error and leaves the selection alone.
+// startReview starts the review session in the workspace and shows it. An
+// error is shown; a session created before the error is still shown.
 export async function startReview(store: Store, workspaceId: string, number: number) {
-  const id = await post(store, 'session', {action: 'review', workspace: workspaceId, number: String(number)});
-  if (id) chooseSession(store, id);
+  const {session, error} = await submitPrompt({action: 'review', workspace: workspaceId, number: String(number)}, '');
+  if (session) chooseSession(store, session);
+  if (error) showError(store, error);
 }
 
 // useReview gives each row's onReview: a handler that starts the pull request's

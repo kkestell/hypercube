@@ -80,7 +80,15 @@ test('Review starts a review session, disabled until the server answers, then sh
   expect(Object.fromEntries(request.searchParams)).toEqual({action: 'review', workspace: 'w', number: '7'});
   expect(stub.mock.calls[0][1]?.method).toBe('POST');
   expect(review().disabled).toBe(true);
-  await act(async () => answer(new Response('new-session')));
+  await act(async () => answer(Response.json({session: 'new-session'})));
+  expect(store.get().pending).toBe('new-session');
+});
+
+test('a review session whose prompt failed is still shown, with the error', async () => {
+  stubFetch(() => Response.json({session: 'new-session', error: 'the agent did not start'}, {status: 409}));
+  const {root, store} = dashboard(github({pullRequests: [requested()]}));
+  await act(async () => clickControl(buttons(root).find(b => b.textContent === 'Review')!));
+  expect(store.get().errors.map(error => error.message)).toEqual(['the agent did not start']);
   expect(store.get().pending).toBe('new-session');
 });
 

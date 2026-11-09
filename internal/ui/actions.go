@@ -116,13 +116,7 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
 		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", q.Get("start"), in.Submission, in.Text, in.Images...)
-		w.Header().Set("Content-Type", "application/json")
-		result := map[string]string{"session": created.ID}
-		if err != nil {
-			result["error"] = err.Error()
-			w.WriteHeader(http.StatusConflict)
-		}
-		_ = json.NewEncoder(w).Encode(result)
+		writeCreated(w, created.ID, err)
 		return
 	case "review":
 		s.startReview(w, r)
@@ -180,8 +174,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 }
 
 // startReview fetches a pull request's head commit, starts a worktree session
-// at it with the default model and the review prompt, and returns the session
-// ID.
+// at it with the default model and the review prompt, and answers like a new
+// session. Failures before creation are plain text.
 func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	number, err := strconv.Atoi(q.Get("number"))
@@ -214,10 +208,20 @@ func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	prompt := fmt.Sprintf("Review pull request #%d (%s). Its head commit is checked out in your working directory. "+
 		"Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.", number, url)
 	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", prompt)
-	if refused(w, err) {
-		return
+	writeCreated(w, created.ID, err)
+}
+
+// writeCreated answers a session creation with the session's ID and the error,
+// if any, as JSON. Creation can fail after saving the session, which then still
+// belongs to the page; an empty ID means nothing was created.
+func writeCreated(w http.ResponseWriter, id string, err error) {
+	w.Header().Set("Content-Type", "application/json")
+	result := map[string]string{"session": id}
+	if err != nil {
+		result["error"] = err.Error()
+		w.WriteHeader(http.StatusConflict)
 	}
-	fmt.Fprint(w, created.ID)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
 // reviewSettings is the model a review starts with: the default selection, or
