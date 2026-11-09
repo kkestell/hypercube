@@ -154,10 +154,6 @@ CREATE TABLE IF NOT EXISTS grants (
   session TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   harness TEXT NOT NULL, tool TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS grants_unique ON grants (COALESCE(session, ''), harness, tool);
-CREATE TABLE IF NOT EXISTS model_entries (
-  id TEXT PRIMARY KEY, harness TEXT NOT NULL, model TEXT NOT NULL, title TEXT NOT NULL,
-  efforts TEXT NOT NULL, default_effort TEXT NOT NULL,
-  UNIQUE (harness, model));
 CREATE TABLE IF NOT EXISTS limits (
   harness TEXT NOT NULL, minutes INTEGER NOT NULL, used INTEGER NOT NULL,
   resets INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (harness, minutes));
@@ -166,7 +162,8 @@ CREATE TABLE IF NOT EXISTS limits (
 // DB is the open database.
 type DB struct{ sql *sql.DB }
 
-// Open opens the database in Dir, creating its tables if they are missing.
+// Open opens the database in Dir, creating its tables if they are missing and
+// moving model entries saved by earlier builds to config.json.
 // Writes take the database lock when they begin and wait up to five seconds
 // for it.
 func Open() (*DB, error) {
@@ -186,6 +183,10 @@ func Open() (*DB, error) {
 	if err := d.Tx(func(tx *Tx) error { return tx.exec(schema) }); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("%s: %w", dbPath(), err)
+	}
+	if err := d.moveModelEntries(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("moving model entries to config.json: %w", err)
 	}
 	return d, nil
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
@@ -17,7 +18,8 @@ import (
 // Config is config.json: the user's preferences. DefaultSelection, when set,
 // starts new sessions with that harness, model, and effort. ChildGuidance
 // tells agents when a child session should use other settings than theirs.
-// DefaultWorktree starts new sessions in Git workspaces in a worktree.
+// DefaultWorktree starts new sessions in Git workspaces in a worktree. Models
+// lists the model picker's entries in the order they were added.
 type Config struct {
 	DefaultSelection *harness.Settings `json:"default_selection,omitempty"`
 	ChildGuidance    string            `json:"child_model_guidance"`
@@ -25,6 +27,55 @@ type Config struct {
 	Theme            string            `json:"theme"`
 	TerminalFontSize int               `json:"terminal_font_size"`
 	Notifications    Notifications     `json:"notifications"`
+	Models           []ModelEntry      `json:"models"`
+}
+
+// ModelEntry is a model the user lists for the picker: a harness's native
+// model ID, its title, its effort levels from lowest to highest, and the effort
+// a session starts with. Sessions keep their own settings, not a reference to
+// an entry.
+type ModelEntry struct {
+	Harness       string   `json:"harness"`
+	Model         string   `json:"model"`
+	Title         string   `json:"title"`
+	Efforts       []string `json:"efforts"`
+	DefaultEffort string   `json:"default_effort"`
+}
+
+// Check trims fields and validates the entry without asking a harness.
+func (e *ModelEntry) Check() error {
+	e.Harness = strings.TrimSpace(e.Harness)
+	e.Model = strings.TrimSpace(e.Model)
+	e.Title = strings.TrimSpace(e.Title)
+	e.DefaultEffort = strings.TrimSpace(e.DefaultEffort)
+	if e.Harness == "" || e.Model == "" || e.Title == "" {
+		return errors.New("harness, model, and title are required")
+	}
+	seen := make(map[string]bool)
+	if e.Efforts == nil {
+		e.Efforts = []string{}
+	}
+	for i, level := range e.Efforts {
+		level = strings.TrimSpace(level)
+		if level == "" {
+			return errors.New("effort levels must not be empty")
+		}
+		if seen[level] {
+			return fmt.Errorf("effort level %q repeats", level)
+		}
+		seen[level], e.Efforts[i] = true, level
+	}
+	if len(e.Efforts) == 1 {
+		e.DefaultEffort = e.Efforts[0]
+	}
+	if len(e.Efforts) == 0 {
+		if e.DefaultEffort != "" {
+			return errors.New("a model without effort levels cannot have a default effort")
+		}
+	} else if !seen[e.DefaultEffort] {
+		return errors.New("default effort must be one of the effort levels")
+	}
+	return nil
 }
 
 // Notifications chooses which alerts reach the user and how. Requests and
@@ -48,7 +99,7 @@ var (
 
 // defaults supplies preferences omitted from config.json.
 func defaults() Config {
-	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 }
 
 func path() string {
@@ -81,7 +132,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-// Validate checks the configuration's values.
+// Validate checks the configuration's values and trims model entries.
 func (c *Config) Validate() error {
 	if !slices.Contains(themes, c.Theme) {
 		return fmt.Errorf("theme %q is not one of %v", c.Theme, themes)
@@ -93,6 +144,21 @@ func (c *Config) Validate() error {
 		if err := c.DefaultSelection.Check(); err != nil {
 			return fmt.Errorf("default selection: %w", err)
 		}
+	}
+	if c.Models == nil {
+		c.Models = []ModelEntry{}
+	}
+	seen := make(map[[2]string]bool)
+	for i := range c.Models {
+		e := &c.Models[i]
+		if err := e.Check(); err != nil {
+			return fmt.Errorf("model %s %q: %w", e.Harness, e.Model, err)
+		}
+		key := [2]string{e.Harness, e.Model}
+		if seen[key] {
+			return fmt.Errorf("%s lists model %q twice", e.Harness, e.Model)
+		}
+		seen[key] = true
 	}
 	return nil
 }

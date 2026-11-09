@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,7 +15,11 @@ func TestSave(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	cfg := Config{DefaultSelection: &harness.Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
-		DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}
+		DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true},
+		Models: []ModelEntry{
+			{Harness: "codex", Model: "sol", Title: "Sol", Efforts: []string{"low", "high"}, DefaultEffort: "high"},
+			{Harness: "opencode", Model: "provider/model", Title: "Model", Efforts: []string{}},
+		}}
 	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +37,8 @@ func TestSave(t *testing.T) {
 		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize},
 		{Theme: cfg.Theme, TerminalFontSize: 15},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, DefaultSelection: &harness.Settings{Harness: "codex"}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Models: []ModelEntry{cfg.Models[1], cfg.Models[1]}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Models: []ModelEntry{{Harness: "codex", Model: "sol"}}},
 	} {
 		if err := Save(invalid); err == nil {
 			t.Fatalf("saved invalid config: %+v", invalid)
@@ -49,7 +57,7 @@ func TestSave(t *testing.T) {
 func TestLoadDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
-	defaults := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+	defaults := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 	// A fresh installation has no file.
 	got, err := Load()
 	if err != nil || !reflect.DeepEqual(got, defaults) {
@@ -58,12 +66,72 @@ func TestLoadDefaults(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{}`), 0o644); err != nil {
+	for _, source := range []string{`{}`, `{"models":null}`} {
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err = Load()
+		if err != nil || !reflect.DeepEqual(got, defaults) {
+			t.Fatalf("config %s = %+v, %v", source, got, err)
+		}
+	}
+}
+
+// TestExampleConfig keeps docs/examples/config.json valid and in the form Save
+// writes.
+func TestExampleConfig(t *testing.T) {
+	data, err := os.ReadFile("../../docs/examples/config.json")
+	if err != nil {
 		t.Fatal(err)
 	}
-	got, err = Load()
-	if err != nil || !reflect.DeepEqual(got, defaults) {
-		t.Fatalf("empty config = %+v, %v", got, err)
+	cfg := defaults()
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(append(saved, '\n')) != string(data) {
+		t.Fatalf("example differs from the saved format:\n%s", saved)
+	}
+}
+
+func TestModelEntryCheck(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry ModelEntry
+		valid bool
+	}{
+		{"empty harness", ModelEntry{Model: "m", Title: "M"}, false},
+		{"empty model", ModelEntry{Harness: "h", Title: "M"}, false},
+		{"empty title", ModelEntry{Harness: "h", Model: "m"}, false},
+		{"blank title", ModelEntry{Harness: "h", Model: "m", Title: " "}, false},
+		{"blank level", ModelEntry{Harness: "h", Model: "m", Title: "M", Efforts: []string{" "}}, false},
+		{"repeated level", ModelEntry{Harness: "h", Model: "m", Title: "M", Efforts: []string{"low", " low "}}, false},
+		{"missing default", ModelEntry{Harness: "h", Model: "m", Title: "M", Efforts: []string{"low", "high"}}, false},
+		{"unlisted default", ModelEntry{Harness: "h", Model: "m", Title: "M", Efforts: []string{"low", "high"}, DefaultEffort: "max"}, false},
+		{"no levels with default", ModelEntry{Harness: "h", Model: "m", Title: "M", DefaultEffort: "high"}, false},
+		{"one level", ModelEntry{Harness: " h ", Model: " m ", Title: " M ", Efforts: []string{" low "}}, true},
+		{"no levels", ModelEntry{Harness: "h", Model: "m", Title: "M"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.entry.Check()
+			if (err == nil) != test.valid {
+				t.Fatalf("Check() = %v", err)
+			}
+			if test.valid && (test.entry.Harness != "h" || test.entry.Model != "m" || test.entry.Title != "M" || test.entry.Efforts == nil) {
+				t.Fatalf("not normalized: %+v", test.entry)
+			}
+			if test.name == "one level" && test.entry.DefaultEffort != "low" {
+				t.Fatalf("default = %q", test.entry.DefaultEffort)
+			}
+		})
 	}
 }
 
@@ -101,12 +169,12 @@ func TestLoadPreservesConfig(t *testing.T) {
 }`,
 			want: Config{DefaultSelection: &harness.Settings{Harness: "opencode", Model: "provider/model", Effort: "high"},
 				ChildGuidance: "Use the small model for simple tasks.", DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16,
-				Notifications: Notifications{Replies: true}},
+				Notifications: Notifications{Replies: true}, Models: []ModelEntry{}},
 		},
 		"partial": {
 			source: `{"notifications":{"desktop":false}}`,
 			want: Config{Theme: "system", TerminalFontSize: 13,
-				Notifications: Notifications{Requests: true, Replies: true, Sound: true}},
+				Notifications: Notifications{Requests: true, Replies: true, Sound: true}, Models: []ModelEntry{}},
 		},
 		"malformed": {source: `{"theme":`, bad: true},
 	} {

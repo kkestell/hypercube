@@ -5,6 +5,7 @@ import {testConfig, testSession, testState, testWorkspace} from '../../test-stat
 import {SessionSelection} from '../agent/session-selection.tsx';
 import {WorktreeSelect} from '../agent/worktree-select.tsx';
 import {unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
+import type {ModelEntry} from '../agent/types.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import {createStore, useStore} from '../store.ts';
@@ -14,6 +15,7 @@ import type {Config} from './types.ts';
 const unsentKey = workspaceDraftKey('w');
 
 const config = testConfig({child_model_guidance: 'Use sol for reviews.'});
+const sol: ModelEntry = {harness: 'opencode', model: 'sol', title: 'Sol', efforts: ['low'], default_effort: 'low'};
 afterEach(() => { mock.restore(); unmountAll(); });
 const settle = () => act(() => new Promise<void>(resolve => setImmediate(resolve)));
 const button = (name: string) => {
@@ -39,7 +41,7 @@ function View() {
   const [, store] = useStore();
   return <><button onClick={() => store.update(s => ({...s, settings: 'General'}))}>Open settings</button><SettingsDialog /></>;
 }
-const open = async () => { mount(createStore(testState({settings: 'General', modelEntries: []})), <View />); await settle(); };
+const open = async () => { mount(createStore(testState({settings: 'General'})), <View />); await settle(); };
 
 test('preferences save with the config and apply to the page', async () => {
   const posts: Config[] = [];
@@ -126,9 +128,9 @@ test('the default model is chosen without a workspace and initializes a draft th
       created.push(Object.fromEntries(new URL(url, 'http://x/').searchParams));
       return Response.json({session: 'created'});
     }
-    return url === 'version' ? new Response('build') : Response.json(config);
+    return url === 'version' ? new Response('build') : Response.json({...config, models: [sol]});
   });
-  const store = createStore(testState({settings: 'General', modelEntries: [{id: 'sol', harness: 'opencode', model: 'sol', title: 'Sol', efforts: ['low'], default_effort: 'low'}], config: testConfig({default_selection: undefined})}));
+  const store = createStore(testState({settings: 'General', config: testConfig({default_selection: undefined})}));
   const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);
@@ -144,6 +146,31 @@ test('the default model is chosen without a workspace and initializes a draft th
   expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode Sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created[0]).toMatchObject({action: 'new', ...chosen});
+});
+
+test('a model added in Agents can be the default before both are saved together', async () => {
+  const posts: Config[] = [];
+  stubFetch((url, init) => {
+    if (url === 'config' && init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    if (url === 'harnesses?') return Response.json([{id: 'opencode'}]);
+    return url === 'version' ? new Response('build') : Response.json(config);
+  });
+  await open();
+  await click('Agents');
+  await click('Add Model');
+  select('model-harness', 'OpenCode');
+  for (const [id, value] of [['model-id', 'sol'], ['model-title', 'Sol'], ['model-efforts', 'low']]) {
+    const field = element(document, '#' + id, HTMLInputElement);
+    act(() => { setValue(field, value); field.dispatchEvent(new Event('input', {bubbles: true})); });
+  }
+  await click('Save');
+  await click('General');
+  clickControl(element(document, 'button[aria-label^="Default model"]', HTMLButtonElement));
+  await settle(); await settle();
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'Sol')!);
+  await settle(); await settle();
+  await click('Save changes');
+  expect(posts).toEqual([{...config, default_selection: {harness: 'opencode', model: 'sol', effort: 'low'}, models: [sol]}]);
 });
 
 test('the default picker opens Agents settings in the same dialog', async () => {
