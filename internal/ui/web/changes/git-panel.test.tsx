@@ -112,7 +112,7 @@ test('branch selection loads independent rows and the response target, then open
   const root = mount(store, <GitPanel />);
   await act(async () => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
   expect(fetches.mock.calls.some(([url]) => new URL(url, 'http://x/').searchParams.get('comparison') === 'branch')).toBe(true);
-  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with release');
+  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with release · 1 commit ahead');
   expect(root.textContent).not.toContain('preview');
   await act(async () => find(root, 'li button').click());
   expect(store.get().editor?.tabs.preview).toBe('branch-diff:committed.go');

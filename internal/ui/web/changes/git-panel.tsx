@@ -41,6 +41,7 @@ export function GitPanel() {
   const editor = state.editor;
   const comparison = editor?.gitComparison ?? 'uncommitted';
   const session = currentSession(state);
+  const ahead = session?.merge && !session.merge.error ? session.merge.unmerged : undefined;
   useEffect(() => {
     if (editor && state.workbench.rightPanel && state.workbench.rightTab === 'git') loadChanges(store, comparison);
   }, [editor?.id, state.editorVersion, comparison, state.workbench.rightPanel, state.workbench.rightTab]);
@@ -59,7 +60,7 @@ export function GitPanel() {
         </TabsList>
         <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
         <TabsContent value="branch">
-          {editor.branchChanges && 'files' in editor.branchChanges && <p className="px-2 py-1 text-xs text-muted-foreground">Compared with <span className="font-medium text-foreground">{editor.branchChanges.target}</span></p>}
+          {editor.branchChanges && 'files' in editor.branchChanges && <p className="px-2 py-1 text-xs text-muted-foreground">Compared with <span className="font-medium text-foreground">{editor.branchChanges.target}</span>{ahead !== undefined && ` · ${ahead} ${ahead === 1 ? 'commit' : 'commits'} ahead`}</p>}
           <ChangeRows changes={editor.branchChanges} comparison="branch" />
         </TabsContent>
       </Tabs>}
