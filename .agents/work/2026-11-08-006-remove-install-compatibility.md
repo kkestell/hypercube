@@ -12,9 +12,11 @@
 - Branch: `hypercube/2f4c7990/compat-impl`; clean tree at
   `ae546fee7dbb8a09a6edf4770011e23813193bb5` (005 work review) before edits.
 - Fixed Code base: `ae546fee7dbb8a09a6edf4770011e23813193bb5` (commit).
-- Code head: `fa4111e98ba559716f63a1bad98899d91590f1f6` (commit).
+- Code head: `672bfaaae8158bbd40d7a66325a96442abd54295` (commit).
 - Implementation commits: `fa4111e98ba559716f63a1bad98899d91590f1f6`
-  (`X-Stage: work`). Its tree is `fdedee42580802231bd2415bd669c8f9bf215311`.
+  (`X-Stage: work`), whose tree is `fdedee42580802231bd2415bd669c8f9bf215311`,
+  and `672bfaaae8158bbd40d7a66325a96442abd54295` (`X-Stage: fix`, see Repair 1),
+  whose tree is `1c8bd54b22dc202e5eaaad997c66968378c8497e`.
   `git cat-file -t` confirmed both types. The working tree was not edited
   between the checks below and the commit.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
@@ -104,8 +106,7 @@ Remaining matches, classified against the shared design:
 - `internal/ui/config_test.go:37` case named "legacy profiles": asserts that
   `POST /config` rejects a body with an unknown `profiles` field. This is
   current strict input validation, not a converter, and it overlaps the
-  "unknown setting" case. Owned by 003's config area; left unchanged and
-  reported to the parent.
+  "unknown setting" case. Removed in Repair 1.
 - `codex` in Go and TypeScript tests (`internal/config`, `internal/store`
   grants and limits, `web/agent/limits.test.tsx`): arbitrary harness ID strings
   in test data. Kept.
@@ -124,5 +125,39 @@ Remaining matches, classified against the shared design:
 | Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
 | Plan review / `compat-plan-review` | unavailable | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
 | Implementation / `compat-impl` | child of `2f4c7990`; own ID not exposed | `1a622741-22c7-4c26-9705-f8832685efee` | Claude Code / `claude-opus-5-5` / not exposed |
+
+## Repair 1: task-level review findings
+
+Addresses findings F1 and F2 of
+`.agents/reviews/work/2026-11-08-006-remove-install-compatibility.md`
+(review commit `8b3cf4e932896660d2961766c1d49ba2c02e76d6`), accepted by
+coordinator `2f4c7990` and routed to this unit. Code base stays
+`ae546fee7dbb8a09a6edf4770011e23813193bb5`. Fix commit and new Code head:
+`672bfaaae8158bbd40d7a66325a96442abd54295` (commit; tree
+`1c8bd54b22dc202e5eaaad997c66968378c8497e`).
+
+- F1: `internal/ui/config_test.go` deleted the "legacy profiles" case of
+  `TestSaveConfig`. The "unknown setting" case still covers rejection of an
+  unknown field.
+- F2: `agents/development.md` ("Backwards compatibility") and
+  `docs/upgrades.md` ("Before upgrading") now state only current behavior,
+  using the review's suggested wording. Startup creates missing tables and
+  indexes, saved-state changes include a migration, and upgrades preserve
+  agents and shells. Release notes cover saved-state changes, and older
+  versions do not convert state back. `agents/documentation.md` was read first.
+  No link or anchor changed (`git grep backwards-compatibility` finds no links).
+
+Verification on the fix commit's tree:
+
+| Command / inspection | Result |
+| --- | --- |
+| `go test ./internal/ui -run TestSaveConfig -count=1 -v` | Pass: `TestSaveConfig` (broken JSON, incomplete default, unknown setting, second document) and `TestSaveConfigFailure`. |
+| `gofmt -l internal/ui` | No output. |
+| Documentation diff inspection | Prose only; no links changed. Per `agents/documentation.md`, no code checks for prose. |
+| `git diff --cached --check` | Passed; index held exactly the 3 changed files. |
+
+`make check` was not rerun. The fix removes one test-table entry, which the
+focused package test covers, and edits prose. The earlier `make check` and
+Linux results on `fa4111e…` cover the rest of the tree.
 
 No blockers. Status stays implemented until independent `xreview work`.
