@@ -1,5 +1,6 @@
 // The center: permanent chat beside file tabs, a workspace's editor area, or
-// a workspace invitation when none exists. While the page is visible, a
+// the pull requests that need the user when nothing is selected, or a
+// workspace invitation when none exists. While the page is visible, a
 // shown session's unseen reply is seen.
 import {useEffect} from 'react';
 import {hypercube} from '../app/window.ts';
@@ -12,7 +13,8 @@ import {useStore} from '../store.ts';
 import {Icon} from '../shared/icon.tsx';
 import {Split} from '../shared/split.tsx';
 import {addWorkspace, markSeen} from './session-actions.ts';
-import {currentSession, shownSession} from './selection.ts';
+import {AllPullRequests} from '../github/all-pull-requests.tsx';
+import {currentSession, homeShown, shownSession} from './selection.ts';
 
 export function SessionView() {
   const [state, store] = useStore();
@@ -32,6 +34,10 @@ export function SessionView() {
     </Split>;
   }
   if (state.editor) return <EditorArea />;
+  if (state.workspaces.length > 0 && homeShown(state)) return <>
+    <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
+    <AllPullRequests />
+  </>;
   return <>
     <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
     {state.workspaces.length === 0 && <section aria-label="No workspaces" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

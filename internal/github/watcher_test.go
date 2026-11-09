@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -295,15 +296,52 @@ func TestAheadBehindAfterFetch(t *testing.T) {
 	}
 }
 
+// untilAccounts waits on Changed until the accounts satisfy check.
+func (s *stand) untilAccounts(what string, check func([]Account) bool) {
+	s.t.Helper()
+	timeout := time.After(20 * time.Second)
+	for {
+		changed := s.w.Changed()
+		if check(s.w.Accounts()) {
+			return
+		}
+		select {
+		case <-changed:
+		case <-timeout:
+			s.t.Fatalf("timed out waiting for %s; accounts %+v", what, s.w.Accounts())
+		}
+	}
+}
+
+// accountOf returns the login's account, or the zero value.
+func (s *stand) accountOf(accounts []Account, login string) Account {
+	for _, a := range accounts {
+		if a.Login == login {
+			return a
+		}
+	}
+	return Account{}
+}
+
+// repoNode is a minimal pull request node in the repository.
+func repoNode(repo string, number int) map[string]any {
+	return map[string]any{"number": number, "title": fmt.Sprintf("PR %d", number),
+		"url":        fmt.Sprintf("https://github.com/%s/pull/%d", repo, number),
+		"repository": map[string]string{"nameWithOwner": repo}, "author": map[string]string{"login": "dana"}}
+}
+
 func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	s := newStand(t, "alice")
-	s.api.SetPullRequests(3, []map[string]any{
+	s.api.SetPullRequests([]map[string]any{
 		{"number": 7, "title": "Add it", "url": "https://github.com/o/r/pull/7", "isDraft": false,
+			"repository":        map[string]string{"nameWithOwner": "o/r"},
 			"isCrossRepository": false, "headRefName": "feature", "author": map[string]string{"login": "dana"},
 			"reviewDecision": "APPROVED", "mergeStateStatus": "CLEAN", "statusCheckRollup": map[string]string{"state": "SUCCESS"}},
 		{"number": 5, "title": "Ghost", "url": "https://github.com/o/r/pull/5", "isDraft": true,
+			"repository":        map[string]string{"nameWithOwner": "o/r"},
 			"isCrossRepository": true, "headRefName": "fork-branch", "author": nil,
 			"reviewDecision": nil, "statusCheckRollup": nil},
+		repoNode("o/s", 2),
 		{}, // a search result that is not a pull request
 	}, nil)
 	id := s.workspace("w", remote)
@@ -311,19 +349,93 @@ func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	s.until("the pull requests", s.queried(id))
 	got := s.w.Statuses()[id]
 	want := []PullRequest{
-		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS", Merge: "CLEAN"},
-		{Number: 5, Title: "Ghost", URL: "https://github.com/o/r/pull/5", Branch: "fork-branch", Fork: true, Draft: true},
+		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Repo: "o/r", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS", Merge: "CLEAN"},
+		{Number: 5, Title: "Ghost", URL: "https://github.com/o/r/pull/5", Repo: "o/r", Branch: "fork-branch", Fork: true, Draft: true},
 	}
-	if !reflect.DeepEqual(got.PullRequests, want) || got.Open != 3 || got.Error != "" {
+	if !reflect.DeepEqual(got.PullRequests, want) || got.Error != "" {
 		t.Fatalf("status = %+v", got)
+	}
+	account := s.accountOf(s.w.Accounts(), "alice")
+	if len(account.PullRequests) != 3 || account.PullRequests[2].Repo != "o/s" || account.Updated != got.Updated {
+		t.Fatalf("account = %+v", account)
 	}
 
 	s.api.Fail(true)
 	s.w.Refresh()
 	s.until("the failure", func(m map[string]Status) bool { return m[id].Error != "" })
 	failed := s.w.Statuses()[id]
-	if !reflect.DeepEqual(failed.PullRequests, want) || failed.Open != 3 || failed.Updated != got.Updated {
+	if !reflect.DeepEqual(failed.PullRequests, want) || failed.Updated != got.Updated {
 		t.Fatalf("status after failure = %+v", failed)
+	}
+	kept := s.accountOf(s.w.Accounts(), "alice")
+	if len(kept.PullRequests) != 3 || kept.Updated != account.Updated || kept.Error == "" {
+		t.Fatalf("account after failure = %+v", kept)
+	}
+}
+
+func TestRepositoryMatchIgnoresCase(t *testing.T) {
+	s := newStand(t, "alice")
+	s.api.SetPullRequests([]map[string]any{repoNode("O/R", 1)}, nil)
+	id := s.workspace("w", remote)
+	s.run()
+	s.until("the pull requests", s.queried(id))
+	if got := s.w.Statuses()[id].PullRequests; len(got) != 1 || got[0].Repo != "O/R" {
+		t.Fatalf("pull requests = %+v", got)
+	}
+}
+
+func TestEveryLoginIsRead(t *testing.T) {
+	s := newStand(t, "alice", "bob")
+	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
+	s.workspace("w", remote) // pending a choice, so it uses neither account
+	s.run()
+	s.untilAccounts("both accounts", func(as []Account) bool {
+		return s.accountOf(as, "alice").Updated != 0 && s.accountOf(as, "bob").Updated != 0
+	})
+	accounts := s.w.Accounts()
+	if len(accounts) != 2 || accounts[0].Login != "alice" || accounts[1].Login != "bob" ||
+		accounts[0].PullRequests[0].URL != accounts[1].PullRequests[0].URL {
+		t.Fatalf("accounts = %+v", accounts)
+	}
+}
+
+func TestDirectAndTeamRequestsAreKeyedByURL(t *testing.T) {
+	s := newStand(t, "alice")
+	direct, team := repoNode("o/r", 1), repoNode("o/s", 1)
+	s.api.SetPullRequests(nil, []map[string]any{direct, team}, "https://github.com/o/r/pull/1")
+	s.workspace("w", remote)
+	s.run()
+	s.untilAccounts("the account", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
+	got := s.w.Accounts()[0].PullRequests
+	if len(got) != 2 || got[0].Requested != "user" || got[1].Requested != "team" {
+		t.Fatalf("pull requests = %+v", got)
+	}
+}
+
+func TestRequiredFailuresAcrossRepositories(t *testing.T) {
+	s := newStand(t, "alice")
+	var nodes []map[string]any
+	for _, repo := range []string{"o/r", "o/s"} {
+		for _, n := range []int{1, 2} {
+			node := repoNode(repo, n)
+			node["author"] = map[string]string{"login": "alice"}
+			node["statusCheckRollup"] = map[string]string{"state": "FAILURE"}
+			nodes = append(nodes, node)
+		}
+	}
+	s.api.SetPullRequests(nodes, nil)
+	s.api.SetRequiredFailures("https://github.com/o/s/pull/1", "https://github.com/o/r/pull/2")
+	s.workspace("w", remote)
+	s.run()
+	s.untilAccounts("the account", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
+	failed := map[string]bool{}
+	for _, pr := range s.w.Accounts()[0].PullRequests {
+		failed[pr.URL] = pr.RequiredFailed
+	}
+	want := map[string]bool{"https://github.com/o/r/pull/1": false, "https://github.com/o/r/pull/2": true,
+		"https://github.com/o/s/pull/1": true, "https://github.com/o/s/pull/2": false}
+	if !reflect.DeepEqual(failed, want) {
+		t.Fatalf("required failures = %v", failed)
 	}
 }
 
@@ -350,7 +462,9 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 	type pr = map[string]any
 	node := func(number int, author string, fields pr) pr {
 		n := pr{"number": number, "author": map[string]string{"login": author}, "headRefOid": "head",
-			"commits": pr{"nodes": []pr{{"commit": pr{"committedDate": at(10)}}}}}
+			"url":        fmt.Sprintf("https://github.com/o/r/pull/%d", number),
+			"repository": map[string]string{"nameWithOwner": "o/r"},
+			"commits":    pr{"nodes": []pr{{"commit": pr{"committedDate": at(10)}}}}}
 		for k, v := range fields {
 			n[k] = v
 		}
@@ -428,8 +542,8 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 			involved = append(involved, n)
 		}
 	}
-	s.api.SetPullRequests(len(nodes), involved, requested, 4)
-	s.api.SetRequiredFailures(1)
+	s.api.SetPullRequests(involved, requested, "https://github.com/o/r/pull/4")
+	s.api.SetRequiredFailures("https://github.com/o/r/pull/1")
 	id := s.workspace("w", remote)
 	s.run()
 	s.until("the pull requests", s.queried(id))
@@ -442,7 +556,7 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 	}
 	for _, c := range cases {
 		g := byNumber[c.node["number"].(int)]
-		g.Number, g.Author = 0, ""
+		g.Number, g.Author, g.URL, g.Repo = 0, "", "", ""
 		if !reflect.DeepEqual(g, c.want) {
 			t.Errorf("%s: got %+v, want %+v", c.name, g, c.want)
 		}
@@ -460,7 +574,10 @@ func TestPendingChoiceDoesNotFetchOrQuery(t *testing.T) {
 	s.git(other+"/clone", "commit", "-q", "--allow-empty", "-m", "elsewhere")
 	s.git(other+"/clone", "push", "-q", "origin", "main")
 	s.run()
+	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
+	s.run()
 	s.until("a choice", s.resolved(id))
+	s.untilAccounts("both accounts", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
 	got := s.w.Statuses()[id]
 	if got.PullRequests == nil || len(got.PullRequests) != 0 || got.Updated != 0 || got.Error != "" || got.Behind != 0 {
 		t.Fatalf("status = %+v", got)
@@ -468,13 +585,19 @@ func TestPendingChoiceDoesNotFetchOrQuery(t *testing.T) {
 }
 
 func TestTokenFailureIsReported(t *testing.T) {
-	s := newStand(t, "broken")
-	id := s.workspace("w", remote)
+	s := newStand(t, "broken", "alice")
+	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
+	id := s.workspace("w", remote, []string{"config", "credential.githubAccount", "broken"})
 	s.run()
 	s.until("the account", s.resolved(id))
+	s.untilAccounts("the other account", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
 	got := s.w.Statuses()[id]
-	if got.Account != "broken" || got.Updated != 0 || !strings.Contains(got.Error, "no token for broken") {
+	if got.Account != "broken" || got.Updated != 0 || strings.Count(got.Error, "no token for broken") != 1 {
 		t.Fatalf("status = %+v", got)
+	}
+	broken := s.accountOf(s.w.Accounts(), "broken")
+	if broken.Updated != 0 || !strings.Contains(broken.Error, "no token for broken") || len(broken.PullRequests) != 0 {
+		t.Fatalf("account = %+v", broken)
 	}
 }
 

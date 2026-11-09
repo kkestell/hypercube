@@ -47,7 +47,7 @@ const started = () => {
 };
 
 const stateMessage = (build: string, ended = false): StateMessage => ({
-  type: 'state', build, requests: [], limits: [],
+  type: 'state', build, requests: [], limits: [], accounts: [],
   workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [testSession({id: 'a', title: 'A', ended})]})],
 });
 

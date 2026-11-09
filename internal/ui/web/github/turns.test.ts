@@ -1,6 +1,6 @@
 import {expect, test} from 'bun:test';
 import {testPullRequest} from '../../test-state.ts';
-import {sortTurns, turnOf} from './turns.ts';
+import {sortTurns, turnOf, yourMoves} from './turns.ts';
 import type {PullRequest} from './types.ts';
 
 const own = (overrides: Partial<PullRequest>) => testPullRequest({author: 'me', ...overrides});
@@ -55,4 +55,12 @@ test('others blocked on the account come first, then its own work, then team req
   const {mine, waiting} = sortTurns(prs, 'me');
   expect(mine.map(({pr}) => pr.number)).toEqual([7, 5, 3, 8, 2, 1]);
   expect(waiting.map(({pr}) => pr.number)).toEqual([4]);
+});
+
+test('yourMoves lists every account’s moves, best rank first, with ties in account order', () => {
+  const accounts = [
+    {login: 'me', updated: 1, pullRequests: [own({number: 1, merge: 'CLEAN'}), theirs({number: 2, requested: 'user'}), own({number: 3, merge: 'BLOCKED'})]},
+    {login: 'you', updated: 1, pullRequests: [testPullRequest({number: 4, author: 'bob', requested: 'user'}), testPullRequest({number: 5, author: 'you', merge: 'DIRTY'})]},
+  ];
+  expect(yourMoves(accounts).map(({account, pr}) => `${account}#${pr.number}`)).toEqual(['me#2', 'you#4', 'you#5', 'me#1']);
 });

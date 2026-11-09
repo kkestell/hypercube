@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -59,14 +61,14 @@ type API struct {
 	revoked     map[string]bool
 	requests    int
 	pulls       string
-	required    string
+	failedURLs  []string
 }
 
 // NewAPI starts the server and stops it when the test ends. Every account
 // starts without access to any repository.
 func NewAPI(t testing.TB) *API {
 	t.Helper()
-	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer(0), required: `{"data":{"repository":{}}}`}
+	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer()}
 	server := httptest.NewServer(a)
 	t.Cleanup(server.Close)
 	a.URL = server.URL
@@ -95,21 +97,19 @@ func (a *API) Fail(failing bool) {
 	a.failing = failing
 }
 
-// SetPullRequests sets what every token reads: the total open count, the
-// nodes of the pull requests that involve the token's account and of the ones
-// whose review was requested from it or its team, each shaped like GitHub's
-// pull request fields, and the numbers of the ones requested from the account
-// itself.
-func (a *API) SetPullRequests(total int, involved, requested []map[string]any, direct ...int) {
-	var numbers []map[string]int
-	for _, n := range direct {
-		numbers = append(numbers, map[string]int{"number": n})
+// SetPullRequests sets what every token reads: the nodes of the pull requests
+// that involve the token's account and of the ones whose review was requested
+// from it or its team, each shaped like GitHub's pull request fields, and the
+// URLs of the ones requested from the account itself.
+func (a *API) SetPullRequests(involved, requested []map[string]any, direct ...string) {
+	var urls []map[string]string
+	for _, u := range direct {
+		urls = append(urls, map[string]string{"url": u})
 	}
 	data, err := json.Marshal(map[string]any{"data": map[string]any{
-		"repository": map[string]any{"pullRequests": map[string]any{"totalCount": total}},
-		"involved":   map[string]any{"nodes": involved},
-		"requested":  map[string]any{"nodes": requested},
-		"direct":     map[string]any{"nodes": numbers}}})
+		"involved":  map[string]any{"nodes": involved},
+		"requested": map[string]any{"nodes": requested},
+		"direct":    map[string]any{"nodes": urls}}})
 	if err != nil {
 		panic(err)
 	}
@@ -118,24 +118,44 @@ func (a *API) SetPullRequests(total int, involved, requested []map[string]any, d
 	a.pulls = string(data)
 }
 
-// SetRequiredFailures sets the pull requests that have a failed required check.
-func (a *API) SetRequiredFailures(numbers ...int) {
-	repository := map[string]any{}
-	for _, n := range numbers {
-		repository[fmt.Sprintf("p%d", n)] = map[string]any{"statusCheckRollup": map[string]any{"contexts": map[string]any{
+// SetRequiredFailures sets the pull requests, by URL such as
+// https://github.com/owner/name/pull/12, that have a failed required check.
+func (a *API) SetRequiredFailures(urls ...string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.failedURLs = urls
+}
+
+// aliases finds the repository and pull request fields of a required check
+// query.
+var aliases = regexp.MustCompile(`(r\d+):repository\(owner:"([^"]*)",name:"([^"]*)"\)|(p\d+):pullRequest\(number:(\d+)\)`)
+
+// requiredAnswer answers a required check query: a failed required check for
+// each pull request whose URL is in the set.
+func (a *API) requiredAnswer(query string) string {
+	data := map[string]map[string]any{}
+	var alias, owner, name string
+	for _, m := range aliases.FindAllStringSubmatch(query, -1) {
+		if m[1] != "" {
+			alias, owner, name = m[1], m[2], m[3]
+			data[alias] = map[string]any{}
+			continue
+		}
+		if !slices.Contains(a.failedURLs, fmt.Sprintf("https://github.com/%s/%s/pull/%s", owner, name, m[5])) {
+			continue
+		}
+		data[alias][m[4]] = map[string]any{"statusCheckRollup": map[string]any{"contexts": map[string]any{
 			"nodes": []map[string]any{{"conclusion": "FAILURE", "isRequired": true}}}}}
 	}
-	data, err := json.Marshal(map[string]any{"data": map[string]any{"repository": repository}})
+	out, err := json.Marshal(map[string]any{"data": data})
 	if err != nil {
 		panic(err)
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.required = string(data)
+	return string(out)
 }
 
-func pullsAnswer(total int) string {
-	return fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"totalCount":%d}},"involved":{"nodes":[]},"requested":{"nodes":[]},"direct":{"nodes":[]}}}`, total)
+func pullsAnswer() string {
+	return `{"data":{"involved":{"nodes":[]},"requested":{"nodes":[]},"direct":{"nodes":[]}}}`
 }
 
 // Requests is the number of permission queries the server has received.
@@ -149,8 +169,12 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	body, _ := io.ReadAll(r.Body)
-	required := strings.Contains(string(body), "isRequired")
-	pulls := strings.Contains(string(body), "pullRequests")
+	var request struct {
+		Query string `json:"query"`
+	}
+	_ = json.Unmarshal(body, &request)
+	required := strings.Contains(request.Query, "isRequired")
+	pulls := strings.Contains(request.Query, "involved:search")
 	if !pulls && !required {
 		a.requests++
 	}
@@ -164,7 +188,7 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if required {
-		_, _ = w.Write([]byte(a.required))
+		_, _ = w.Write([]byte(a.requiredAnswer(request.Query)))
 		return
 	}
 	if pulls {

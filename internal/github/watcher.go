@@ -31,17 +31,25 @@ type Status struct {
 	Upstream     string        `json:"upstream,omitempty"` // such as origin/main
 	Ahead        int           `json:"ahead"`
 	Behind       int           `json:"behind"`
-	PullRequests []PullRequest `json:"pullRequests"`    // open ones involving the account, most recently updated first, at most 20
-	Open         int           `json:"open"`            // all open pull requests
-	Updated      int64         `json:"updated"`         // Unix ms of the last successful query; 0 before one
+	PullRequests []PullRequest `json:"pullRequests"`    // the account's open ones in this repository, most recently updated first
+	Updated      int64         `json:"updated"`         // Unix ms of the account's last successful query; 0 before one
 	Error        string        `json:"error,omitempty"` // why the last pass's token read, fetch, or query failed
 }
 
-// PullRequest is an open pull request as the workspace's account sees it.
+// Account is a signed-in gh account's open pull requests in every repository.
+type Account struct {
+	Login        string        `json:"login"`
+	PullRequests []PullRequest `json:"pullRequests"`    // never nil; most recently updated first, at most 50, then further review requests
+	Updated      int64         `json:"updated"`         // Unix ms of the last successful query; 0 before one
+	Error        string        `json:"error,omitempty"` // why the last token read or query failed
+}
+
+// PullRequest is an open pull request as an account sees it.
 type PullRequest struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	URL    string `json:"url"`
+	Repo   string `json:"repo"` // owner/name
 	Author string `json:"author"`
 	Branch string `json:"branch"` // head branch
 	Fork   bool   `json:"fork"`   // head is in another repository
@@ -67,7 +75,8 @@ type PullRequest struct {
 	Unanswered int `json:"unanswered"`
 }
 
-// Watcher keeps each GitHub workspace's status and account token current. The
+// Watcher keeps each GitHub workspace's status, each signed-in account's pull
+// requests, and each workspace's account token current. The
 // zero value is ready to use; Run drives it.
 type Watcher struct {
 	DB       *store.DB
@@ -75,10 +84,11 @@ type Watcher struct {
 	API      string        // GraphQL endpoint; GitHub's when empty
 	Interval time.Duration // between passes; one minute when zero
 
-	// mu guards statuses, tokens, changed, and refresh.
+	// mu guards statuses, accounts, tokens, changed, and refresh.
 	mu       sync.Mutex
-	statuses map[string]Status // by workspace ID
-	tokens   map[string]string // by workspace ID
+	statuses map[string]Status  // by workspace ID
+	accounts map[string]Account // by login
+	tokens   map[string]string  // by workspace ID
 	changed  chan struct{}
 	refresh  chan struct{}
 	// detected belongs to Run's goroutine.
@@ -147,7 +157,16 @@ func (w *Watcher) Statuses() map[string]Status {
 	return maps.Clone(w.statuses)
 }
 
-// Changed returns a channel that closes at the next change to the statuses.
+// Accounts returns each signed-in account's pull requests, sorted by login.
+func (w *Watcher) Accounts() []Account {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	accounts := slices.SortedFunc(maps.Values(w.accounts), func(a, b Account) int { return strings.Compare(a.Login, b.Login) })
+	return slices.Concat([]Account{}, accounts) // never nil
+}
+
+// Changed returns a channel that closes at the next change to the statuses or
+// accounts.
 func (w *Watcher) Changed() <-chan struct{} {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -157,13 +176,14 @@ func (w *Watcher) Changed() <-chan struct{} {
 	return w.changed
 }
 
-// publish replaces the statuses and tokens, waking watchers when a status
-// differs. The caller does not hold mu.
-func (w *Watcher) publish(statuses map[string]Status, tokens map[string]string) {
+// publish replaces the statuses, accounts, and tokens, waking watchers when a
+// status or account differs. The caller does not hold mu.
+func (w *Watcher) publish(statuses map[string]Status, tokens map[string]string, accounts map[string]Account) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	differs := !maps.EqualFunc(w.statuses, statuses, func(a, b Status) bool { return reflect.DeepEqual(a, b) })
-	w.statuses, w.tokens = statuses, tokens
+	differs := !maps.EqualFunc(w.statuses, statuses, func(a, b Status) bool { return reflect.DeepEqual(a, b) }) ||
+		!maps.EqualFunc(w.accounts, accounts, func(a, b Account) bool { return reflect.DeepEqual(a, b) })
+	w.statuses, w.tokens, w.accounts = statuses, tokens, accounts
 	if differs {
 		if w.changed != nil {
 			close(w.changed)
@@ -172,8 +192,9 @@ func (w *Watcher) publish(statuses map[string]Status, tokens map[string]string) 
 	}
 }
 
-// pass resolves every workspace's repository and account, fetches its remote,
-// and reads its pull requests.
+// pass reads every signed-in account's pull requests, then resolves every
+// workspace's repository and account, fetches its remote, and gives it its
+// account's pull requests in its repository.
 func (w *Watcher) pass(ctx context.Context) {
 	logins, err := w.logins(ctx)
 	if err != nil || len(logins) == 0 {
@@ -181,7 +202,7 @@ func (w *Watcher) pass(ctx context.Context) {
 			fmt.Fprintln(os.Stderr, "hypercube: reading GitHub accounts:", err)
 		}
 		if ctx.Err() == nil {
-			w.publish(nil, nil)
+			w.publish(nil, nil, nil)
 		}
 		return
 	}
@@ -200,7 +221,7 @@ func (w *Watcher) pass(ctx context.Context) {
 		return
 	}
 	w.mu.Lock()
-	old, oldTokens := w.statuses, w.tokens // replaced, never edited
+	old, oldTokens, oldAccounts := w.statuses, w.tokens, w.accounts // replaced, never edited
 	w.mu.Unlock()
 	statuses, tokens := map[string]Status{}, map[string]string{}
 	passTokens := map[string]string{} // by login, read at most once a pass
@@ -214,6 +235,31 @@ func (w *Watcher) pass(ctx context.Context) {
 		}
 		passTokens[login] = t
 		return t, nil
+	}
+	accounts := map[string]Account{}
+	for _, login := range logins {
+		account := oldAccounts[login] // a failed read keeps what the last pass knew
+		account.Login, account.Error = login, ""
+		if account.PullRequests == nil {
+			account.PullRequests = []PullRequest{}
+		}
+		t, err := token(login)
+		if err == nil {
+			var prs []PullRequest
+			if prs, err = w.accountPullRequests(ctx, t, login); err == nil {
+				account.PullRequests, account.Updated = prs, time.Now().UnixMilli()
+			}
+		}
+		if err != nil {
+			if ctx.Err() == nil {
+				fmt.Fprintf(os.Stderr, "hypercube: reading pull requests for %s: %v\n", login, err)
+			}
+			account.Error = err.Error()
+		}
+		accounts[login] = account
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	detected := map[string]detection{}
 	for _, ws := range workspaces {
@@ -274,14 +320,26 @@ func (w *Watcher) pass(ctx context.Context) {
 				tokens[ws.ID] = t
 			}
 		}
-		w.measure(ctx, &status, ws.Path, remoteName, owner, name, t, old[ws.ID], problems)
+		w.measure(ctx, &status, ws.Path, remoteName, t, problems)
+		if account, ok := accounts[status.Account]; ok {
+			for _, pr := range account.PullRequests {
+				if strings.EqualFold(pr.Repo, repo) {
+					status.PullRequests = append(status.PullRequests, pr)
+				}
+			}
+			status.Updated = account.Updated
+			// A failed token read is already in the problems.
+			if account.Error != "" && t != "" {
+				status.Error = strings.Join(slices.DeleteFunc([]string{status.Error, account.Error}, func(e string) bool { return e == "" }), "\n")
+			}
+		}
 		statuses[ws.ID] = status
 	}
 	if ctx.Err() != nil {
 		return
 	}
 	w.detected = detected
-	w.publish(statuses, tokens)
+	w.publish(statuses, tokens, accounts)
 }
 
 // pushers lists the logins whose accounts can push to the repository.
@@ -305,13 +363,11 @@ func (w *Watcher) pushers(ctx context.Context, logins []string, owner, name stri
 	return pushers, nil
 }
 
-// measure sets the status's branch, ahead and behind counts, and pull requests.
-// A token lets it fetch the remote and ask GitHub; without one the counts
-// reflect the last fetch anyone made. problems holds earlier failures. A
-// failure leaves later steps running and goes to status.Error; a failed
-// query keeps the previous pull requests when they were for the same
-// repository.
-func (w *Watcher) measure(ctx context.Context, status *Status, dir, remote, owner, name, token string, prev Status, problems []error) {
+// measure sets the status's branch and ahead and behind counts. A token lets
+// it fetch the remote; without one the counts reflect the last fetch anyone
+// made. problems holds earlier failures. A failure leaves later steps running
+// and goes to status.Error.
+func (w *Watcher) measure(ctx context.Context, status *Status, dir, remote, token string, problems []error) {
 	var err error
 	if status.Branch, err = workspace.Branch(dir); err != nil {
 		problems = append(problems, err)
@@ -326,17 +382,6 @@ func (w *Watcher) measure(ctx context.Context, status *Status, dir, remote, owne
 	}
 	if status.Upstream, status.Ahead, status.Behind, err = workspace.Tracking(dir); err != nil {
 		problems = append(problems, err)
-	}
-	if token != "" {
-		prs, open, err := w.pullRequests(ctx, token, status.Account, owner, name)
-		if err == nil {
-			status.PullRequests, status.Open, status.Updated = prs, open, time.Now().UnixMilli()
-		} else {
-			problems = append(problems, err)
-			if prev.Repo == status.Repo {
-				status.PullRequests, status.Open, status.Updated = prev.PullRequests, prev.Open, prev.Updated
-			}
-		}
 	}
 	if err := errors.Join(problems...); err != nil {
 		status.Error = err.Error()

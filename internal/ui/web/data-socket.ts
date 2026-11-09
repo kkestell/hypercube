@@ -3,6 +3,7 @@
 // its attached session when the socket opens and whenever it changes; after a
 // reconnect the server sends the transcript whole again. A page reloads when
 // the server serves a different browser build than the one it first saw.
+import type {GitHubAccount} from './github/types.ts';
 import type {Limit} from './app/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
 import {openPendingFiles, openRequestedFile} from './editor/editor.ts';
@@ -20,6 +21,7 @@ export interface StateMessage {
   workspaces: Workspace[];
   requests: AttentionRequest[];
   limits: Limit[];
+  accounts: GitHubAccount[];
 }
 
 // TranscriptMessage carries new and changed items of a session's transcript,
@@ -56,7 +58,7 @@ export function startDataSocket(store: Store) {
       return;
     }
     build = message.build;
-    store.update(state => ({...receivedRequests(receivedWorkspaces(state, message.workspaces), message.requests), limits: message.limits, loaded: true}));
+    store.update(state => ({...receivedRequests(receivedWorkspaces(state, message.workspaces), message.requests), limits: message.limits, accounts: message.accounts, loaded: true}));
   };
 
   const received = (message: ServerMessage) => {

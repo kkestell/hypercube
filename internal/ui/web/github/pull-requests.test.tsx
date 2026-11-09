@@ -18,7 +18,7 @@ const pr = (overrides: Partial<PullRequest> = {}) => testPullRequest({author: 'k
 
 const github = (overrides: Partial<GitHubStatus> = {}): GitHubStatus => ({
   repo: 'o/r', url: 'https://github.com/o/r', account: 'kkestell', branch: 'main', upstream: 'origin/main',
-  ahead: 0, behind: 0, pullRequests: [], open: 0, updated: 1, ...overrides,
+  ahead: 0, behind: 0, pullRequests: [], updated: 1, ...overrides,
 });
 
 function dashboard(status: GitHubStatus, sessions = [testSession({id: 'a'})]) {
@@ -30,7 +30,7 @@ const list = (root: HTMLElement, label: string) => find(root, `[aria-label="${la
 const buttons = (root: HTMLElement) => findAll(root, '[aria-label="Your move"] button, [aria-label="Waiting on others"] button');
 
 test('rows say why they are the account’s move or a wait, and link GitHub', () => {
-  const {root} = dashboard(github({open: 3, pullRequests: [
+  const {root} = dashboard(github({pullRequests: [
     pr({number: 7, merge: 'CLEAN'}),
     pr({number: 8, author: 'bob', title: 'Theirs', url: 'https://github.com/o/r/pull/8', requested: 'user'}),
     pr({number: 9, title: 'Mine', review: 'REVIEW_REQUIRED', merge: 'BLOCKED'}),
@@ -42,7 +42,6 @@ test('rows say why they are the account’s move or a wait, and link GitHub', ()
   expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.#7 Add itReady to merge.Merge');
   expect(list(root, 'Waiting on others').textContent).toBe('#9 MineWaiting for review.');
   expect(buttons(root).map(b => b.textContent)).toEqual(['Merge']);
-  expect(root.textContent).not.toContain('other open');
 });
 
 test('empty states say what is happening', () => {
@@ -50,8 +49,6 @@ test('empty states say what is happening', () => {
     [{account: ''}, 'Choose an account to see pull requests.'],
     [{updated: 0}, 'Checking GitHub.'],
     [{updated: 0, error: 'no network'}, 'Could not load pull requests.'],
-    [{}, 'No open pull requests.'],
-    [{open: 1}, 'Nothing needs you.'],
   ];
   for (const [overrides, expected] of states) {
     const {root} = dashboard(github(overrides));
@@ -61,15 +58,20 @@ test('empty states say what is happening', () => {
   }
 });
 
-test('open pull requests that do not concern the account link to GitHub', () => {
-  const {root} = dashboard(github({pullRequests: [pr({merge: 'CLEAN'}), pr({number: 8, author: 'bob'})], open: 61}));
-  const link = findAll(root, 'a').find(a => a.textContent === '60 other open pull requests');
+test('every dashboard links to all open pull requests', () => {
+  const {root} = dashboard(github({pullRequests: [pr({merge: 'CLEAN'}), pr({number: 8, author: 'bob'})]}));
+  const link = findAll(root, 'a').find(a => a.textContent === 'All open pull requests');
   expect(link?.getAttribute('href')).toBe('https://github.com/o/r/pulls');
+});
+
+test('an empty list says nothing needs the account', () => {
+  const {root} = dashboard(github());
+  expect(find(root, 'section section').textContent).toContain('Nothing needs you.');
 });
 
 test('Fix checks lists new session and live sessions, matching ones first', () => {
   const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root} = dashboard(github({pullRequests: [failing], open: 1}), [
+  const {root} = dashboard(github({pullRequests: [failing]}), [
     testSession({id: 'a', title: 'Other'}),
     testSession({id: 'b', title: 'Done', ended: true}),
     testSession({id: 'c', title: 'On it', pullRequest: failing}),
@@ -82,7 +84,7 @@ test('Fix checks lists new session and live sessions, matching ones first', () =
 test('choosing a session sends the instruction and shows it', async () => {
   const failing = pr({checks: 'FAILURE', requiredFailed: true});
   const stub = stubFetch(() => new Response(''));
-  const {root, store} = dashboard(github({pullRequests: [failing], open: 1}), [testSession({id: 'a', title: 'Other'})]);
+  const {root, store} = dashboard(github({pullRequests: [failing]}), [testSession({id: 'a', title: 'Other'})]);
   clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
   await act(async () => clickControl(findAll(document.body, '[cmdk-item]').find(item => item.textContent === 'Other')!));
   const request = new URL(stub.mock.calls[0][0], 'http://x/');
@@ -93,7 +95,7 @@ test('choosing a session sends the instruction and shows it', async () => {
 
 test('choosing New Session opens the unsent session with the instruction', async () => {
   const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root, store} = dashboard(github({pullRequests: [failing], open: 1}));
+  const {root, store} = dashboard(github({pullRequests: [failing]}));
   clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
   await act(async () => clickControl(find(document.body, '[cmdk-item]')));
   expect(store.get().unsent?.workspace).toBe('w');

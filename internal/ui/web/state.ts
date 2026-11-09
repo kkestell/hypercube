@@ -1,5 +1,5 @@
-// The page's state, which the store holds: the server's workspaces, requests,
-// and limits, and what the page itself keeps.
+// The page's state, which the store holds: the server's workspaces, GitHub
+// accounts, requests, and limits, and what the page itself keeps.
 import type {Draft} from './agent/types.ts';
 import type {Config, Limit, SettingsSection, TitleBar, Workbench} from './app/types.ts';
 import type {EditorView, EditorViewState, FileOpenRequest} from './editor/types.ts';
@@ -9,6 +9,7 @@ import type {Submission} from './sessions/submissions.ts';
 import type {Changes} from './changes/types.ts';
 import type {FileEntry} from './files/types.ts';
 import type {Confirmation} from './shared/types.ts';
+import type {GitHubAccount} from './github/types.ts';
 
 // selected names a session or workspace dashboard: null after the shown session stops, or
 // an ID that the next workspaces may move to a running session. pending names
@@ -27,6 +28,7 @@ import type {Confirmation} from './shared/types.ts';
 // current attachment and reset when it changes.
 export interface State {
   workspaces: Workspace[];
+  accounts: GitHubAccount[];
   settings: SettingsSection | null;
   loaded: boolean;
   config: Config | null;
@@ -64,6 +66,7 @@ export interface State {
 // session the page's URL names selected.
 export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
+  accounts: [],
   settings: null,
   loaded: false,
   config: null,

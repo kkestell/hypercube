@@ -1,6 +1,6 @@
 // Whose move each pull request is: the account's, someone else's while the
 // account waits, or nobody's that concerns the account.
-import type {PullRequest} from './types.ts';
+import type {GitHubAccount, PullRequest} from './types.ts';
 
 // Turn is what a pull request waits on and why. rank orders the account's
 // moves: others blocked on the account come first, its own work next.
@@ -45,6 +45,14 @@ function ownTurn(pr: PullRequest): Turn {
   if (pr.review === 'REVIEW_REQUIRED') return theirs('Waiting for review.');
   if (pr.merge === 'BLOCKED') return theirs('Blocked from merging.');
   return theirs('Waiting on GitHub.');
+}
+
+// yourMoves lists, for each account in order, its pull requests that are its
+// move, with every account's best-ranked first and equal ranks keeping their
+// order.
+export function yourMoves(accounts: GitHubAccount[]) {
+  const moves = accounts.flatMap(account => sortTurns(account.pullRequests, account.login).mine.map(({pr, turn}) => ({account: account.login, pr, turn})));
+  return moves.sort((a, b) => a.turn.rank - b.turn.rank);
 }
 
 // sortTurns splits the pull requests into the account's moves, best first,

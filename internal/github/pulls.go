@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// pullRequestsQuery reads the open pull request count and the open pull
-// requests that involve the account: ones it wrote, was asked to review,
-// reviewed, commented on, or was mentioned in. requested reads the ones whose
-// review was requested from the account or one of its teams, which involved
-// can crowd out, and direct numbers the ones requested from the account
-// itself.
+// pullRequestsQuery reads the open pull requests, in every repository, that
+// involve the account: ones it wrote, was asked to review, reviewed, commented
+// on, or was mentioned in. requested reads the ones whose review was requested
+// from the account or one of its teams, which involved can crowd out, and
+// direct lists the ones requested from the account itself.
 const pullRequestsQuery = `fragment pr on PullRequest{
   number title url isDraft isCrossRepository headRefName headRefOid
+  repository{nameWithOwner}
   author{login} reviewDecision mergeStateStatus statusCheckRollup{state}
   reviewRequests{totalCount}
   latestOpinionatedReviews(first:10){nodes{author{login} state commit{oid}}}
@@ -25,11 +25,10 @@ const pullRequestsQuery = `fragment pr on PullRequest{
     last:comments(last:1){nodes{author{__typename login} createdAt}}}}
   comments(last:20){nodes{author{__typename login} createdAt}}
   commits(last:1){nodes{commit{committedDate}}}}
-query($owner:String!,$name:String!,$login:String!,$involved:String!,$requested:String!,$direct:String!){
-  repository(owner:$owner,name:$name){pullRequests(states:OPEN){totalCount}}
-  involved:search(query:$involved,type:ISSUE_ADVANCED,first:20){nodes{...pr}}
+query($login:String!,$involved:String!,$requested:String!,$direct:String!){
+  involved:search(query:$involved,type:ISSUE_ADVANCED,first:50){nodes{...pr}}
   requested:search(query:$requested,type:ISSUE,first:20){nodes{...pr}}
-  direct:search(query:$direct,type:ISSUE,first:20){nodes{...on PullRequest{number}}}}`
+  direct:search(query:$direct,type:ISSUE,first:50){nodes{...on PullRequest{url}}}}`
 
 // comment is a comment or review comment and who wrote it.
 type comment struct {
@@ -80,9 +79,12 @@ type opinion struct {
 
 // pullRequestNode is a pull request as pullRequestsQuery reads it.
 type pullRequestNode struct {
-	Number            int    `json:"number"`
-	Title             string `json:"title"`
-	URL               string `json:"url"`
+	Number     int    `json:"number"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	Repository struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
 	IsDraft           bool   `json:"isDraft"`
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	HeadRefName       string `json:"headRefName"`
@@ -126,16 +128,11 @@ type pullRequestNode struct {
 	} `json:"commits"`
 }
 
-// pullRequests lists the open pull requests that involve the account, never
-// nil, most recently updated first with any further review requests after
-// them, and counts all open pull requests.
-func (w *Watcher) pullRequests(ctx context.Context, token, login, owner, name string) ([]PullRequest, int, error) {
+// accountPullRequests lists the open pull requests, in every repository, that
+// involve the account, never nil, most recently updated first with any further
+// review requests after them.
+func (w *Watcher) accountPullRequests(ctx context.Context, token, login string) ([]PullRequest, error) {
 	var data struct {
-		Repository struct {
-			PullRequests struct {
-				TotalCount int `json:"totalCount"`
-			} `json:"pullRequests"`
-		} `json:"repository"`
 		Involved struct {
 			Nodes []pullRequestNode `json:"nodes"`
 		} `json:"involved"`
@@ -144,55 +141,55 @@ func (w *Watcher) pullRequests(ctx context.Context, token, login, owner, name st
 		} `json:"requested"`
 		Direct struct {
 			Nodes []struct {
-				Number int `json:"number"`
+				URL string `json:"url"`
 			} `json:"nodes"`
 		} `json:"direct"`
 	}
-	repo := fmt.Sprintf("repo:%s/%s is:pr is:open", owner, name)
-	variables := map[string]any{"owner": owner, "name": name, "login": login,
-		"involved":  repo + " sort:updated-desc (involves:@me OR review-requested:@me OR reviewed-by:@me)",
-		"requested": repo + " review-requested:@me",
-		"direct":    repo + " user-review-requested:@me"}
+	const search = "is:pr is:open "
+	variables := map[string]any{"login": login,
+		"involved":  search + "sort:updated-desc (involves:@me OR review-requested:@me OR reviewed-by:@me)",
+		"requested": search + "review-requested:@me",
+		"direct":    search + "user-review-requested:@me"}
 	if err := w.query(ctx, token, pullRequestsQuery, variables, &data); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	requested, direct, seen := map[int]bool{}, map[int]bool{}, map[int]bool{}
+	requested, direct, seen := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, n := range data.Requested.Nodes {
-		requested[n.Number] = true
+		requested[n.URL] = true
 	}
 	for _, n := range data.Direct.Nodes {
-		direct[n.Number] = true
+		direct[n.URL] = true
 	}
 	prs := []PullRequest{}
-	var failing []int // the account's pull requests with failing checks
+	var failing []PullRequest // the account's pull requests with failing checks
 	for _, n := range append(data.Involved.Nodes, data.Requested.Nodes...) {
-		if n.Number == 0 || seen[n.Number] { // not a pull request, or listed already
+		if n.URL == "" || seen[n.URL] { // not a pull request, or listed already
 			continue
 		}
-		seen[n.Number] = true
-		pr := fromNode(n, login, requested[n.Number], direct[n.Number])
+		seen[n.URL] = true
+		pr := fromNode(n, login, requested[n.URL], direct[n.URL])
 		if pr.Author == login && (pr.Checks == "FAILURE" || pr.Checks == "ERROR") {
-			failing = append(failing, pr.Number)
+			failing = append(failing, pr)
 		}
 		prs = append(prs, pr)
 	}
 	if len(failing) > 0 {
-		required, err := w.requiredFailures(ctx, token, owner, name, failing)
+		required, err := w.requiredFailures(ctx, token, failing)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		for i := range prs {
-			prs[i].RequiredFailed = required[prs[i].Number]
+			prs[i].RequiredFailed = required[prs[i].URL]
 		}
 	}
-	return prs, data.Repository.PullRequests.TotalCount, nil
+	return prs, nil
 }
 
 // fromNode describes the pull request as the account sees it. requested says
 // its review was requested from the account or one of its teams, and direct
 // from the account itself.
 func fromNode(n pullRequestNode, login string, requested, direct bool) PullRequest {
-	pr := PullRequest{Number: n.Number, Title: n.Title, URL: n.URL, Branch: n.HeadRefName,
+	pr := PullRequest{Number: n.Number, Title: n.Title, URL: n.URL, Repo: n.Repository.NameWithOwner, Branch: n.HeadRefName,
 		Fork: n.IsCrossRepository, Draft: n.IsDraft, Review: n.ReviewDecision, Merge: n.MergeStateStatus,
 		PendingReviews: n.ReviewRequests.TotalCount}
 	if n.Author != nil {
@@ -266,36 +263,52 @@ func unansweredConversation(n pullRequestNode, login string) int {
 	return 0
 }
 
-// requiredFailures reports which of the pull requests have a failed required
-// check. GitHub says whether a check is required only for one pull request at
-// a time, so each pull request gets its own field in the query.
-func (w *Watcher) requiredFailures(ctx context.Context, token, owner, name string, numbers []int) (map[int]bool, error) {
+// requiredFailures reports, by URL, which of the pull requests have a failed
+// required check. GitHub says whether a check is required only for one pull
+// request at a time, so each pull request gets its own field in the query,
+// grouped by repository. Owner and name come from GitHub's nameWithOwner, so
+// quoting them is safe.
+func (w *Watcher) requiredFailures(ctx context.Context, token string, failing []PullRequest) (map[string]bool, error) {
 	var fields strings.Builder
-	for _, n := range numbers {
-		fmt.Fprintf(&fields, `p%d:pullRequest(number:%d){statusCheckRollup{contexts(first:100){nodes{
+	type slot struct{ repo, field, url string }
+	var slots []slot
+	byRepo := map[string][]PullRequest{}
+	var repos []string
+	for _, pr := range failing {
+		if _, ok := byRepo[pr.Repo]; !ok {
+			repos = append(repos, pr.Repo)
+		}
+		byRepo[pr.Repo] = append(byRepo[pr.Repo], pr)
+	}
+	for i, repo := range repos {
+		owner, name, _ := strings.Cut(repo, "/")
+		fmt.Fprintf(&fields, "r%d:repository(owner:%q,name:%q){", i, owner, name)
+		for _, pr := range byRepo[repo] {
+			n := pr.Number
+			fmt.Fprintf(&fields, `p%d:pullRequest(number:%d){statusCheckRollup{contexts(first:100){nodes{
   ...on CheckRun{conclusion isRequired(pullRequestNumber:%d)}
   ...on StatusContext{state isRequired(pullRequestNumber:%d)}}}}}`, n, n, n, n)
+			slots = append(slots, slot{fmt.Sprintf("r%d", i), fmt.Sprintf("p%d", n), pr.URL})
+		}
+		fields.WriteString("}")
 	}
-	query := `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){` + fields.String() + `}}`
-	var data struct {
-		Repository map[string]*struct {
-			StatusCheckRollup *struct {
-				Contexts struct {
-					Nodes []struct {
-						Conclusion string `json:"conclusion"`
-						State      string `json:"state"`
-						IsRequired bool   `json:"isRequired"`
-					} `json:"nodes"`
-				} `json:"contexts"`
-			} `json:"statusCheckRollup"`
-		} `json:"repository"`
+	var data map[string]map[string]*struct {
+		StatusCheckRollup *struct {
+			Contexts struct {
+				Nodes []struct {
+					Conclusion string `json:"conclusion"`
+					State      string `json:"state"`
+					IsRequired bool   `json:"isRequired"`
+				} `json:"nodes"`
+			} `json:"contexts"`
+		} `json:"statusCheckRollup"`
 	}
-	if err := w.query(ctx, token, query, map[string]any{"owner": owner, "name": name}, &data); err != nil {
+	if err := w.query(ctx, token, "query{"+fields.String()+"}", nil, &data); err != nil {
 		return nil, err
 	}
-	failed := map[int]bool{}
-	for _, n := range numbers {
-		pr := data.Repository[fmt.Sprintf("p%d", n)]
+	failed := map[string]bool{}
+	for _, s := range slots {
+		pr := data[s.repo][s.field]
 		if pr == nil || pr.StatusCheckRollup == nil {
 			continue
 		}
@@ -303,7 +316,7 @@ func (w *Watcher) requiredFailures(ctx context.Context, token, owner, name strin
 			bad := slices.Contains([]string{"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"}, c.Conclusion) ||
 				c.State == "FAILURE" || c.State == "ERROR"
 			if c.IsRequired && bad {
-				failed[n] = true
+				failed[s.url] = true
 			}
 		}
 	}

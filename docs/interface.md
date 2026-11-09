@@ -133,8 +133,10 @@ New agents and panel shells in the workspace get `GH_TOKEN` for that account, so
 `gh` and Git pushes through `gh auth git-credential` use it. A running agent or
 shell keeps the account it started with until it restarts.
 
-About once a minute, Hypercube fetches each GitHub workspace's tracked remote
-and reads its open pull requests, using the workspace's account.
+About once a minute, Hypercube fetches each GitHub workspace's tracked remote.
+It also reads the open pull requests of every signed-in account, in all
+repositories, whether or not a workspace uses that account. A workspace's
+dashboard shows the pull requests of its account that belong to its repository.
 
 A GitHub workspace's dashboard shows, under its name, a link to the repository,
 the account in use, and whether the checked-out branch is ahead of or behind its
@@ -166,9 +168,16 @@ to GitHub, why it is listed, and its author when someone else wrote it.
 
 **Waiting on others** lists the account's other pull requests, such as drafts
 and ones waiting for review or checks, and pull requests where the account
-requested changes and the author has not responded. Below the lists, a link
-counts the other open pull requests and opens the repository's pull requests on
-GitHub.
+requested changes and the author has not responded. Below the lists,
+**All open pull requests** opens the repository's pull requests on GitHub.
+
+In the sidebar's Sessions tab, **Pull Requests** opens a view of the pull
+requests that need each signed-in account, from every repository, including
+ones without a workspace. It shows the same **Your move** rows in the same order,
+with the repository and the account on each row, and a warning for each account
+that could not be read. The view also shows when nothing is selected. The button
+shows how many pull requests need you across accounts. Each workspace's row in
+the sidebar shows the number of pull requests that need its account.
 
 The account's own pull requests show the actions that apply: **Merge** when
 GitHub allows merging, **Address review** when changes were requested or

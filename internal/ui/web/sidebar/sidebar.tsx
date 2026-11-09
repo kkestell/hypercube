@@ -1,7 +1,7 @@
 // Workspace groups show either active sessions or archived families.
 import {useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
-import {unsentRow} from '../sessions/selection.ts';
+import {homeShown, showHome, unsentRow} from '../sessions/selection.ts';
 import {isUnsent} from '../agent/drafts.ts';
 import {hypercube} from '../app/window.ts';
 import {scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
@@ -15,6 +15,7 @@ import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
+import {yourMoves} from '../github/turns.ts';
 
 const below = (button: HTMLElement) => {
   const rect = button.getBoundingClientRect();
@@ -79,7 +80,13 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     } else setMenu({...below(row), items: sessionMenu(session)});
   };
 
+  const needYou = yourMoves(state.accounts).length;
   const tree = <>
+    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <Button variant="ghost" size="sm" className="mb-1 h-7 w-full justify-start gap-2 px-2 font-normal" aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
+      <Icon name="git-pull-request" className="size-4 text-muted-foreground" />
+      <span className="flex-1 text-left">Pull Requests</span>
+      {needYou > 0 && <span className="text-[11px] text-muted-foreground">{needYou}</span>}
+    </Button>}
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}

@@ -15,6 +15,7 @@ export interface PullRequest {
   number: number;
   title: string;
   url: string;
+  repo: string;
   author: string;
   branch: string;
   fork: boolean;
@@ -31,8 +32,7 @@ export interface PullRequest {
 }
 
 // GitHubStatus is a workspace's repository, account, branch tracking, and the
-// open pull requests that involve the account. open counts all open pull
-// requests. choices lists the accounts to choose among when several qualify.
+// account's open pull requests in the repository. choices lists the accounts to choose among when several qualify.
 // updated is when the last query succeeded, in Unix milliseconds, or 0 before
 // one; error is why the last update failed.
 export interface GitHubStatus {
@@ -45,7 +45,16 @@ export interface GitHubStatus {
   ahead: number;
   behind: number;
   pullRequests: PullRequest[];
-  open: number;
+  updated: number;
+  error?: string;
+}
+
+// GitHubAccount is a signed-in account's open pull requests in every
+// repository. updated is when the last query succeeded, in Unix milliseconds,
+// or 0 before one; error is why the last read failed.
+export interface GitHubAccount {
+  login: string;
+  pullRequests: PullRequest[];
   updated: number;
   error?: string;
 }

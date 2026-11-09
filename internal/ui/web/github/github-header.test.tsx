@@ -15,7 +15,7 @@ afterEach(() => {
 
 const github = (overrides: Partial<GitHubStatus> = {}): GitHubStatus => ({
   repo: 'kkestell/hypercube', url: 'https://github.com/kkestell/hypercube', account: 'kkestell', branch: 'main', upstream: 'origin/main',
-  ahead: 0, behind: 0, pullRequests: [], open: 0, updated: 0, ...overrides,
+  ahead: 0, behind: 0, pullRequests: [], updated: 0, ...overrides,
 });
 
 function dashboard(status?: GitHubStatus) {

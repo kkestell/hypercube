@@ -1,10 +1,11 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testPullRequest, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {nativeShortcut, type ShortcutActions} from '../app/shortcuts.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
-import {selectSession} from '../sessions/selection.ts';
+import type {GitHubAccount, GitHubStatus, PullRequest} from '../github/types.ts';
+import {selectSession, selectWorkspace} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {ConfirmDialog} from '../shared/confirm-dialog.tsx';
 import {createStore} from '../store.ts';
@@ -329,4 +330,51 @@ test('the parent chevron toggles children without selecting the parent', () => {
   expect(sessionRows(root)).toEqual(['a']);
   click(title);
   expect(store.get().selected).toBe('a');
+});
+
+const needsYou = testPullRequest({author: 'bob', requested: 'user'});
+const status = (pullRequests: PullRequest[]): GitHubStatus => ({
+  repo: 'o/r', url: 'https://github.com/o/r', account: 'me', branch: 'main', ahead: 0, behind: 0, pullRequests, updated: 1,
+});
+
+function withGitHub(pullRequests: PullRequest[], accounts: GitHubAccount[] = [{login: 'me', pullRequests, updated: 1}]) {
+  const store = createStore(testState({selected: '', workspaces: [testWorkspace({id: 'w', name: 'repo', github: status(pullRequests)})], accounts}));
+  const root = mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+  return {store, root};
+}
+
+test.each([
+  [1, '1 pull request needs you'],
+  [2, '2 pull requests need you'],
+])('a workspace shows how many pull requests need the account', (count, label) => {
+  const {root} = withGitHub(Array.from({length: count}, (_, i) => ({...needsYou, number: i + 1, url: `https://github.com/o/r/pull/${i + 1}`})));
+  const badge = find(find(root, '[data-workspace="w"]'), `[aria-label="${label}"]`);
+  expect(badge.textContent).toBe(String(count));
+  expect(badge.getAttribute('title')).toBe(label);
+});
+
+test('a workspace with nothing that needs the account shows no count', () => {
+  const {root} = withGitHub([testPullRequest({author: 'me', merge: 'BLOCKED'})]);
+  expect(find(root, '[data-workspace="w"]').textContent).not.toMatch(/need/);
+  expect(findAll(root, '[data-workspace="w"] [role=img]')).toHaveLength(0);
+});
+
+test('the Pull Requests button shows the home view and counts what needs the user', () => {
+  const {store, root} = withGitHub([needsYou]);
+  const button = findAll(root, 'button').find(b => b.textContent?.startsWith('Pull Requests'))!;
+  expect(button.textContent).toBe('Pull Requests1');
+  expect(button.getAttribute('aria-pressed')).toBe('false');
+  act(() => store.update(state => selectWorkspace(state, 'w')));
+  click(button);
+  expect(store.get().selected).toBeNull();
+  expect(button.getAttribute('aria-pressed')).toBe('true');
+});
+
+test('the Pull Requests button is absent without workspaces or accounts', () => {
+  for (const state of [testState({workspaces: [], accounts: [{login: 'me', pullRequests: [], updated: 1}]}),
+    testState({workspaces: [testWorkspace({id: 'w'})], accounts: []})]) {
+    const root = mount(createStore(state), <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+    expect(findAll(root, 'button').some(b => b.textContent?.startsWith('Pull Requests'))).toBe(false);
+    unmountAll();
+  }
 });

@@ -6,7 +6,7 @@ import {pullRequestFacts, pullRequestLook, trackingText} from './wording.ts';
 
 const status = (overrides: Partial<GitHubStatus> = {}): GitHubStatus => ({
   repo: 'o/r', url: 'https://github.com/o/r', account: 'a', branch: 'main', upstream: 'origin/main',
-  ahead: 0, behind: 0, pullRequests: [], open: 0, updated: 0, ...overrides,
+  ahead: 0, behind: 0, pullRequests: [], updated: 0, ...overrides,
 });
 const pr = testPullRequest;
 

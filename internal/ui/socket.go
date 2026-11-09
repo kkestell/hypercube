@@ -25,6 +25,7 @@ type stateMessage struct {
 	Workspaces []shownWorkspace  `json:"workspaces"`
 	Requests   []session.Request `json:"requests"`
 	Limits     []store.Limit     `json:"limits"`
+	Accounts   []github.Account  `json:"accounts"`
 }
 
 type transcriptMessage struct {
@@ -139,7 +140,7 @@ func (d *dataSocket) sendState() error {
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(stateMessage{"state", buildID(), workspaces, requests, limits})
+	data, err := json.Marshal(stateMessage{"state", buildID(), workspaces, requests, limits, d.gh.Accounts()})
 	if err != nil || bytes.Equal(data, d.sent) {
 		return err
 	}

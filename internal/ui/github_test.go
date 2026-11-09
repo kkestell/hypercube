@@ -111,6 +111,10 @@ func TestStateCarriesGitHubStatusAndAccountChoice(t *testing.T) {
 		t.Fatalf("github = %+v", got)
 	}
 
+	p.until("the accounts", func() bool {
+		return len(p.state.Accounts) == 2 && p.state.Accounts[0].Login == "alice" && p.state.Accounts[1].Login == "bob"
+	})
+
 	a.post("/workspace?action=github-account&id=w&account=carol", "", 400)
 	a.post("/workspace?action=github-account&id=nope&account=alice", "", 400)
 	a.post("/workspace?action=github-account&id=w&account=alice", "", 200)

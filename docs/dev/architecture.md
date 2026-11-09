@@ -180,10 +180,12 @@ ends its shell.
 The [GitHub watcher](../../internal/github/watcher.go) resolves each workspace's gh
 account. New agents and panel shells get that account's `GH_TOKEN` through
 their holder's environment, which the runtime's `Env` hook supplies; a running
-agent or shell keeps the token it started with. Each pass also fetches the
-workspace's remote and reads its open pull requests; the state snapshot carries
-the result as `workspaces[].github` and `sessions[].pullRequest`, and the
-watcher's `Changed` channel makes open sockets resend it.
+agent or shell keeps the token it started with. Each pass reads every signed-in
+account's open pull requests once, in all repositories, and fetches each
+workspace's remote. The state snapshot carries a workspace's share, its
+account's pull requests in its repository, as `workspaces[].github` and
+`sessions[].pullRequest`, and every account's pull requests as `accounts`. The
+watcher's `Changed` channel makes open sockets resend them.
 
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without
