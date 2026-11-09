@@ -16,9 +16,10 @@
   was committed as `3294d5aadfb3f7ae5285933f68928971183f0fa0`. Clean tree and
   empty index confirmed before edits.
 - Fixed Code base: `3294d5aadfb3f7ae5285933f68928971183f0fa0`.
-- Code head: `013219a047d6d0579c3fe35cebedd4db6d30d35b`.
+- Code head: `3beb54b94516c6ad46058387a7e2ed1022a88bd7`.
 - Implementation commits: `013219a047d6d0579c3fe35cebedd4db6d30d35b`
-  (`X-Stage: work`). Verified tree `37bbb028f8bdb87b21b5033adbe0d57f9d3ea338`
+  (`X-Stage: work`), `3beb54b94516c6ad46058387a7e2ed1022a88bd7` (`X-Stage: fix`,
+  see Repair 1). Verified tree `37bbb028f8bdb87b21b5033adbe0d57f9d3ea338`
   was written before the commit and is the committed tree; no hooks changed it.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
@@ -78,11 +79,9 @@ All paths are under `internal/ui/web/` unless stated.
   non-test writer. Screenshots were not run (out of scope); a throwaway Bun
   script built each `docs/screenshots/*.json` scene's views as the tool does and
   passed all eight through `readSavedViews` without error.
-- Not changed, for the parent: screenshot scenes in `docs/screenshots/` use the
-  retired `exec_command` and `apply_patch` tool names. They now render with
-  generic titles ("Exec command", "Apply patch") instead of "Run command" and
-  "Edit files" if screenshots are regenerated. Scene and screenshot edits are
-  outside this unit.
+- Screenshot scenes in `docs/screenshots/` used the retired `exec_command` and
+  `apply_patch` tool names. The parent assigned the fix to this unit; see
+  Repair 1.
 
 ## Verification
 
@@ -111,5 +110,31 @@ service restarts, pushes or merges.
 | Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
 | Plan review / `compat-plan-review` | unavailable | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
 | Implementation / `compat-impl` | child of `2f4c7990`; own ID not exposed | `1a622741-22c7-4c26-9705-f8832685efee` | Claude Code / `claude-opus-5-5` / not exposed |
+
+## Repair 1: current tool names in screenshot scenes
+
+Requested by coordinator `2f4c7990` before review. Code base stays
+`3294d5aadfb3f7ae5285933f68928971183f0fa0`. Fix commit and new Code head:
+`3beb54b94516c6ad46058387a7e2ed1022a88bd7` (tree
+`4c4105fa48ff925ac716f2b282434706f95b57e3`).
+
+- `docs/screenshots/{attention,file-preview,first-session,overview,suggestion,worktrees}.json`:
+  every retired call was in an OpenCode session. `exec_command` with `cmd`
+  became `shell` with `command`, and now renders "Run command". `apply_patch`
+  became `edit` with `path`, and now renders "Edit" with the file path. These
+  are the OpenCode V2 tool names and inputs (https://opencode.ai/v2/docs/tools).
+  "Edit files" no longer exists as a label, and the closest current title is
+  "Edit". OpenCode gives some GPT models a `patch` tool with `patchText`
+  instead of `edit`. `edit` was chosen because its `path` input gives the
+  same one-line path summary the scenes showed before. Scene data only; PNG
+  screenshots not regenerated.
+
+Verification, run against the fix commit's tree:
+
+| Command / inspection | Result |
+| --- | --- |
+| `bun /tmp/compat-impl-check/scene-titles.ts` (from `internal/ui`, not committed) | All 8 scenes parse and their views pass `readSavedViews`. No `exec_command`/`apply_patch` remain. All 16 changed calls get `toolTitle` "Run command" or "Edit" with the command or path as summary. |
+| `git grep "docs/screenshots"` over code, `Makefile`, `make`, `scripts` | Only `make screenshots` (`scripts/screenshots/main.js`) reads the scenes, so `make check` does not cover them and was not rerun. Its earlier pass on `013219a…` still covers all code, because the fix changed only scene JSON. |
+| `git diff --cached --check` | Passed; index held exactly the 6 scene files. |
 
 No blockers. Status stays implemented until independent `xreview work`.
