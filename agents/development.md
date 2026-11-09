@@ -78,6 +78,8 @@ Documentation procedures are in [documentation](documentation.md).
   utilities for layout. Keep component styling in the upstream shadcn source;
   do not add custom component CSS or theme overrides. Reserve red for errors;
   repeated status indicators use icons with accessible names and hover text.
+  Write interface text as plain phrases and sentences, with facts joined by
+  words or given their own lines rather than separator characters.
 - Provide semantic elements, labels, correct focus order and returned focus.
   Add accessibility handling where native semantics fall short. Each module
   owns one concern, named for its behavior; remove duplication and split files
