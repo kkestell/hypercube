@@ -9,6 +9,7 @@ import {useEffect, useRef} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {useStore} from '../store.ts';
 import {AttentionForm} from '../transcript/attention-form.tsx';
+import {TaskOffer} from '../transcript/task-offer.tsx';
 import {Markdown, MarkdownText} from '../transcript/markdown.tsx';
 import {closeCard} from './notifications.ts';
 import type {Card as CardData} from './types.ts';
@@ -79,7 +80,7 @@ export function NotificationCard({card}: {card: CardData}) {
       {card.kind !== 'error' && (
         <CardContent className="notification-card-details space-y-2 px-3">
           {card.kind === 'request' ? (
-            <>
+            card.item.offer ? <TaskOffer session={card.session.id} item={card.item} /> : <>
               <div className="notification-card-text"><Markdown text={card.item.text ?? ''} style="chat" /></div>
               <AttentionForm session={card.session.id} item={card.item} />
             </>

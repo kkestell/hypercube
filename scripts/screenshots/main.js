@@ -29,7 +29,7 @@ const sceneFiles = process.argv.slice(2).filter(arg => arg.endsWith('.json'));
 // The page's own default workbench, which a scene's workbench overrides.
 const defaultWorkbench = {
   sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
-  sizes: {sidebar: 400, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
+  sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}, sidebarTab: 'sessions',
   collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
 };
 
@@ -328,6 +328,10 @@ async function capture(scene, ids, backend, window, name) {
     await contents.executeJavaScript('document.fonts.ready.then(() => true)');
     await pageCondition(contents, `${errorCard} || document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`);
     await checkError();
+    if (scene.comparison === 'branch') {
+      await contents.executeJavaScript(`[...document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === 'Branch changes').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))`);
+      await pageCondition(contents, `document.querySelector('.git-panel')?.textContent.includes('Compared with')`);
+    }
     await until(() => nativeTheme.themeSource === theme && tabs.every(tab => requests.completed.includes(tab)) && requests.inflight.size === 0);
     await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     await checkError();

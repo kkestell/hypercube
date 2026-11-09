@@ -39,10 +39,11 @@ Outside Git, assign an existing directory instead; Hypercube cannot create
 worktrees there. Worktrees are not sandboxes: agents retain access to your
 local filesystem.
 
-![Worktree sessions showing branch status in the sidebar and a Merge button below the selected session's message box](images/worktrees-light.png)
+![Worktree sessions showing branch status in the sidebar and a Merge into main button in Git's Branch changes view](images/worktrees-light.png)
 
 The branch icons show which sessions have separate working copies. The
-selected top-level session has committed work ready for **Merge**.
+selected top-level session has committed work ready for **Merge into main**
+in **Git → Branch changes**.
 
 ### Supply ignored local files
 
@@ -91,7 +92,9 @@ Children can message their parent but cannot create children of their own.
 If you explicitly ask for delegation, the agent starts a child without asking
 again. For a separate task whose placement you have not chosen, Hypercube
 offers **New session** or **Do it here**. Choose where you want the work done,
-or dismiss the offer. Corrections to the current task need no placement question.
+or use the **X** in the card's top-right corner to dismiss it. Each button
+acts immediately; there is no separate Submit step. Corrections to the current
+task need no placement question.
 
 ![A task-placement question offering a new session or the current session](images/offer-light.png)
 
@@ -119,7 +122,7 @@ child cannot resume. Hypercube removes its managed worktree and branch only
 after the Git checks pass. An existing directory assigned to a child is left
 alone.
 
-For a **top-level** session in its own worktree, choose **Merge** beside the
-branch below the message box. It appears when there are unmerged commits and
+For a **top-level** session in its own worktree, open **Git → Branch changes**
+and choose **Merge into …**. It appears when there are unmerged commits and
 asks the agent to commit remaining work and merge into the original checkout.
 It is an instruction to the agent, not an automatic Git merge.

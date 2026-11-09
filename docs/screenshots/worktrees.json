@@ -287,10 +287,7 @@
     1
   ],
   "workbench": {
-    "sizes": {
-      "sidebar": 400,
-      "rightPanel": 300,
-      "panel": 240
-    }
-  }
+    "rightTab": "git"
+  },
+  "comparison": "branch"
 }

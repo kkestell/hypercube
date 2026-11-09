@@ -173,20 +173,22 @@ test('an attention request offers its choices, waits while sending, and opens ag
   expect(find(root, '.attention-item-answer').textContent).toBe('no');
 });
 
-test('a new task offer stays above the composer, sends one choice, and records it', () => {
+test.each(['New session', 'Do it here'])('a task offer sends %s immediately, prevents duplicate answers, and records it', choice => {
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}));
-  const {root, send} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}]);
+  const offer = {id: 'o', kind: 'attention' as const, offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']};
+  const {root, send} = setup([offer]);
   const pending = find(root, '.transcript-pending');
-  expect(findAll(pending, '[role="radio"][data-choice]').map(r => r.getAttribute('data-choice'))).toEqual(['New session', 'Do it here']);
-  choose(root, 'New session');
-  submit(root);
-  choose(root, 'Do it here');
-  submit(root);
+  expect(pending.querySelector('[role="radio"], .attention-form-submit')).toBeNull();
+  const buttons = findAll(pending, 'button');
+  expect(buttons.map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Dismiss task', 'New session', 'Do it here']);
+  act(() => buttons.find(button => button.textContent === choice)!.click());
+  expect(buttons.every(button => button.hasAttribute('disabled'))).toBe(true);
+  act(() => buttons.forEach(button => button.click()));
   expect(fetches).toHaveBeenCalledTimes(1);
-  expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'o', choice: 'New session'});
-  send([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here'], done: true, answer: 'New session', seq: 0}]);
+  expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'o', choice});
+  send([{...offer, done: true, answer: choice}]);
   expect(root.querySelector('.transcript-pending .attention-item')).toBeNull();
-  expect(find(root, '.attention-item').textContent).toContain('New session');
+  expect(find(root, '.attention-item').textContent).toContain(choice);
 });
 
 test('current and saved two-choice offers can be dismissed and leave the pending area', () => {
@@ -195,9 +197,7 @@ test('current and saved two-choice offers can be dismissed and leave the pending
     const offer = {id: 'o', kind: 'attention' as const, offer: true, text: 'Fix the parser', choices};
     const {root, send} = setup([offer]);
     const pending = find(root, '.transcript-pending');
-    expect(findAll(pending, '[role="radio"][data-choice]').map(r => r.getAttribute('data-choice'))).toEqual(['New session', 'Do it here', 'Dismiss']);
-    choose(root, 'Dismiss');
-    submit(root);
+    act(() => find(pending, '[aria-label="Dismiss task"]').click());
     const call = fetches.mock.calls.at(-1)!;
     expect(Object.fromEntries(new URL(String(call[0]), 'http://x/').searchParams)).toEqual({action: 'answer', id: 's', request: 'o', choice: 'Dismiss'});
     send([{...offer, done: true, answer: 'Dismiss'}]);
@@ -208,8 +208,23 @@ test('current and saved two-choice offers can be dismissed and leave the pending
 });
 
 test('an offer in an archived transcript cannot be answered', () => {
-  const {root} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
-  expect(findAll(root, '[role="radio"]').every(row => row.hasAttribute('disabled'))).toBe(true);
+  const fetches = spyOn(globalThis, 'fetch');
+  const {root} = setup([{id: 'o', kind: 'attention', offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
+  const buttons = findAll(root, '.attention-item button');
+  expect(buttons).toHaveLength(3);
+  expect(buttons.every(button => button.hasAttribute('disabled'))).toBe(true);
+  act(() => buttons.forEach(button => button.click()));
+  expect(fetches).not.toHaveBeenCalled();
+});
+
+test('a refused task placement can be retried', async () => {
+  const fetches = stubFetch(() => new Response('Could not answer', {status: 409}));
+  const {root} = setup([{id: 'o', kind: 'attention', offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']}]);
+  const buttons = findAll(root, '.attention-item button');
+  await act(async () => buttons[2].click());
+  expect(buttons.every(button => !button.hasAttribute('disabled'))).toBe(true);
+  await act(async () => buttons[2].click());
+  expect(fetches).toHaveBeenCalledTimes(2);
 });
 
 test('an approval request offers to always allow its tool in either scope', async () => {

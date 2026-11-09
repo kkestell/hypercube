@@ -59,6 +59,7 @@ Files, and Settings. On Linux, terminal copy/paste uses **Ctrl+Shift+C** /
 | Gray dot | Idle. |
 | Dimmed outline | Ended. |
 | Hollow dot | Child session; its state is shown with the same conventions. |
+| Dimmed row | Agent is not running, or the session has ended. Opening a parked session resumes its conversation. |
 
 Click a workspace heading to open its dashboard of recent sessions, including
 archived sessions. The separate chevron collapses or expands its sidebar list.
@@ -100,13 +101,19 @@ within the window. After reset, the last reading is dimmed and marked
 | HTML preview | Relative resources load; scripts are disabled. |
 | HTML/SVG source | Available for supported text encodings within the text limit. |
 | Media | Images, audio, video, and PDFs open in the app, without the text limit. Some formats and codecs may not play. |
-| Git panel | Uncommitted files within the current view’s directory, with status colors and right-aligned added/removed line counts when available. Select a row or its counts to open its diff. Files retains status colors without counts. |
+| Git → Uncommitted | Staged, unstaged, and untracked changes within the current view’s directory, compared with the current commit. |
+| Git → Branch changes | Managed worktree sessions only: net changes since the merge base with the original checkout's current branch, including uncommitted edits. Top-level worktree sessions with unmerged commits offer **Merge into …**. |
 | Quick Open and project search | In Git: tracked and untracked files, excluding ignored and hidden paths. |
 | Project text search | Case-insensitive plain text; skips files over 256 KiB; stops at 1,000 matching lines. |
 
 On a workspace dashboard, file tools and the terminal use the workspace’s main
 checkout and its currently checked-out branch. Sessions use their own working
 directories.
+
+Git rows show status colors and right-aligned added/removed line counts when
+available. Select a row or its counts to open its diff. Files retains status
+colors for uncommitted changes, without counts. The bar above chat shows the
+working directory and current branch; click the branch to open Git.
 
 ## Saved layouts
 

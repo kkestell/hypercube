@@ -129,6 +129,5 @@
       ]
     }
   ],
-  "select": [1, 1],
-  "workbench": {"sizes": {"sidebar": 400, "rightPanel": 300, "panel": 240}}
+  "select": [1, 1]
 }

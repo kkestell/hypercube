@@ -27,7 +27,7 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
     : '[--workspace-surface:var(--sidebar)] hover:[--workspace-surface:var(--accent)] dark:hover:[--workspace-surface:color-mix(in_srgb,var(--accent)_50%,var(--sidebar))]';
   const headingId = `workspace-section-${workspace.id}`;
   return <Collapsible open={open} onOpenChange={setOpen} asChild>
-    <section className={`workspace-section ${workspace.sessions.length ? 'mb-2 last:mb-0' : ''}`} data-workspace={workspace.id} aria-labelledby={headingId}>
+    <section className={`workspace-section ${open && workspace.sessions.length ? 'mb-2 last:mb-0' : ''}`} data-workspace={workspace.id} aria-labelledby={headingId}>
       <div className={`workspace-section-header group/workspace relative flex items-center rounded-md bg-[var(--workspace-surface)] ${surface}`} title={workspace.path} onClick={e => {
         if (e.target instanceof Element && e.target.closest('button')) return;
         select();

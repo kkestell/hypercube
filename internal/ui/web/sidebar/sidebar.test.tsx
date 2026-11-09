@@ -90,6 +90,18 @@ test('workspace row background selects its dashboard without changing the action
   expect(document.querySelector('[role=menu]')).not.toBeNull();
 });
 
+test('only an expanded workspace with sessions adds bottom spacing', () => {
+  const {store, root} = setup([session('a')]);
+  const section = find(root, '[data-workspace="w"]');
+  expect(section.classList.contains('mb-2')).toBe(true);
+  click(find(section, '[aria-label="Collapse repo"]'));
+  expect(section.classList.contains('mb-2')).toBe(false);
+  click(find(section, '[aria-label="Expand repo"]'));
+  expect(section.classList.contains('mb-2')).toBe(true);
+  act(() => store.update(state => ({...state, workspaces: state.workspaces.map(workspace => ({...workspace, sessions: []}))})));
+  expect(section.classList.contains('mb-2')).toBe(false);
+});
+
 test('Enter saves a changed title, Escape cancels, and leaving the field saves', () => {
   const {root, posted} = setup([session('a')]);
   let field = rename(root, 'a');

@@ -63,6 +63,8 @@ Each scene declares:
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
   to expand in a saved turn. `select` chooses the session; `size` sets window
   dimensions in points.
+- `workbench.rightTab` chooses Files or Git (`files` or `git`);
+  `comparison: "branch"` selects Git's Branch changes view for a worktree.
 
 ### Capture requirements
 
@@ -75,8 +77,8 @@ capture that differs from the rendered page.
 
 Open every generated image and check theme, content, toolbar layout, and native
 window buttons.
-Keep toolbars fully visible and session labels readable; do not squeeze the
-sidebar to fit more content. Use several sessions across workspaces, a
+Use the app's default panel sizes. Keep toolbars fully visible and session
+labels readable. Use several sessions across workspaces, a
 transcript filling its column, and the Files panel open. Commit new captures
 with their scene changes.
 

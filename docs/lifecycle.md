@@ -30,7 +30,8 @@ It does not mean every process survives a machine shutdown.
 Hypercube starts a session's agent when you open it, prompt it, or a message
 reaches it, including a child's report. After 15 minutes idle while nobody
 views that session, the agent ends. Its conversation, queued messages, branch,
-and worktree remain. Each session follows this lifecycle independently.
+and worktree remain. This is a **parked** session, shown dimmed in the sidebar,
+not an ended session. Each session follows this lifecycle independently.
 
 When used again, the agent resumes its saved native conversation. If a
 harness cannot resume that history, Hypercube reports the failure rather than

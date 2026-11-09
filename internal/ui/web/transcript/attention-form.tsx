@@ -38,8 +38,7 @@ export function AttentionForm({session, item, ended}: AttentionFormProps) {
   const reply = useRef<HTMLInputElement>(null);
   const key = `${session}/${item.id}`;
   const {text, choices = []} = draftOf(state, key);
-  // Older saved offers have only the two placement choices.
-  const options = item.offer && !item.choices?.includes('Dismiss') ? [...(item.choices ?? []), 'Dismiss'] : item.choices ?? [];
+  const options = item.choices ?? [];
   const selected = options.filter(choice => choices.includes(choice));
   const ready = selected.length > 0 || !!text.trim();
   const label = options.length ? 'Other response' : 'Your response';

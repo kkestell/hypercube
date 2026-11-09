@@ -74,6 +74,9 @@ those in other workspaces. A child can message only its parent and cannot
 create children. Ended sessions cannot receive agent messages.
 
 Explicit messages arrive during work and appear in both conversations.
+Messaging a parked session wakes its agent. Agents can check whether a session
+is parked before messaging it and are instructed not to wake it without a
+serious reason or your explicit request.
 Automatic completion reports wait until the parent is idle and no child is
 working, then arrive together. A child waiting for your answer, a failed
 launch, or an ended child does not hold up those reports.

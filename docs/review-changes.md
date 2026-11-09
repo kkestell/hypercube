@@ -37,13 +37,21 @@ on the right for opening another file.
 ## Inspect a diff
 
 1. Open **Git** in the right panel.
-2. Select a changed file or its right-aligned added and removed line counts
+2. Choose the comparison:
+   - **Uncommitted** shows staged, unstaged, and untracked changes against
+     the current commit.
+   - **Branch changes**, available for managed worktree sessions, shows net
+     changes since the common ancestor of the session's branch and the
+     original checkout's current branch. It includes committed work and
+     uncommitted edits, not just the latest commit. The target branch is
+     named above the file list.
+3. Select a changed file or its right-aligned added and removed line counts
    to read its unified diff.
-3. To review committed changes, use Git or ask the agent to inspect the
-   relevant commits and their diffs.
 
-Git lists uncommitted changes within the current view's directory, not the
-whole containing repository. Paths are relative to that directory. Status
+To inspect individual commits or other comparisons, use Git or ask the agent.
+
+Git lists changes within the current view's directory, not the whole
+containing repository. Paths are relative to that directory. Status
 colors also remain visible in **Files**; line counts appear only in **Git**
 and are omitted when unavailable, such as for binary files.
 
@@ -55,6 +63,11 @@ This status refreshes when a session in that workspace finishes a turn.
 
 Added lines are green and removed lines are red. In this example, the diff
 and conversation occupy separate panes while the file tree shows other edits.
+
+The bar above chat shows the working directory and current Git branch.
+Click the branch name to open the Git panel. For top-level worktree sessions
+with unmerged commits, **Git → Branch changes → Merge into …** asks the agent
+to integrate the work; it does not run a merge automatically.
 
 Use **Command+F** on macOS or **Ctrl+F** on Linux to find text in an open
 file or diff. Move between diff changes with **Option+F5** /

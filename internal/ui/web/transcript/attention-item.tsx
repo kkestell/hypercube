@@ -5,14 +5,17 @@ import {Icon} from '../shared/icon.tsx';
 import {AttentionForm} from './attention-form.tsx';
 import {Disclosure} from './disclosure.tsx';
 import {Markdown} from './markdown.tsx';
+import {TaskOffer} from './task-offer.tsx';
 import type {RowControls} from './transcript-item.tsx';
 import type {AttentionItem as Attention} from './types.ts';
 
 export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {item: Attention}) {
   return (
     <div className="attention-item attention-item-open space-y-3">
-      <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" /></div>
-      <AttentionForm session={session.id} item={item} ended={session.ended} />
+      {item.offer ? <TaskOffer session={session.id} item={item} ended={session.ended} /> : <>
+        <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" /></div>
+        <AttentionForm session={session.id} item={item} ended={session.ended} />
+      </>}
     </div>
   );
 }
