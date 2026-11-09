@@ -143,19 +143,41 @@ several are signed in, the dashboard shows a chooser for the account instead; th
 started afterward. When an update fails, the dashboard says why and shows the
 time of the data it still has.
 
-Below that, the dashboard lists the workspace's open pull requests, up to 50,
-most recently updated first. Each row shows the pull request's icon, its number
-and title as a link to GitHub, its author, its review and checks, and the
-actions that apply: **Merge** for any pull request that is not a draft,
-**Address review** when changes were requested, and **Fix checks** when its
-checks are failing. An action opens a list of the workspace's sessions that
-have not ended, with the sessions on that pull request first. Choose a session
-to send it the instruction; its agent does the work with `gh` and the
-workspace's account. Choose **New Session** to open a new session with the
-instruction ready to send. When more pull requests are open than the list
-shows, a link opens the rest on GitHub.
+Below that, the dashboard lists the open pull requests that need the account,
+under **Your move**, and the ones it is waiting on, under **Waiting on
+others**. Each row shows the pull request's icon, its number and title as a link
+to GitHub, why it is listed, and its author when someone else wrote it.
 
-A session whose branch has an open pull request shows a pull request icon at the
+**Your move** lists, in this order:
+
+- Pull requests whose review was requested from the account.
+- Pull requests where the account requested changes and the author has since
+  pushed or commented.
+- Pull requests with replies to the account's review comments.
+- The account's own pull requests that have a failed required check, merge
+  conflicts, a base branch they must catch up with before merging, requested
+  changes not yet answered by a push, or unanswered comments. A comment is
+  unanswered when it is in an unresolved review thread and someone else spoke
+  last, or when it is the latest comment in the conversation and is newer than
+  both the account's last reply and the last commit.
+- The account's own pull requests that are ready to merge.
+- Pull requests whose review was requested from one of the account's teams.
+
+**Waiting on others** lists the account's other pull requests, such as drafts
+and ones waiting for review or checks, and pull requests where the account
+requested changes and the author has not responded. A link below the lists opens
+the remaining open pull requests on GitHub.
+
+The account's own pull requests show the actions that apply: **Merge** when
+GitHub allows merging, **Address review** when changes were requested or
+comments are unanswered, and **Fix checks** when its checks are failing. An
+action opens a list of the workspace's sessions that have not ended, with the
+sessions on that pull request first. Choose a session to send it the
+instruction; its agent does the work with `gh` and the workspace's account.
+Choose **New Session** to open a new session with the instruction ready to
+send.
+
+A session whose branch has an open pull request involving the account shows a pull request icon at the
 right edge of its row. Hover over the icon for the pull request's number, title,
 review, and checks.
 
