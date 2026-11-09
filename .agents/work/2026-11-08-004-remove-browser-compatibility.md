@@ -16,10 +16,11 @@
   was committed as `3294d5aadfb3f7ae5285933f68928971183f0fa0`. Clean tree and
   empty index confirmed before edits.
 - Fixed Code base: `3294d5aadfb3f7ae5285933f68928971183f0fa0`.
-- Code head: `3beb54b94516c6ad46058387a7e2ed1022a88bd7`.
+- Code head: `d8f1a39dd44a2e02e92506061e3f0f0773bd221e`.
 - Implementation commits: `013219a047d6d0579c3fe35cebedd4db6d30d35b`
   (`X-Stage: work`), `3beb54b94516c6ad46058387a7e2ed1022a88bd7` (`X-Stage: fix`,
-  see Repair 1). Verified tree `37bbb028f8bdb87b21b5033adbe0d57f9d3ea338`
+  see Repair 1), `d8f1a39dd44a2e02e92506061e3f0f0773bd221e` (`X-Stage: fix`,
+  see Repair 2). Verified tree `37bbb028f8bdb87b21b5033adbe0d57f9d3ea338`
   was written before the commit and is the committed tree; no hooks changed it.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
@@ -136,5 +137,39 @@ Verification, run against the fix commit's tree:
 | `bun /tmp/compat-impl-check/scene-titles.ts` (from `internal/ui`, not committed) | All 8 scenes parse and their views pass `readSavedViews`. No `exec_command`/`apply_patch` remain. All 16 changed calls get `toolTitle` "Run command" or "Edit" with the command or path as summary. |
 | `git grep "docs/screenshots"` over code, `Makefile`, `make`, `scripts` | Only `make screenshots` (`scripts/screenshots/main.js`) reads the scenes, so `make check` does not cover them and was not rerun. Its earlier pass on `013219a…` still covers all code, because the fix changed only scene JSON. |
 | `git diff --cached --check` | Passed; index held exactly the 6 scene files. |
+
+## Repair 2: retired `cmd` summary key
+
+Addresses finding F1 of Round 1 in
+`.agents/reviews/work/2026-11-08-004-remove-browser-compatibility.md`
+(review commit `f544ce62c399dd6267a1d0e743156505f382a86d`), accepted by
+coordinator `2f4c7990`. Code base stays
+`3294d5aadfb3f7ae5285933f68928971183f0fa0`. Fix commit and new Code head:
+`d8f1a39dd44a2e02e92506061e3f0f0773bd221e` (tree
+`240c94bc10e94148e9397d7b6cabf140ace0b419`).
+
+- `internal/ui/web/transcript/transcript-tree.ts`: removed `'cmd'` from
+  `summaryKeys`; only the retired Codex `exec_command` used it. No test used a
+  `cmd` input.
+- `docs/screenshots/details.json` `c1` (Claude `Read`): `cmd` → `file_path`.
+- `docs/screenshots/suggestion.json` `c1`, `c3` (Pi `read`) and `c4` (Pi
+  `edit`): `cmd` → `path`. The two `read` values drop their `cat ` prefix,
+  leaving the file path.
+
+Verification, run against the fix commit's tree (macOS/arm64, Bun `1.4.2`):
+
+| Command / inspection | Result |
+| --- | --- |
+| `bun test web/transcript/transcript-tree.test.ts` (in `internal/ui`) | 27 pass, 0 fail. |
+| `bunx tsc -p .` (in `internal/ui`) | Clean. |
+| `bun /tmp/compat-impl-check/scene-titles.ts` | All 8 scenes parse and pass `readSavedViews`. |
+| `bun /tmp/compat-impl-check/cmd-titles.ts` (not committed) | The 4 changed calls render "Read \| build.go", "Read \| content/guide/getting-started.md", "Read \| content/guide/sync.md", "Edit \| content/guide/getting-started.md". |
+| `git grep '"cmd"' -- docs/screenshots` | No matches. |
+| `git diff --cached --check` | Passed; index held exactly the 3 changed files. |
+
+`make check` was not rerun. This fix changes one array literal in
+`transcript-tree.ts`, which the focused tests and typecheck cover, plus scene
+JSON that no check reads. The earlier `make check` pass on `013219a…` covers
+the rest of the tree.
 
 No blockers. Status stays implemented until independent `xreview work`.
