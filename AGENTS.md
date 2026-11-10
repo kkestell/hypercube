@@ -17,7 +17,8 @@ browser shows each agent's transcript.
 
 For code changes, plans, reviews, and validation, read
 [development and releases](docs/dev/development.md) for the code layout, code
-style, workflow, compatibility, and release rules. Before changing guides or
+style, workflow, compatibility, and release rules, and
+[testing](docs/dev/testing.md) for running and writing tests. Before changing guides or
 screenshots, read
 [documentation](docs/dev/documentation.md). The system design is in
 [architecture](docs/dev/architecture.md), and [README.md](README.md) indexes user

@@ -25,7 +25,7 @@ needs `rsvg-convert` and the
 
    On Linux, use `make dev` and open `http://localhost:4281/` in a browser.
    The `dev-app` script uses the macOS bundle layout; for Linux desktop
-   validation, use the [Linux test environment](docs/dev/development.md#test-on-linux).
+   validation, use the [Linux test environment](docs/dev/testing.md#test-on-linux).
 
 3. The development copy has separate configuration and state, using a sample
    repository at `~/projects/hypercube-dev/repo`. It does not replace your
@@ -47,7 +47,7 @@ a second one. Internal development controls are in the
 | Find the relevant package or follow project conventions | [Development reference](docs/dev/development.md) |
 | Understand backend, plugins, and process ownership | [Architecture](docs/dev/architecture.md) |
 | Change guides or screenshots | [Documentation maintenance](docs/dev/documentation.md) |
-| Test packaging and desktop behavior on Linux | [Linux testing](docs/dev/development.md#test-on-linux) |
+| Run and write tests, or test packaging and desktop behavior on Linux | [Testing](docs/dev/testing.md) |
 | Package an official beta | [Release procedure](docs/dev/development.md#prepare-an-official-beta) |
 | Work as a coding agent | [AGENTS.md](AGENTS.md) |
 
@@ -60,8 +60,8 @@ a second one. Internal development controls are in the
 - **Raw Go commands:** run `make ui` before `go build`, `go vet`, or `go test`;
   Go embeds the generated browser interface.
 
-For focused checks and platform-specific requirements, use the
-[validation reference](docs/dev/development.md#validation).
+For focused checks, test speed, and platform-specific requirements, use the
+[testing reference](docs/dev/testing.md).
 
 ## Install your checkout
 

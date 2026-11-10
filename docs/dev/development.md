@@ -3,9 +3,10 @@
 Start with [AGENTS.md](../../AGENTS.md) for project scope and document routing.
 For source setup, local builds, and installing a checkout, use
 [Contributing](../../CONTRIBUTING.md). This reference covers project conventions,
-workflow, testing, and releases. App users should start with the
+workflow, and releases. App users should start with the
 [user documentation](../../README.md#start-here).
-Documentation procedures are in [documentation](documentation.md).
+Documentation procedures are in [documentation](documentation.md), and running
+and writing tests in [testing](testing.md).
 
 ## Code
 
@@ -56,15 +57,6 @@ Documentation procedures are in [documentation](documentation.md).
   compare with `errors.Is` or `errors.As`, never text. No normal-path panics.
   Use short names in short scopes and comments that explain why. Delete dead
   code and just-in-case flags; use no fixed sleeps or timing guesses.
-- Go tests cover observable behavior through public entry points. Use tables
-  for repeated cases, `t.Helper`, `t.TempDir`, and `t.Cleanup`; wait on conditions
-  and pass under `-race`.
-- Choose test responsibilities by consequence and maintenance cost. Existing
-  assertions are not requirements: remove low-value tests and their machinery
-  without automatically replacing their coverage. Prefer one suitable boundary
-  over repeating behavior at every layer. Stand-ins must earn their cost through
-  the behavior they protect. Assert observable results; specify styling, markup,
-  or private state only when that detail is the behavior being protected.
 - React components are small functions of props and the store. Derive what
   can be computed. State has one owner and changes through pure functions.
   No mutable module state outside the store except component-owned handles;
@@ -96,7 +88,7 @@ Documentation procedures are in [documentation](documentation.md).
 - Provide semantic elements, labels, correct focus order and returned focus.
   Add accessibility handling where native semantics fall short. Each module
   owns one concern, named for its behavior; remove duplication and split files
-  that are hard to follow. Browser tests check what users see and do.
+  that are hard to follow.
 - Keep generated files apart from their source, never edit them by hand, and
   have `make check` fail when they are stale.
 
@@ -172,24 +164,18 @@ main** in the Git panel.
 
 ## Validation
 
-- `make check` runs every check. Run it before committing code.
+Running checks, test isolation and speed, writing tests, and the Linux test
+environment are in [testing](testing.md).
+
 - App packaging is separate from checks. When a missing or changed icon needs
   `sips` SVG conversion, request execution outside the Codex sandbox directly:
   that conversion fails inside it with error 13. Do not retry it there.
-- Use focused `go test -run`, or `bunx tsc -p .` and `bun test` in
-  `internal/ui`, while working.
-- After changing only docs or comments, inspect the diff; run nothing.
-- Tests use isolated state, harness stand-ins, and their own shells. Never stop
-  the user's workspaces.
 - Use `make dev` for a live smoke test, and clean up what you start.
 - One `make dev` server serves the checkout and rebuilds on changes. Reuse it;
   start another only on a separate port and state folder when two checkouts
   must be compared. It serves the browser view without the desktop app; open
   its URL in the user's browser with `open`. Use `make dev-app` only to test
   desktop app behavior.
-- Check a change to the browser view with tests and the build, without
-  screenshots. The user judges how it looks.
-- Test Linux behavior with `scripts/linux/run`.
 - `make install-service` loads a merged change into the installed app. Run it
   from the original checkout. Offer to run it after finishing a change, and run
   it whenever the user asks.
@@ -199,58 +185,6 @@ main** in the Git panel.
   an active session only after that session restarts. When a requested change
   needs that, warn the user clearly before starting the work and again when
   offering to install it.
-
-## Test on Linux
-
-`scripts/linux/run [command]` runs the command in a new container that boots
-systemd, then removes the container. `LINUX_DISTRO` chooses the distribution:
-`debian` (Debian 13, the default), `ubuntu` (26.04), `fedora` (45), or `arch`.
-Arch publishes AMD64 images only, so it runs in CI, not on Apple Silicon. The
-default command is `make check`; `make linux-check` runs it. `make linux-test`
-runs the Linux tests: `scripts/linux/test-bundle` builds the bundle and checks
-its layout, its executables, and the backend started from it, and
-`scripts/linux/test-install` installs the bundle into the test user's home,
-runs the service under bash, zsh, and fish, keeps a scripted agent running
-across a service restart, and checks `make uninstall`.
-`scripts/linux/test-desktop` drives the installed desktop app against the
-installed service with Playwright: the window frame and menus, each waiting
-page, setting up the service, a notification and the launcher badge, the open
-actions, the shortcuts and Ctrl labels, the panel terminal's keys (pressed with
-`xdotool`), closing the window, and reinstalling and uninstalling while the app
-runs. It starts openbox, the dunst notification server, a stand-in file
-manager, and stand-ins for `code` and `xdg-open`. `scripts/linux/test-release`
-runs last: it packages a tagged copy of the checkout with `scripts/release`,
-installs from the extracted tarball, and checks the version, the service, and
-removal. Screenshots and logs land in `bin/linux-test/<distro>/`, copied out of
-the container when the command ends.
-`make linux-test-all` runs the Linux tests for every distribution that has an
-image for the host's architecture, and CI runs them for all four on AMD64. The
-container runs natively on Apple Silicon and needs Docker.
-
-The command runs as the user `tester`, which has a systemd user manager, under
-Xvfb. The image has Go and Bun at the versions the repository declares,
-a C compiler, `rsvg-convert`, SQLite, the Electron runtime libraries,
-Node, and Playwright. It has no harness CLIs, so tests that start sessions use
-the scripted plugin.
-
-The container gets a copy of the tracked and untracked files that Git does not
-ignore, without `.git`, so builds report version `devel` and nothing in the
-checkout changes. The volume `hypercube-linux-cache` keeps Go and Bun
-downloads and builds across runs; `docker volume rm hypercube-linux-cache`
-resets it. The first run builds the image and downloads dependencies, and later
-runs take seconds. Each distribution has its own image,
-`hypercube-linux-<distro>`, built from `scripts/linux/Dockerfile`;
-`scripts/linux/packages` installs that distribution's packages. New Linux
-tests go in `scripts/linux/`.
-
-`scripts/linux/test-apparmor` checks the installer's AppArmor profile on a real
-Ubuntu 24.04 kernel, which restricts user namespaces; the container's kernel
-does not. It builds the bundle in the container, then boots the Lima VM
-`hypercube-apparmor` natively (`vmType: vz`) and checks that the desktop app's
-sandbox fails without the profile, works with it, and that uninstalling removes
-it. It needs an Apple Silicon Mac with Docker and Lima, downloads an Ubuntu image
-on its first run, and is not part of `make linux-test`. It deletes the VM when it
-ends.
 
 ## Backwards compatibility
 
