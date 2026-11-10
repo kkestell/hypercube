@@ -199,7 +199,7 @@ func TestGeneratedTitle(t *testing.T) {
 }
 
 func TestTitlePrompt(t *testing.T) {
-	if got := TitlePrompt("Fix the parser"); !strings.HasSuffix(got, "First message:\nFix the parser") || !strings.Contains(got, "48 characters") {
+	if got := TitlePrompt("Fix the parser"); !strings.HasPrefix(got, "<message>\nFix the parser\n</message>") || !strings.Contains(got, "48 characters") {
 		t.Errorf("prompt = %q", got)
 	}
 	long := TitlePrompt(strings.Repeat("é", 5000))

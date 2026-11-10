@@ -40,7 +40,7 @@ func TitlePrompt(message string) string {
 	if chars := []rune(message); len(chars) > maxTitlePrompt {
 		message = string(chars[:maxTitlePrompt])
 	}
-	return "Write a title for a coding session from its first message below. Use at most 48 characters, sentence case, no quotes, and no ending punctuation. Reply with only the title.\n\nFirst message:\n" + message
+	return "<message>\n" + message + "\n</message>\n\nWrite a title for the coding session that began with the message above. Use at most 48 characters, sentence case, no quotes, and no ending punctuation. Reply with the title alone."
 }
 
 // GeneratedTitle makes a session title from a utility model's answer: its
