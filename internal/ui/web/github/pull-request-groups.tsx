@@ -26,7 +26,7 @@ export function PullRequestGroups({turns, row}: {turns: AccountTurn[]; row: (tur
       const open = !workbench.collapsedPullRequestGroups[group.id];
       return <Collapsible key={group.id} open={open} onOpenChange={value => store.update(s => expandPullRequestGroup(s, group.id, value))} className="mb-6">
         <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="mb-3 w-full justify-start">
+          <Button type="button" variant="ghost" size="sm" className="-mx-2 mb-3 flex justify-start px-2 has-[>svg]:px-2">
             <span>{group.title}</span>
             <span className="text-muted-foreground">{group.turns.length}</span>
             <Chevron open={open} />
