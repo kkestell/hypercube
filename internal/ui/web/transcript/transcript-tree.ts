@@ -15,8 +15,9 @@
 
 import type {AttentionItem, ProposalItem, ErrorItem, Item, ReasoningItem, StateItem, TextItem, ToolItem, Transcript, UserItem} from './types.ts';
 
-// Tool input fields, in the order that best says what a call does.
-const summaryKeys = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
+// Tool input fields, in the order that best says what a call does. A search's
+// pattern says more than the directory it searches.
+const summaryKeys = ['command', 'file_path', 'notebook_path', 'pattern', 'path', 'filePath', 'query', 'url', 'skill', 'subject', 'description', 'prompt', 'code'];
 
 // toolSummary is the one line that tells a tool call apart: the input's most
 // telling text, shortened.
@@ -45,12 +46,29 @@ const hypercubeTools = new Map<string, [name: string, field?: string]>([
   ['open_file', ['Open file', 'path']],
 ]);
 
-// Native calls have no MCP server. Other native tools are titled from their
-// names.
+// Native calls have no MCP server. These labels replace names that do not read
+// as plain phrases, matched without case so that Claude Code's Bash and Pi's
+// bash read alike. Other native tools are titled from their names.
 const nativeTools = new Map([
-  ['shell', 'Run command'],
   ['bash', 'Run command'],
+  ['shell', 'Run command'],
+  ['powershell', 'Run command'],
+  ['agent', 'Run agent'],
+  ['task', 'Run agent'],
   ['subagent', 'Run agent'],
+  ['codemode', 'Run code'],
+  ['execute', 'Run code'],
+  ['ls', 'List files'],
+  ['notebookedit', 'Edit notebook'],
+  ['webfetch', 'Web fetch'],
+  ['websearch', 'Web search'],
+  ['todowrite', 'Update todos'],
+  ['experimental_image_generate', 'Generate image'],
+  ['listmcpresourcestool', 'List MCP resources'],
+  ['opencode_list_mcp_resources', 'List MCP resources'],
+  ['readmcpresourcetool', 'Read MCP resource'],
+  ['opencode_read_mcp_resource', 'Read MCP resource'],
+  ['readmcpresourcedirtool', 'Read MCP resource directory'],
 ]);
 
 // toolTitle is a tool call's name and summary.
@@ -63,7 +81,7 @@ export function toolTitle({server, tool, input}: ToolItem): [name: string, summa
   }
   if (server) return [server + ' - ' + tool, toolSummary(input)];
   const words = (tool ?? 'tool').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ');
-  const name = nativeTools.get(tool ?? '') ?? words.charAt(0).toUpperCase() + words.slice(1);
+  const name = nativeTools.get(tool?.toLowerCase() ?? '') ?? words.charAt(0).toUpperCase() + words.slice(1);
   return [name, toolSummary(input)];
 }
 
