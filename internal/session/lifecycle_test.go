@@ -247,8 +247,12 @@ func TestUnarchive(t *testing.T) {
 	if err := f.rt.Unarchive(s.ID); err == nil || !strings.Contains(err.Error(), "not archived") {
 		t.Fatalf("unarchived an active session: %v", err)
 	}
+	before := time.Now().UnixMilli()
 	if err := f.rt.Archive(s.ID); err != nil {
 		t.Fatal(err)
+	}
+	if archived := f.storedSession(s.ID).Archived; archived < before || archived > time.Now().UnixMilli() {
+		t.Fatalf("archived at %d, want the time of archiving", archived)
 	}
 	if err := f.rt.Unarchive(child.ID); err == nil || !strings.Contains(err.Error(), "top-level") {
 		t.Fatalf("unarchived a child: %v", err)
@@ -263,7 +267,7 @@ func TestUnarchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := f.storedSession(s.ID)
-	if got.Ended || got.Base != head || got.Tip != "" || f.awake(s.ID) || !f.storedSession(child.ID).Ended {
+	if got.Ended || got.Archived != 0 || got.Base != head || got.Tip != "" || f.awake(s.ID) || !f.storedSession(child.ID).Ended {
 		t.Fatalf("unarchived session = %+v", got)
 	}
 	if b, err := workspace.Branch(s.Dir); err != nil || b != s.Branch {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
@@ -82,7 +83,7 @@ func (r *Runtime) Unarchive(id string) error {
 		if err != nil {
 			return err
 		}
-		s.Ended, s.Base, s.Tip = false, base, ""
+		s.Ended, s.Archived, s.Base, s.Tip = false, 0, base, ""
 		return tx.SaveSession(s)
 	})
 	if err != nil {
@@ -320,7 +321,7 @@ func recordEnded(tx *write, id string) error {
 	if err != nil {
 		return err
 	}
-	s.Ended, s.Attention = true, false
+	s.Ended, s.Archived, s.Attention = true, time.Now().UnixMilli(), false
 	if err := tx.SaveSession(s); err != nil {
 		return err
 	}

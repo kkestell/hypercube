@@ -50,6 +50,9 @@ export interface Session {
   title: string;
   ready: boolean;
   ended: boolean;
+  // archived is when an ended session was archived, in Unix milliseconds,
+  // when known.
+  archived?: number;
   unseen: boolean;
   reply?: string;
   replySeq?: number;

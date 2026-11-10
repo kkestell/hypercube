@@ -28,6 +28,7 @@ type shownSession struct {
 	Title     string        `json:"title"`
 	Ready     bool          `json:"ready"`
 	Ended     bool          `json:"ended"`
+	Archived  int64         `json:"archived,omitempty"`
 	Unseen    bool          `json:"unseen"`
 	Reply     string        `json:"reply,omitempty"`
 	ReplySeq  int64         `json:"replySeq,omitempty"`
@@ -107,7 +108,7 @@ func within(path, dir string) bool {
 
 // show shows one session. An unseen idle session carries its last reply.
 func show(tx *store.Tx, s store.Session) (shownSession, error) {
-	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Ended: s.Ended,
+	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Ended: s.Ended, Archived: s.Archived,
 		Ready: !s.Ended && s.Ready != 0, Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
 		Activity: s.Activity, Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 	if s.Unseen && s.Activity == store.Idle {
