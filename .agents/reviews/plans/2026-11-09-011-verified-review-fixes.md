@@ -167,4 +167,35 @@ The parent can verify these edits directly.
   `node(id:)` paging form were checked against GitHub's documented API
   model, not against the live API. The keyboard-collapse path in
   react-resizable-panels 4.18.0 was confirmed only through the existing test's
-  stated behavior.
+   stated behavior.
+
+## Execution decision after round 1
+
+- Author: parent coordinator 0987244a, OpenCode, openai/gpt-6.1-sol,
+  effort xhigh; native conversation `ses_e3d29b976ffehNoBOsD5RvO3Xv`.
+- Final plan (repository-relative):
+  `.agents/plans/2026-11-09-011-verified-review-fixes.md`, blob
+  `793b9abfb0fee2f660aff4afd765109d7dce5568`.
+- Guidance blobs unchanged: `AGENTS.md`
+  `da2afb1eac69ad0b8f99faf9d986246965fcc051`;
+  `docs/dev/development.md` `58c66cdf38859ff4e8b3e558f3d65d144dbc95c3`;
+  `docs/dev/documentation.md` `91d766f9a831875a497bb8e0b9472778130df738`.
+- Finding 1 resolved: section 2 now requires a non-ended session with a
+  nonempty Base before reading the branch or delivering input. Verification
+  includes refusing a normal managed child and a non-worktree session without
+  input. This matches the existing top-level merge-status eligibility.
+- Finding 2 resolved: section 1 and implementation step 1 include the
+  `docs/storage.md` removal rule. The committed-submodule safety check applies
+  independently of ignore settings; the existing ignore-settings caveat is
+  limited to the uncommitted-files check.
+- Finding 3 resolved: submodule discovery uses NUL-separated `$displaypath`,
+  joins it to the starting directory for Git, and reports that relative path.
+  The test instructions no longer imply the scratch reproduction is tracked.
+- The fake API verification also preserves the meaning of its permission-query
+  count when adding thread paging.
+- Evidence: inspected the entire plan revision against round 1, the existing
+  `refreshMerges` eligibility, and `docs/storage.md` lines 43–50. No production
+  changes or unresolved design decisions were added by the correction.
+- Decision: **proceed**. The parent verified these corrections directly; the
+  original independent review above remains the assessment of its recorded
+  input, not an approval of an unseen revision.
