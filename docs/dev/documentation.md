@@ -68,6 +68,21 @@ and captures that window, including its native buttons and rounded corners,
 then adds a transparent margin with a drop shadow.
 Temporary resources are deleted afterward.
 
+The driver puts a stand-in `gh` first on the backend's `PATH`. In a scene with
+`github: true` it is signed in, and the backend reads GitHub from the driver's
+own GraphQL server through `HYPERCUBE_GITHUB_API`; in other scenes it has no
+accounts. `docs/screenshots/repos/github.json` names the account and
+gives each fixture repository its `github.com` name, how many commits its
+`main` is `behind`, and its open `pullRequests`. Each workspace's `origin` is
+that `github.com` address; Git fetches it from a local bare repository through
+`url.insteadOf`.
+
+A pull request declares its `number`, `title`, and head `branch`, and
+optionally its `author` (the account by default), `draft`, `review` (GitHub's
+review decision), `checks`, `merge` (GitHub's merge state, `BLOCKED` by
+default), `pendingReviews`, `requested` (`user` or `team`), the account's own
+`reviewed` state, `unanswered` review threads, and `requiredFailed`.
+
 ### Scene contents
 
 Each scene declares:
@@ -94,8 +109,11 @@ Each scene declares:
   `unseen: true` leaves a session's reply unread, which shows a notification.
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
   to expand in a saved turn. `select` chooses the session as a workspace and
-  session index, or a workspace's dashboard as a workspace index alone; `size`
-  sets window dimensions in points.
+  session index, a workspace's dashboard as a workspace index alone, or, empty,
+  the Pull Requests view; `size` sets window dimensions in points.
+- A workspace's `pullRequests` adds open pull requests to its repository's.
+  `session` names a worktree session by its first prompt, and the pull request
+  comes from that session's branch.
 - `workbench.rightPanel: false` hides the right panel; `workbench.rightTab`
   chooses Files or Git (`files` or `git`); `comparison: "branch"` selects Git's
   Committed view for a worktree. The driver sizes the editor panes so the

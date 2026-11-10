@@ -1,9 +1,14 @@
 {
+  "github": true,
   "size": {"width": 1680, "height": 1020},
   "workspaces": [
     {
       "name": "harbor",
       "repo": "harbor",
+      "pullRequests": [
+        {"number": 55, "title": "Highlight code blocks in rendered pages", "session": "Highlight code blocks in rendered pages", "draft": true, "checks": "PENDING"},
+        {"number": 53, "title": "Add a contributing guide", "session": "Add a contributing guide", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
+      ],
       "changes": "harbor.patch",
       "sessions": [
         {
@@ -163,6 +168,9 @@
     {
       "name": "field-sync",
       "repo": "field-sync",
+      "pullRequests": [
+        {"number": 120, "title": "Paginate the /changes endpoint", "session": "Paginate the /changes endpoint", "review": "APPROVED", "checks": "SUCCESS", "merge": "CLEAN"}
+      ],
       "sessions": [
         {
           "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
@@ -275,6 +283,9 @@
     {
       "name": "field-notes",
       "repo": "field-notes",
+      "pullRequests": [
+        {"number": 36, "title": "Write a guide to sharing notebooks", "session": "Write a guide to sharing notebooks", "review": "CHANGES_REQUESTED", "checks": "SUCCESS"}
+      ],
       "sessions": [
         {
           "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
@@ -333,6 +344,9 @@
     {
       "name": "harbor-themes",
       "repo": "harbor-themes",
+      "pullRequests": [
+        {"number": 13, "title": "Move the plain theme's colors into CSS custom properties", "session": "Move the plain theme's colors into CSS custom properties", "review": "APPROVED", "checks": "SUCCESS", "merge": "CLEAN"}
+      ],
       "sessions": [
         {
           "settings": {"harness": "claude", "model": "opus", "effort": "high"},

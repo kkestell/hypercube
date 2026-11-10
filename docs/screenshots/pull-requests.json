@@ -1,0 +1,71 @@
+{
+  "github": true,
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [{
+            "prompt": "Write a guide to sharing notebooks",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The sharing guide explains invitations, read-only links, and how to stop sharing.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "field-sync",
+      "repo": "field-sync",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Rotate sync tokens without signing devices out",
+            "end": "working",
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "Devices can keep their previous token for a grace period, so a write in flight during rotation still succeeds.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "tokens.go"}}
+            ]
+          }]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "turns": [{
+            "prompt": "Why do conflict retries spike after midnight UTC?",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every device token expires at midnight UTC, so clients reconnect at once and retry the writes they queued. I only read files; nothing changed.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Highlight code blocks in rendered pages",
+            "end": "working",
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}}
+            ]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "turns": [{
+            "prompt": "Explain how harbor picks a template for each page",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every page uses `templates/page.html`. I only read files; nothing changed.", "done": true}]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": []
+}

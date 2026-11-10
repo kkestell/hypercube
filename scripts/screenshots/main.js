@@ -12,6 +12,7 @@
 const {app, BrowserWindow, ipcMain, nativeImage, nativeTheme, screen, session} = require('electron');
 const {execFile, spawn} = require('node:child_process');
 const fs = require('node:fs');
+const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
 const {promisify} = require('node:util');
@@ -58,6 +59,7 @@ if (!dir || sceneFiles.length === 0) {
   app.setPath('userData', path.join(dir, 'chromium'));
   app.whenReady().then(async () => {
     fs.mkdirSync(images, {recursive: true});
+    await startGitHub();
     for (const file of sceneFiles) await shoot(file);
     app.quit();
   }).catch(fail);
@@ -103,6 +105,9 @@ async function shoot(file) {
   example.models.push({harness: 'pi', model: 'openai/gpt-5.2', title: 'GPT-5.2', efforts: ['low', 'medium', 'high'], default_effort: 'high'});
   fs.writeFileSync(path.join(base, 'config/hypercube/config.json'),
     JSON.stringify({...example, theme: 'light'}, null, 2));
+  github.scene = scene;
+  github.branches = new Map();
+  writeGH(base, scene.github);
   console.log(`${name}: playing`);
   let backend = await startBackend(base, path.resolve(file));
   let window;
@@ -118,6 +123,7 @@ async function shoot(file) {
     }
     await play(scene, workspaces, backend, ids, s => !s.parked);
     for (const [s, id] of ids) if (!s.unseen) await backend.post('session', {action: 'seen', id});
+    if (scene.github) await showGitHub(scene, base, workspaces, backend, ids);
     window = createMainWindow({platform: process.platform, origin: backend.origin, pagesDir, userData: base});
     await capture(scene, ids, workspaces, backend, window, name);
   } finally {
@@ -183,6 +189,8 @@ function validate(scene) {
   }
   const [w, s] = scene.select;
   if (s === undefined && scene.terminal) throw new Error('a terminal needs a selected session');
+  if (w === undefined && !scene.github) throw new Error('the Pull Requests view needs github');
+  if (!scene.github && scene.workspaces.some(w => w.pullRequests)) throw new Error('pull requests need github');
   if (s !== undefined && scene.workspaces[w].sessions[s].parked) throw new Error('the selected session cannot be parked');
   for (const [i, a] of prompts.entries()) {
     if (prompts.some((b, j) => i !== j && b.includes(a))) throw new Error(`prompt "${a}" is part of another prompt`);
@@ -204,10 +212,10 @@ async function startBackend(base, sceneFile) {
   const port = await freePort();
   const origin = `http://localhost:${port}`;
   const env = {
-    HOME: process.env.HOME, USER: process.env.USER, PATH: process.env.PATH, LANG: process.env.LANG || 'en_US.UTF-8',
+    HOME: process.env.HOME, USER: process.env.USER, PATH: path.join(base, 'gh') + path.delimiter + process.env.PATH, LANG: process.env.LANG || 'en_US.UTF-8',
     TERM: process.env.TERM || 'xterm-256color', XDG_STATE_HOME: path.join(base, 'state'), XDG_CONFIG_HOME: path.join(base, 'config'),
     SHELL: '/bin/zsh', ZDOTDIR: path.join(base, 'zsh'),
-    HYPERCUBE_SCENE: sceneFile,
+    HYPERCUBE_SCENE: sceneFile, HYPERCUBE_GITHUB_API: github.api,
   };
   const child = spawn(path.join(dir, 'hypercube'), ['ui', String(port)], {env, stdio: ['ignore', 'pipe', 'inherit']});
   const exited = new Promise(resolve => child.once('close', resolve));
@@ -269,10 +277,139 @@ async function addWorkspaces(scene, base, backend) {
     await git('init', '-q', '-b', 'main');
     await git('add', '-A');
     await git('commit', '-q', '-m', 'Initial commit');
+    if (scene.github) await addRemote(repo, w.repo, git);
     if (w.changes) await git('apply', path.join(fixtures, w.changes));
     workspaces.push(await (await backend.post('workspace', {action: 'new', path: repo})).text());
   }
   return workspaces;
+}
+
+// GitHub as the scenes see it: a gh signed in to one account in scenes that
+// show GitHub and to none in the rest, and a GraphQL server answering for each
+// fixture repository in docs/screenshots/repos/github.json and for the scene's
+// own pull requests.
+const githubFixtures = JSON.parse(fs.readFileSync(path.join(fixtures, 'github.json'), 'utf8'));
+const github = {api: '', scene: null, branches: new Map()};
+
+// writeGH writes the scene's stand-in gh, which the backend finds first on its
+// PATH, signed in when the scene shows GitHub.
+function writeGH(base, signedIn) {
+  const hosts = signedIn ? `{"login":"${githubFixtures.account}","state":"success","active":true,"host":"github.com"}` : '';
+  fs.mkdirSync(path.join(base, 'gh'), {recursive: true});
+  fs.writeFileSync(path.join(base, 'gh/gh'), `#!/bin/sh
+case "$1 $2" in
+"auth status") echo '{"hosts":{"github.com":[${hosts}]}}' ;;
+"auth token") echo token ;;
+*) exit 1 ;;
+esac
+`, {mode: 0o755});
+}
+
+// startGitHub starts the GraphQL server.
+async function startGitHub() {
+  const server = http.createServer((request, response) => {
+    let body = '';
+    request.on('data', chunk => { body += chunk; });
+    request.on('end', () => {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify(answer(JSON.parse(body).query)));
+    });
+  }).listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  server.unref();
+  github.api = `http://127.0.0.1:${server.address().port}/graphql`;
+}
+
+// pullRequests lists the scene's pull requests with their repositories: each
+// workspace's fixture's, then the workspace's own.
+function pullRequests(scene) {
+  return scene.workspaces.flatMap(w => {
+    const {repo, pullRequests: shared = []} = githubFixtures.repos[w.repo];
+    return [...shared, ...(w.pullRequests ?? [])].map(pr => ({...pr, repo}));
+  });
+}
+
+// answer answers the watcher's queries: the account can push to every
+// repository, reads the scene's pull requests, and sees a failed required
+// check on those marked requiredFailed.
+function answer(query) {
+  const {account} = githubFixtures;
+  const prs = pullRequests(github.scene);
+  const url = pr => `https://github.com/${pr.repo}/pull/${pr.number}`;
+  if (query.includes('isRequired')) {
+    const data = {};
+    let alias, repo;
+    for (const m of query.matchAll(/(r\d+):repository\(owner:"([^"]*)",name:"([^"]*)"\)|(p\d+):pullRequest\(number:(\d+)\)/g)) {
+      if (m[1]) { [alias, repo] = [m[1], `${m[2]}/${m[3]}`]; data[alias] = {}; continue; }
+      const failed = prs.some(pr => pr.repo === repo && String(pr.number) === m[5] && pr.requiredFailed);
+      data[alias][m[4]] = {statusCheckRollup: {contexts: {nodes: failed ? [{conclusion: 'FAILURE', isRequired: true}] : []}}};
+    }
+    return {data};
+  }
+  if (!query.includes('involved:search')) return {data: {repository: {viewerPermission: 'WRITE'}}};
+  const person = login => ({__typename: 'User', login});
+  const node = pr => {
+    const author = pr.author ?? account;
+    const oid = '0'.repeat(40);
+    // A reply waiting on the account: a thread it started, or any thread on
+    // its own pull request, where someone else spoke last.
+    const thread = {isResolved: false, first: {nodes: [{author: person(account), createdAt: '2026-11-02T15:00:00Z'}]},
+      last: {nodes: [{author: person(pr.replier ?? 'tomas-hallberg-dev'), createdAt: '2026-11-02T16:00:00Z'}]}};
+    return {number: pr.number, title: pr.title, url: url(pr), isDraft: !!pr.draft, isCrossRepository: false,
+      headRefName: github.branches.get(pr.session) ?? pr.branch, headRefOid: oid, repository: {nameWithOwner: pr.repo},
+      author: {login: author}, reviewDecision: pr.review ?? '', mergeStateStatus: pr.merge ?? 'BLOCKED',
+      statusCheckRollup: pr.checks ? {state: pr.checks} : null, reviewRequests: {totalCount: pr.pendingReviews ?? 0},
+      latestOpinionatedReviews: {nodes: pr.reviewed ? [{author: {login: account}, state: pr.reviewed, commit: {oid}}] : []},
+      reviews: {nodes: []}, reviewThreads: {nodes: Array(pr.unanswered ?? 0).fill(thread)}, comments: {nodes: []}, commits: {nodes: []}};
+  };
+  return {data: {
+    involved: {nodes: prs.map(node)},
+    requested: {nodes: prs.filter(pr => pr.requested).map(node)},
+    direct: {nodes: prs.filter(pr => pr.requested === 'user').map(pr => ({url: url(pr)}))},
+  }};
+}
+
+// addRemote gives a workspace its fixture's github.com origin, which Git
+// fetches from a local bare repository through url.insteadOf, and puts the
+// fixture's behind count of commits there.
+async function addRemote(repo, fixture, git) {
+  const {repo: name, behind = 0} = githubFixtures.repos[fixture];
+  const remote = `https://github.com/${name}.git`;
+  const bare = repo + '.git';
+  await run('git', ['clone', '-q', '--bare', repo, bare]);
+  await git('remote', 'add', 'origin', remote);
+  await git('config', `url.${bare}.insteadOf`, remote);
+  let head = (await git('rev-parse', 'HEAD')).stdout.trim();
+  for (let i = 1; i <= behind; i++) {
+    head = (await git('commit-tree', 'HEAD^{tree}', '-p', head, '-m', `Upstream change ${i}`)).stdout.trim();
+  }
+  if (behind) await git('push', '-q', 'origin', `${head}:refs/heads/main`);
+  await git('fetch', '-q', 'origin');
+  await git('branch', '-q', '--set-upstream-to=origin/main');
+}
+
+// showGitHub names each session's pull request branch after the branch the
+// session runs on, has the backend read GitHub again, and waits until every
+// workspace shows its pull requests and every linked session its own.
+async function showGitHub(scene, base, workspaces, backend, ids) {
+  const {live, post} = backend;
+  const linked = pullRequests(scene).filter(pr => pr.session);
+  for (const pr of linked) {
+    const scened = [...ids.keys()].find(s => s.turns[0].prompt === pr.session);
+    const shown = scened && allSessions(live.state).find(s => s.id === ids.get(scened));
+    if (!shown) throw new Error(`pull request #${pr.number} names no session "${pr.session}"`);
+    const branch = (await run('git', ['branch', '--show-current'], {cwd: shown.dir})).stdout.trim();
+    if (!branch || branch === 'main') throw new Error(`pull request #${pr.number} needs a worktree session`);
+    github.branches.set(pr.session, branch);
+  }
+  for (const w of scene.workspaces) await post('workspace', {action: 'new', path: path.join(base, w.name)});
+  const count = pullRequests(scene).length;
+  await until(() => {
+    const shownWorkspaces = live.state.workspaces.filter(w => workspaces.includes(w.id));
+    return live.state.accounts[0]?.pullRequests.length === count
+      && shownWorkspaces.every(w => w.github?.updated > 0 && !w.github.error)
+      && linked.every(pr => allSessions(live.state).find(s => s.id === ids.get([...ids.keys()].find(x => x.turns[0].prompt === pr.session)))?.pullRequest?.branch === github.branches.get(pr.session));
+  });
 }
 
 // play plays the turns of the top-level sessions that chosen selects, in
@@ -397,10 +534,11 @@ async function capture(scene, ids, workspaces, backend, window, name) {
   const win = place(scene, window);
 
   // The views are written from a page that does not save its own over them.
-  // A selection of a workspace alone shows its dashboard.
+  // A selection of a workspace alone shows its dashboard, and no selection the
+  // Pull Requests view.
   const [w, s] = scene.select;
   const top = s === undefined ? null : scene.workspaces[w].sessions[s];
-  const selected = top ? ids.get(top) : 'workspace:' + workspaces[w];
+  const selected = top ? ids.get(top) : w === undefined ? null : 'workspace:' + workspaces[w];
   const sessionViews = {};
   for (const [scened, id] of ids) if (scened.view) {
     backend.select(id);
@@ -443,9 +581,9 @@ async function capture(scene, ids, workspaces, backend, window, name) {
     const error = await contents.executeJavaScript(`${errorCard} ?? ''`);
     if (error) throw new Error(`the page shows an error: ${error}`);
   };
-  const shown = top
-    ? `document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`
-    : `document.querySelector('[aria-label="Recent sessions"]')?.children.length === ${Math.min(10, scene.workspaces[w].sessions.length)}`;
+  const shown = top ? `document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`
+    : selected ? `document.querySelector('[aria-label="Recent sessions"]')?.children.length === ${Math.min(10, scene.workspaces[w]?.sessions.length)}`
+    : `document.querySelector('[aria-label="Your move"]')`;
   // The terminal's rows, and whether one is a prompt: the scene's zsh prompt
   // ends with % after the directory.
   const rows = `[...document.querySelectorAll('.terminal-panel .xterm-rows > div')].map(row => row.textContent.trimEnd())`;
@@ -509,7 +647,7 @@ async function capture(scene, ids, workspaces, backend, window, name) {
   };
 
   requests.completed = [];
-  await contents.loadURL(`${backend.origin}/#${encodeURIComponent(selected)}`);
+  await contents.loadURL(`${backend.origin}/${selected ? '#' + encodeURIComponent(selected) : ''}`);
   await shot(scene, win, contents, name, 'light', settled);
 
   const config = await (await fetch(backend.origin + '/config')).json();

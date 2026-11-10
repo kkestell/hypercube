@@ -1,0 +1,33 @@
+{
+  "account": "ines-moreau-dev",
+  "repos": {
+    "harbor": {
+      "repo": "quayside-tools/harbor",
+      "pullRequests": [
+        {"number": 52, "title": "Support TOML front matter", "author": "kenji-ota-dev", "branch": "toml-front-matter", "requested": "user", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1},
+        {"number": 49, "title": "Fix relative links in nested pages", "branch": "nested-links", "review": "APPROVED", "checks": "SUCCESS", "merge": "CLEAN"},
+        {"number": 47, "title": "Add a --drafts flag to harbor serve", "branch": "serve-drafts", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
+      ]
+    },
+    "field-sync": {
+      "repo": "fieldnote-app/field-sync",
+      "behind": 2,
+      "pullRequests": [
+        {"number": 118, "title": "Retry conflicted writes with backoff", "branch": "conflict-backoff", "review": "REVIEW_REQUIRED", "checks": "FAILURE", "requiredFailed": true, "pendingReviews": 1},
+        {"number": 121, "title": "Add device names to the sync log", "author": "tomas-hallberg-dev", "branch": "device-names", "requested": "team", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
+      ]
+    },
+    "field-notes": {
+      "repo": "fieldnote-app/field-notes",
+      "pullRequests": [
+        {"number": 34, "title": "Document offline editing", "branch": "offline-editing", "review": "APPROVED", "checks": "SUCCESS", "unanswered": 1}
+      ]
+    },
+    "harbor-themes": {
+      "repo": "quayside-tools/harbor-themes",
+      "pullRequests": [
+        {"number": 12, "title": "Add a print stylesheet to the plain theme", "branch": "print-styles", "draft": true, "checks": "PENDING"}
+      ]
+    }
+  }
+}

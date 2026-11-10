@@ -50,7 +50,9 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 	if _, err := rt.ScanHarnesses(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube: finding harness plugins:", err)
 	}
-	watcher := &github.Watcher{DB: db}
+	// HYPERCUBE_GITHUB_API points the watcher at a stand-in for GitHub's
+	// GraphQL API, which the documentation screenshots use.
+	watcher := &github.Watcher{DB: db, API: os.Getenv("HYPERCUBE_GITHUB_API")}
 	rt.Env = watcher.Env
 	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1),
 		github: watcher, githubDone: make(chan struct{})}

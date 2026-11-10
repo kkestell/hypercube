@@ -1,4 +1,5 @@
 {
+  "github": true,
   "size": {"width": 1440, "height": 900},
   "workspaces": [
     {
