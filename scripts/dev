@@ -29,7 +29,8 @@ CONFIG=$DEV/config/hypercube/config.json
 # not inherit the environment of the agent running this script.
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" SHELL="${SHELL:-}" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
 	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config"
-	GH_CONFIG_DIR="${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/gh}")
+	GH_CONFIG_DIR="${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/gh}"
+	HYPERCUBE_DEV_UI="$DEV/ui")
 
 # stop_desktop quits the desktop app, which leaves the backend running.
 stop_desktop() {
@@ -127,16 +128,31 @@ JSON
 
 	# Poll source contents rather than mtimes, including additions and deletions.
 	# The generated browser build and dependencies are excluded so builds do not
-	# trigger builds.
-	sources() {
+	# trigger builds. Browser sources are the files of internal/ui other than Go.
+	browser_sources() {
+		find internal/ui \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
+			-type f ! -name '*.go' -exec cksum {} + | LC_ALL=C sort | cksum
+	}
+	server_sources() {
 		{
 			find cmd desktop internal plugins \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
-				-type f -exec cksum {} +
+				-type f \( ! -path 'internal/ui/*' -o -name '*.go' \) -exec cksum {} +
 			cksum go.mod go.sum Makefile scripts/dev scripts/install-service
 		} | LC_ALL=C sort | cksum
 	}
-	build() {
+	# The backend serves the browser files from $DEV/ui, so a browser-only
+	# change replaces them without a restart. A failed build keeps the last
+	# successful one.
+	build_ui() {
 		make ui || return 1
+		rm -rf "$DEV/ui"
+		cp -R internal/ui/dist "$DEV/ui"
+	}
+	reload_ui() {
+		curl -fsS -X POST -H "Origin: http://localhost:$PORT" -o /dev/null "http://localhost:$PORT/dev/reload-ui" || echo "Could not reload the view" >&2
+	}
+	build() {
+		build_ui || return 1
 		if [ -n "$DESKTOP" ]; then
 			stop_desktop
 			make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
@@ -181,7 +197,8 @@ JSON
 		curl -fsS -X POST -G -H "Origin: http://localhost:$PORT" -o /dev/null \
 			--data-urlencode "action=new" --data-urlencode "path=$REPO" "http://localhost:$PORT/workspace" || echo "Could not add $REPO as a workspace" >&2
 	}
-	revision=$(sources)
+	browser=$(browser_sources)
+	server=$(server_sources)
 	build
 	start_view
 	add_repo
@@ -190,17 +207,27 @@ JSON
 	echo "Watching sources; Ctrl-C stops the dev session."
 	while kill -0 "$view_pid" 2>/dev/null; do
 		sleep 1
-		next=$(sources)
-		if [ "$next" = "$revision" ]; then continue; fi
-		revision=$next
-		echo "Sources changed; rebuilding..."
-		if build; then
-			restart
-			start_view
-			add_repo
-			start_desktop
-		else
-			echo "Build failed; keeping the previous view. Waiting for changes." >&2
+		next_browser=$(browser_sources)
+		next_server=$(server_sources)
+		if [ "$next_server" != "$server" ]; then
+			browser=$next_browser server=$next_server
+			echo "Sources changed; rebuilding..."
+			if build; then
+				restart
+				start_view
+				add_repo
+				start_desktop
+			else
+				echo "Build failed; keeping the previous view. Waiting for changes." >&2
+			fi
+		elif [ "$next_browser" != "$browser" ]; then
+			browser=$next_browser
+			echo "Browser sources changed; rebuilding the view..."
+			if build_ui; then
+				reload_ui
+			else
+				echo "Build failed; keeping the previous view. Waiting for changes." >&2
+			fi
 		fi
 	done
 	wait "$view_pid"

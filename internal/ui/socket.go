@@ -68,6 +68,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 		batch: map[string]session.TranscriptItem{}}
 	defer d.endView()
 	githubChanged := s.gh.Changed()
+	uiChanged := buildChanged()
 	if d.sendState() != nil {
 		return
 	}
@@ -96,6 +97,11 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 			if tick == nil {
 				timer.Reset(coalesce)
 				tick = timer.C
+			}
+		case <-uiChanged:
+			uiChanged = buildChanged()
+			if d.sendState() != nil {
+				return
 			}
 		case <-tick:
 			tick = nil

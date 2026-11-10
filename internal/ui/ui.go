@@ -45,6 +45,9 @@ func Handler(db *store.DB, rt *session.Runtime, gh *github.Watcher) http.Handler
 	mux.HandleFunc("GET /diff", s.readDiff)
 	mux.HandleFunc("GET /image", s.readImage)
 	mux.HandleFunc("GET /transcript-image", s.readTranscriptImage)
+	if devUI != "" {
+		mux.HandleFunc("POST /dev/reload-ui", reloadUI)
+	}
 	return mux
 }
 
