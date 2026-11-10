@@ -94,6 +94,11 @@ in **Settings › Permissions › Always Allowed Tools**.
 [Permission behavior](harness-support.md#permissions) varies by harness.
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/approval-dark.png">
+  <img alt="A Bash approval above the message box with Always allow in this session and Always allow in all sessions" src="images/approval-light.png">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/attention-dark.png">
   <img alt="A question and command approval from other sessions, shown as notification cards" src="images/attention-light.png">
 </picture>
@@ -103,6 +108,11 @@ in **Settings › Permissions › Always Allowed Tools**.
 Use **Command+K** on macOS or **Ctrl+K** on Linux to search titles and
 conversation text across workspaces, including archived and ended sessions.
 Select an active session and send a prompt to continue its conversation.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/search-dark.png">
+  <img alt="Session search for "conflict" listing matching sessions from two workspaces with their matching text" src="images/search-light.png">
+</picture>
 
 Use **Rename** in a session's context menu, or **F2**, to change its title.
 Right-click a row to open its menu.

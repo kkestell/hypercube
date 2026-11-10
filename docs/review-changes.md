@@ -107,5 +107,10 @@ Open the terminal panel for a shell in the selected session's directory.
 Each session has its own shell. Hiding the panel or quitting the desktop app
 leaves it running. Archiving, ending, or deleting its session ends it.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/terminal-dark.png">
+  <img alt="The terminal panel below a session's conversation, showing git status --short in the session's checkout" src="images/terminal-light.png">
+</picture>
+
 Commands run in the same working files the session uses. A local session's
 shell and agent therefore share the original checkout.

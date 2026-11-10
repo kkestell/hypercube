@@ -37,6 +37,11 @@ from lowest to highest and the effort a session starts with. Leave levels
 empty for a model without an effort control.
 One level is its own default; several levels require a default from the list.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-models-dark.png">
+  <img alt="Settings › Agents › Models listing Claude Code and OpenCode models with their effort levels and default effort" src="images/settings-models-light.png">
+</picture>
+
 The `models` field holds the list, empty by default. Each entry is an object
 with `harness`, `model`, `title`, `efforts` (lowest first), and
 `default_effort`. A harness lists each model once.

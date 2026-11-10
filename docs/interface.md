@@ -59,6 +59,11 @@ Files, and Settings. On Linux, terminal copy/paste uses **Ctrl+Shift+C** /
 Click a workspace heading to open its dashboard of recent sessions, including
 archived sessions. The separate chevron collapses or expands its sidebar list.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
+  <img alt="The harbor workspace dashboard listing the workspace's recent sessions with their status dots" src="images/dashboard-light.png">
+</picture>
+
 Children are grouped under their parent. An active parent's ended children
 are hidden until **Show Ended Sessions** is chosen in its menu.
 
@@ -87,6 +92,11 @@ longest on hover or keyboard focus. A single reported window stays visible.
 Wide panes also show time until reset. The meter's mark indicates elapsed time
 within the window. After reset, the last reading is dimmed and marked
 **Waiting** until the harness reports again.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/usage-dark.png">
+  <img alt="Below the message box, a five-hour subscription meter at 38% with 2h 13m until reset, and the context ring" src="images/usage-light.png">
+</picture>
 
 ## Files and search limits
 

@@ -23,7 +23,6 @@
         },
         {
           "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "unseen": true,
           "turns": [{
             "prompt": "Check what the build test covers; do not run it",
             "end": "idle",
@@ -34,11 +33,8 @@
           "settings": {"harness": "claude", "model": "opus", "effort": "high"},
           "turns": [{
             "prompt": "Prepare the next release: changelog, version bump, and tag",
-            "end": "ask",
-            "items": [
-              {"id": "t1", "kind": "text", "text": "Builds no longer clear `public/`, which may break sites that relied on it.", "done": true},
-              {"id": "q1", "kind": "attention", "text": "Which version should this release be?", "choices": ["0.4.0", "1.0.0"]}
-            ]
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "CHANGELOG.md lists the build cache and `-force`, the version is 0.4.0, and the tag v0.4.0 is on the release commit.", "done": true}]
           }]
         },
         {

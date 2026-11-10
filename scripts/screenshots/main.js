@@ -470,6 +470,8 @@ async function capture(scene, ids, workspaces, backend, window, name) {
       await contents.executeJavaScript(`[...document.querySelectorAll('nav[aria-label="Settings sections"] button')].find(button => button.textContent === ${JSON.stringify(scene.openSettings)}).click()`);
       await pageCondition(contents, `document.querySelector('nav[aria-label="Settings sections"] [aria-current=page]')?.textContent === ${JSON.stringify(scene.openSettings)}
         && !document.querySelector('[role=dialog]').textContent.includes('Loading settings')`);
+      // The dialog focuses its first section, whose ring would mark it chosen.
+      await contents.executeJavaScript(`document.activeElement.blur()`);
     }
     if (scene.openSearch) {
       await contents.executeJavaScript(`document.querySelector('button[aria-label="Search sessions"]').click()`);
