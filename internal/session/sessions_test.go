@@ -425,6 +425,35 @@ func TestWorktreeSession(t *testing.T) {
 	}
 }
 
+// A session being created names the browser's first prompt until its
+// creation returns, so the browser can show it in place of the new session.
+func TestCreatingSessionNamesItsSubmission(t *testing.T) {
+	f := newFixture(t)
+	f.rt.startTimeout = 500 * time.Millisecond
+	t.Setenv("HYPERCUBE_TEST_START_HOLD", "1")
+	const submission = "submission-00000000-0000-0000-0000-000000000001"
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.rt.CreateSubmission(f.workspace.ID, lead, nil, submission, "start")
+		done <- err
+	}()
+	var id string
+	f.until("the saved session names its submission", func() bool {
+		for s, sub := range f.rt.Submissions() {
+			if sub == submission && f.rt.db.Read(func(tx *store.Tx) error { _, err := tx.Session(s); return err }) == nil {
+				id = s
+			}
+		}
+		return id != ""
+	})
+	if err := <-done; err == nil {
+		t.Fatal("the held start succeeded")
+	}
+	if len(f.rt.Submissions()) != 0 {
+		t.Fatal(f.rt.Submissions())
+	}
+}
+
 func TestWorktreeSessionOnNamedBranchAtStart(t *testing.T) {
 	f := newFixture(t)
 	f.idleAfter(time.Hour)

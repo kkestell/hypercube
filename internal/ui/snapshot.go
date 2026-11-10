@@ -44,17 +44,22 @@ type shownSession struct {
 	Merge    *workspace.Merge `json:"merge,omitempty"`
 	// PullRequest is the open pull request for the session's branch.
 	PullRequest *github.PullRequest `json:"pullRequest,omitempty"`
-	Children    []shownSession      `json:"children"`
+	// Submission is the browser's ID for the first prompt of a session whose
+	// creation has not yet returned.
+	Submission string         `json:"submission,omitempty"`
+	Children   []shownSession `json:"children"`
 }
 
 // showSession shows a top-level session with its children and, for a
 // worktree session, its merge status. In a GitHub workspace (status is not
-// nil) each session shows its open pull request.
-func showSession(tx *store.Tx, s store.Session, root string, status *github.Status, merges map[string]workspace.Merge) (shownSession, error) {
+// nil) each session shows its open pull request. A session still being
+// created shows the browser's ID for its first prompt.
+func showSession(tx *store.Tx, s store.Session, root string, status *github.Status, merges map[string]workspace.Merge, submissions map[string]string) (shownSession, error) {
 	shown, err := show(tx, s)
 	if err != nil {
 		return shown, err
 	}
+	shown.Submission = submissions[s.ID]
 	shown.PullRequest = pullRequest(s, root, status)
 	shown.Worktree = s.Base != ""
 	if m, ok := merges[s.ID]; ok {
@@ -124,9 +129,10 @@ func show(tx *store.Tx, s store.Session) (shownSession, error) {
 // snapshot reads everything the view shows in one transaction: workspaces by
 // folder name, each with its sessions newest first, so a session keeps its
 // place, and the harnesses' usage limits. merges holds the worktree sessions'
-// merge status by session ID, and statuses holds the GitHub workspaces' status
-// by workspace ID.
-func snapshot(db *store.DB, merges map[string]workspace.Merge, statuses map[string]github.Status) ([]shownWorkspace, []store.Limit, error) {
+// merge status by session ID, submissions the first prompts of sessions being
+// created by session ID, and statuses the GitHub workspaces' status by
+// workspace ID.
+func snapshot(db *store.DB, merges map[string]workspace.Merge, submissions map[string]string, statuses map[string]github.Status) ([]shownWorkspace, []store.Limit, error) {
 	list := []shownWorkspace{}
 	var limits []store.Limit
 	err := db.Read(func(tx *store.Tx) error {
@@ -151,7 +157,7 @@ func snapshot(db *store.DB, merges map[string]workspace.Merge, statuses map[stri
 			}
 			slices.Reverse(sessions)
 			for _, s := range sessions {
-				session, err := showSession(tx, s, w.Path, status, merges)
+				session, err := showSession(tx, s, w.Path, status, merges, submissions)
 				if err != nil {
 					return err
 				}

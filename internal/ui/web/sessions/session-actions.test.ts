@@ -4,7 +4,7 @@ import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {attachImages, canSend, discardUnsent, draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import type {Settings} from '../agent/types.ts';
 import {createStore} from '../store.ts';
-import {openUnsent, unsentSettingsChosen} from './selection.ts';
+import {openUnsent, receivedWorkspaces, unsentRow, unsentSettingsChosen} from './selection.ts';
 import {addWorkspace, chooseSession, retrySubmission, sendPrompt} from './session-actions.ts';
 import type {Session} from './types.ts';
 import {submissionsOf} from './submissions.ts';
@@ -88,6 +88,29 @@ test('text typed while the unsent session sends moves to the created session', a
   expect(s.get().unsent).toBeNull();
   expect(s.get().pending).toBe('n');
   expect(s.get().drafts).toEqual({'n': {text: 'next', images: [], reading: 0}});
+});
+
+test('a state listing the session created from the unsent session replaces it before the request returns', async () => {
+  const s = createStore(receivedWorkspaces(testState(), [testWorkspace({id: 'w'})]));
+  s.update(state => typed(unsentSettingsChosen(openUnsent(state, 'w'), lead), unsentKey, 'create it'));
+  const created = Promise.withResolvers<Response>();
+  const requests: {submission: string}[] = [];
+  stubFetch((_url, init) => {
+    requests.push(JSON.parse(String(init?.body)));
+    return created.promise;
+  });
+  const sending = sendPrompt(s, idle(unsentKey));
+  s.update(state => typed(state, unsentKey, 'next'));
+  const session = testSession({id: 'n', activity: 'busy', submission: requests[0].submission});
+  s.update(state => receivedWorkspaces(state, [testWorkspace({id: 'w', sessions: [session]})]));
+  expect(unsentRow(s.get(), 'w')).toBeNull();
+  expect(s.get().selected).toBe('n');
+  expect(submissionsOf(s.get(), 'n')[0]).toMatchObject({text: 'create it', status: 'sending'});
+  expect(s.get().drafts).toEqual({'n': {text: 'next', images: [], reading: 0}});
+  created.resolve(Response.json({session: 'n'}));
+  await sending;
+  expect(s.get().selected).toBe('n');
+  expect(submissionsOf(s.get(), 'n')[0].status).toBe('sent');
 });
 
 for (const accepted of [true, false]) {

@@ -90,6 +90,9 @@ type Runtime struct {
 	// or failure cleanup. workspaceDeleting excludes them during deletion.
 	workspaceCreates  map[string]int
 	workspaceDeleting map[string]bool
+	// submissions holds, by session ID, the browser's ID for the first
+	// prompt of each session whose creation has not yet returned.
+	submissions map[string]string
 	// merges holds each worktree session's merge status, by session ID.
 	merges map[string]workspace.Merge
 	// viewers counts the pages viewing each session, by session ID.
@@ -108,7 +111,7 @@ type Runtime struct {
 func New(db *store.DB, url string, programs Programs) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run"), Holder: programs.Holder}, db: db, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
-		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{}, childCreates: map[string]chan struct{}{},
+		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{}, submissions: map[string]string{}, childCreates: map[string]chan struct{}{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}
 }
 

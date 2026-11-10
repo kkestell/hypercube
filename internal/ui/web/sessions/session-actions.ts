@@ -3,14 +3,14 @@
 // message.
 import {post, submitPrompt} from '../api.ts';
 import {hypercube} from '../app/window.ts';
-import {canSend, cleared, draftOf, isUnsent, unsentCreated, unsentOf} from '../agent/drafts.ts';
+import {canSend, cleared, draftOf, isUnsent, unsentOf} from '../agent/drafts.ts';
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
-import {inWorktree, openUnsent, selectSession, unsentSending} from './selection.ts';
+import {inWorktree, openUnsent, selectSession, sessionCreated, unsentSending} from './selection.ts';
 import type {Session, Unsent, Workspace} from './types.ts';
-import {addedSubmission, movedSubmissions, submissionsOf, updatedSubmission, withSubmissions, type Submission} from './submissions.ts';
+import {addedSubmission, submissionsOf, updatedSubmission, withSubmissions, type Submission} from './submissions.ts';
 
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
 export const unarchiveSession = (store: Store, id: string) => post(store, 'session', {action: 'unarchive', id});
@@ -90,20 +90,14 @@ async function deliverSubmission(store: Store, key: string, submission: Submissi
     ? {action: 'new', workspace: unsent.workspace!, ...unsent.settings!, ...worktreeParams(store.get(), unsent)}
     : {action: 'input', id: key};
   const result = await submitPrompt(params, JSON.stringify({text: submission.text, images: submission.images, submission: submission.id}));
+  const change: Partial<Submission> = result.error ? {status: 'failed', error: result.error} : {status: 'sent', error: undefined};
   store.update(state => {
-    // A removed workspace or replaced unfinished session no longer owns this reply.
-    if (unsent && unsentOf(state, key)?.identity !== unsent.identity) return state;
-    let next = unsent ? unsentSending(state, false, key) : state;
-    let target = key;
-    if (unsent && result.session) {
-      const shown = next.unsent?.identity === unsent.identity;
-      next = unsentCreated(movedSubmissions(next, key, result.session), result.session, key);
-      target = result.session;
-      if (shown) next = selectSession(next, result.session);
-    }
-    return updatedSubmission(next, target, submission.id, result.error
-      ? {status: 'failed', error: result.error}
-      : {status: 'sent', error: undefined});
+    if (!unsent) return updatedSubmission(state, key, submission.id, change);
+    // A removed workspace or replaced unfinished session no longer owns this
+    // reply. The state may already have replaced it with the created session.
+    const owned = unsentOf(state, key)?.identity === unsent.identity;
+    if (!result.session) return owned ? updatedSubmission(unsentSending(state, false, key), key, submission.id, change) : state;
+    return updatedSubmission(owned ? sessionCreated(state, key, result.session) : state, result.session, submission.id, change);
   });
   return !result.error;
 }

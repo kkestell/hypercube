@@ -4,7 +4,8 @@
 // first prompt to; it exists only in this page.
 import {allSessions, sessionOf} from './lookup.ts';
 export {allSessions, sessionOf} from './lookup.ts';
-import {draftDefaults, isUnsent, unsentKey, unsentOf, withDraftDefaults} from '../agent/drafts.ts';
+import {draftDefaults, isUnsent, unsentCreated, unsentKey, unsentOf, withDraftDefaults} from '../agent/drafts.ts';
+import {movedSubmissions, submissionsOf} from './submissions.ts';
 import {attach} from '../editor/attachment.ts';
 export {emptySession, emptyEditor} from '../editor/attachment.ts';
 import {selectedWorkspace, selectionTarget, targetExists, workspaceKey} from '../editor/target.ts';
@@ -75,6 +76,15 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
     next = {...next, unsent: null};
   }
   if (discarded.length) next = {...next, drafts: omit(next.drafts, discarded), unsentDrafts: omit(next.unsentDrafts, discarded)};
+  // A session listed with an unsent session's prompt replaces it now, before
+  // the request that creates it returns.
+  for (const unsent of [next.unsent, ...Object.values(next.unsentDrafts)]) {
+    if (!unsent) continue;
+    const key = unsentKey(unsent.workspace);
+    const prompts = new Set(submissionsOf(next, key).map(entry => entry.id));
+    const created = allSessions(next).find(session => session.submission && prompts.has(session.submission));
+    if (created) next = sessionCreated(next, key, created.id);
+  }
   const sessions = allSessions(next);
   const ids = new Set(sessions.map(session => session.id));
   const removedIDs = [...discarded, ...allSessions(state).filter(session => !ids.has(session.id)).map(session => session.id)];
@@ -111,6 +121,15 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
     if (!selectedWorkspace(next)) next = {...next, selected: null};
   } else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => !s.ended)?.id ?? ''};
   return attach(withDraftDefaults(next));
+}
+
+// sessionCreated replaces the unsent session under key with the session
+// created from it. Its retained prompts and typing move to that session, which
+// is shown in its place.
+export function sessionCreated(state: State, key: string, session: string): State {
+  const shown = state.unsent !== null && unsentKey(state.unsent.workspace) === key;
+  const next = unsentCreated(movedSubmissions(state, key, session), session, key);
+  return shown ? selectSession(next, session) : next;
 }
 
 // selectSession shows a session, a workspace dashboard, or an unsent session.

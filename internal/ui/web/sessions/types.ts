@@ -66,6 +66,9 @@ export interface Session {
   worktree: boolean;
   merge?: Merge;
   pullRequest?: PullRequest;
+  // submission is the browser's ID for the first prompt of a session whose
+  // creation has not yet returned.
+  submission?: string;
   children: Session[];
 }
 

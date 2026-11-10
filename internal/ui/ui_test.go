@@ -486,7 +486,7 @@ func TestSnapshotOrder(t *testing.T) {
 		}
 		return nil
 	})
-	list, _, err := snapshot(db, nil, nil)
+	list, _, err := snapshot(db, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

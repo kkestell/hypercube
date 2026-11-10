@@ -138,7 +138,7 @@ type dataSocket struct {
 // from the last state sent.
 func (d *dataSocket) sendState() error {
 	d.stale = false
-	workspaces, limits, err := snapshot(d.db, d.rt.Merges(), d.gh.Statuses())
+	workspaces, limits, err := snapshot(d.db, d.rt.Merges(), d.rt.Submissions(), d.gh.Statuses())
 	if err != nil {
 		return err
 	}

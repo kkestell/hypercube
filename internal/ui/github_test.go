@@ -50,7 +50,7 @@ func TestSnapshotShowsGitHubStatusAndPullRequests(t *testing.T) {
 		{Number: 10, Branch: "feature/login"},
 		{Number: 9, Branch: "fork-branch", Fork: true},
 	}}}
-	list, _, err := snapshot(db, nil, statuses)
+	list, _, err := snapshot(db, nil, nil, statuses)
 	if err != nil {
 		t.Fatal(err)
 	}

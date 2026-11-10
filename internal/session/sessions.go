@@ -3,6 +3,7 @@ package session
 import (
 	"cmp"
 	"errors"
+	"maps"
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -120,6 +121,16 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, worktree.Start))
 		}
 	}
+	if submission != "" {
+		r.mu.Lock()
+		r.submissions[s.ID] = submission
+		r.mu.Unlock()
+		defer func() {
+			r.mu.Lock()
+			delete(r.submissions, s.ID)
+			r.mu.Unlock()
+		}()
+	}
 	if err := r.save(func(tx *write) error { return tx.AddSession(s) }); err != nil {
 		if worktree != nil {
 			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, s.Base))
@@ -130,6 +141,15 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 		r.refreshMerges(workspaceID)
 	}
 	return s, r.input(s.ID, submission, text, images...)
+}
+
+// Submissions returns, by session ID, the browser's ID for the first prompt of
+// each session whose creation has not yet returned. The browser shows such a
+// session in place of the new session it was sending from.
+func (r *Runtime) Submissions() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return maps.Clone(r.submissions)
 }
 
 // DeleteWorkspace deletes each of the workspace's sessions, then the
