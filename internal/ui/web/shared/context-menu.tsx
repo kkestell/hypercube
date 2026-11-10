@@ -1,7 +1,8 @@
 // A stock menu anchored to a mouse or keyboard position. Its items come in
 // groups, drawn with a separator between each. It stays mounted so it can
 // animate closed; each time it opens it remembers the element that had focus,
-// which gets the focus back when it closes.
+// which gets the focus back when it closes. While it animates closed it is
+// inert, so the pointer cannot focus it away from what an item focused.
 import {Fragment, useEffect, useLayoutEffect, useRef, useState, type RefObject} from 'react';
 import {flushSync} from 'react-dom';
 import {DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator} from '../components/ui/dropdown-menu';
@@ -17,14 +18,15 @@ export interface ContextMenuItem {
 }
 
 interface ItemsProps {
+  open: boolean;
   items: ContextMenuItem[][];
   onClose: () => void;
   invoker: HTMLElement | null;
   selected: RefObject<boolean>;
 }
 
-function Items({items, onClose, invoker, selected}: ItemsProps) {
-  return <DropdownMenuContent align="start" sideOffset={0}
+function Items({open, items, onClose, invoker, selected}: ItemsProps) {
+  return <DropdownMenuContent align="start" sideOffset={0} inert={!open}
     onCloseAutoFocus={e => {
       e.preventDefault();
       if (!selected.current) invoker?.focus();
@@ -63,6 +65,6 @@ export function ContextMenu({open, x, y, items, onClose}: ContextMenuProps) {
   }, [open, onClose]);
   return <DropdownMenu open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DropdownMenuTrigger asChild><span aria-hidden="true" className="fixed size-0" style={{left: x, top: y}} /></DropdownMenuTrigger>
-    <Items items={items} onClose={onClose} invoker={invoker} selected={selected} />
+    <Items open={open} items={items} onClose={onClose} invoker={invoker} selected={selected} />
   </DropdownMenu>;
 }
