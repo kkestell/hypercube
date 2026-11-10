@@ -70,14 +70,15 @@ export async function submitPrompt(params: Record<string, string>, body: string)
   }
 }
 
-// cloneWorkspace asks the server to clone a pull request's repository into a
-// folder and add it. Aborting signal cancels the clone. A refusal comes back as
-// its message, not a toast, so the clone dialog can show it.
-export async function cloneWorkspace(params: {repo: string; account: string; path: string}, signal: AbortSignal): Promise<{workspace: string} | {error: string}> {
+// requestWorkspace asks the server to add a workspace, by cloning a pull
+// request's repository into a folder or from a folder that already has it.
+// Aborting signal cancels a clone. A refusal comes back as its message, not a
+// toast, so the dialog that asked can show it.
+export async function requestWorkspace(params: Record<string, string>, signal?: AbortSignal): Promise<{workspace: string} | {error: string}> {
   try {
-    const response = await fetch(url('workspace', {action: 'clone', ...params}), {method: 'POST', signal});
+    const response = await fetch(url('workspace', params), {method: 'POST', signal});
     const text = await response.text();
-    return response.ok ? {workspace: text} : {error: text || 'Cloning failed.'};
+    return response.ok ? {workspace: text} : {error: text || 'Adding the workspace failed.'};
   } catch (error) {
     return {error: errorText(error)};
   }

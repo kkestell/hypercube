@@ -1,6 +1,5 @@
 import {expect, test} from 'bun:test';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {workspaceKey} from '../editor/target.ts';
 import {receivedConfig} from '../app/config.ts';
 import {draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {receivedTranscript} from '../transcript/transcripts.ts';
@@ -48,16 +47,6 @@ test('a pending selection waits for the state that lists it', () => {
   expect(state.selected).toBe('new-one');
   expect(state.pending).toBeNull();
   expect(state.session?.id).toBe('new-one');
-});
-
-test('a pending workspace dashboard is selected once its workspace is listed', () => {
-  let state = receivedWorkspaces(initial(), workspaces(session('a')));
-  state = selectSession(state, workspaceKey('new-ws'));
-  expect(state.pending).toBe('workspace:new-ws');
-  expect(state.selected).toBe('a');
-  state = receivedWorkspaces(state, [...workspaces(session('a')), testWorkspace({id: 'new-ws'})]);
-  expect(state.selected).toBe('workspace:new-ws');
-  expect(state.pending).toBeNull();
 });
 
 test('a session archived while shown is deselected', () => {

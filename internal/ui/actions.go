@@ -17,13 +17,15 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 // maxInput is the largest input body: 10 MiB of images in base64, and text.
 const maxInput = 16 << 20
 
 // workspaceAction adds a workspace in the given folder and returns its ID,
-// clones a pull request's repository into a folder and adds it, deletes a
+// clones a pull request's repository into a folder and adds it, names the
+// branch and commit a chat about a pull request starts at, deletes a
 // workspace, or saves the GitHub account a workspace uses.
 func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -32,6 +34,9 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 		dir := q.Get("path")
 		if dir == "" {
 			http.Error(w, "a path is required", http.StatusBadRequest)
+			return
+		}
+		if repo := q.Get("repo"); repo != "" && refused(w, github.CheckRepo(dir, repo)) {
 			return
 		}
 		added, err := s.rt.AddWorkspace(dir)
@@ -58,6 +63,8 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 		}
 		s.gh.Refresh()
 		fmt.Fprint(w, added.ID)
+	case "pull-request-branch":
+		s.pullRequestBranch(w, r)
 	case "github-account":
 		id, account := q.Get("id"), q.Get("account")
 		if !slices.Contains(s.gh.Statuses()[id].Choices, account) {
@@ -73,6 +80,33 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "unknown workspace action", http.StatusBadRequest)
 	}
+}
+
+// pullRequestBranch fetches a pull request's head commit into a workspace and
+// answers the new branch a session about it starts: the pull request's head
+// branch, renamed when the checkout already has that branch, at that commit.
+func (s *server) pullRequestBranch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	number, err := strconv.Atoi(q.Get("number"))
+	if err != nil || number <= 0 {
+		http.Error(w, "a pull request number is required", http.StatusBadRequest)
+		return
+	}
+	var dir string
+	err = s.db.Read(func(tx *store.Tx) error {
+		ws, err := tx.Workspace(q.Get("id"))
+		dir = ws.Path
+		return err
+	})
+	if refused(w, err) {
+		return
+	}
+	branch, commit, err := s.gh.PullRequestHead(r.Context(), q.Get("account"), q.Get("repo"), number, dir)
+	if refused(w, err) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"name": workspace.FreeBranch(dir, branch), "start": commit})
 }
 
 // input is the JSON body of a prompt: its text and images.

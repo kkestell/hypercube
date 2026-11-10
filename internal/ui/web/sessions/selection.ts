@@ -103,10 +103,7 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
     collapsedWorkspaces: Object.fromEntries(Object.entries(next.workbench.collapsedWorkspaces).filter(([id]) => workspaceIds.has(id))),
     collapsedSessions: Object.fromEntries(Object.entries(next.workbench.collapsedSessions).filter(([id]) => ids.has(id))),
   }};
-  const pendingTarget = selectionTarget(next.pending);
-  if (next.pending && pendingTarget && 'workspace' in pendingTarget && targetExists(next, pendingTarget)) {
-    next = {...next, selected: next.pending, pending: null};
-  } else if (next.pending && sessions.some(s => s.id === next.pending)) {
+  if (next.pending && sessions.some(s => s.id === next.pending)) {
     const family = sessionOf(next, next.pending)!;
     next = {...next, selected: next.pending, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}};
   }
@@ -133,15 +130,15 @@ export function sessionCreated(state: State, key: string, session: string): Stat
 }
 
 // selectSession shows a session, a workspace dashboard, or an unsent session.
-// A new session's or workspace's ID can arrive before the state that lists it,
-// so the selection waits for that state.
+// A new session's ID can arrive before the state that lists it, so the
+// selection waits for that state.
 export const selectWorkspace = (state: State, id: string) => selectSession(state, workspaceKey(id));
 
 export function selectSession(state: State, id: string): State {
   if (isUnsent(id)) return openUnsent(state, unsentOf(state, id)!.workspace);
   const next = parkUnsent(state);
   const target = selectionTarget(id);
-  if (target && 'workspace' in target) return targetExists(next, target) ? attach({...next, selected: id, pending: null}) : {...next, pending: id};
+  if (target && 'workspace' in target) return targetExists(next, target) ? attach({...next, selected: id, pending: null}) : next;
   if (!allSessions(next).some(s => s.id === id)) return {...next, pending: id};
   const family = sessionOf(next, id)!;
   return attach({...next, selected: id, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}});

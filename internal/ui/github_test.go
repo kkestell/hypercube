@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -205,5 +207,100 @@ func TestCloneAction(t *testing.T) {
 	a.post("/workspace?action=clone&account=alice&repo=o/missing&path="+url.QueryEscape(missing), "", 409)
 	if _, err := os.Stat(missing); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a failed clone left %s: %v", missing, err)
+	}
+}
+
+func TestPullRequestBranchAndExistingFolder(t *testing.T) {
+	root := t.TempDir()
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(global, []byte("[url \""+root+"/\"]\n\tinsteadOf = https://github.com/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GH_TOKEN", "")
+	bare := filepath.Join(root, "o", "r.git")
+	checkout, other := t.TempDir(), t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "--bare", "-b", "main", bare)
+	git("-C", checkout, "init", "-q", "-b", "main")
+	git("-C", checkout, "remote", "add", "origin", "https://github.com/o/r.git")
+	git("-C", checkout, "commit", "-q", "--allow-empty", "-m", "init")
+	git("-C", checkout, "push", "-q", "origin", "main")
+	git("-C", checkout, "commit", "-q", "--allow-empty", "-m", "pull request")
+	head := git("-C", checkout, "rev-parse", "HEAD")
+	git("-C", checkout, "push", "-q", "origin", "HEAD:refs/pull/7/head")
+	git("-C", checkout, "reset", "-q", "--hard", "HEAD~")
+	git("-C", other, "init", "-q", "-b", "main")
+	git("-C", other, "remote", "add", "origin", "https://github.com/o/s.git")
+
+	db := open(t)
+	api := githubtest.NewAPI(t)
+	api.SetPullRequests([]map[string]any{
+		{"number": 7, "title": "Seven", "url": "https://github.com/o/r/pull/7", "headRefName": "feature", "repository": map[string]string{"nameWithOwner": "o/r"}, "author": map[string]string{"login": "dana"}},
+	}, nil)
+	watcher := &github.Watcher{DB: db, GH: githubtest.GH(t, "alice"), API: api.URL, Interval: time.Hour}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { watcher.Run(ctx); close(done) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	a := &app{t: t, db: db}
+	a.server = httptest.NewServer(Handler(db, configFile(db), session.New(db, configFile(db), "", session.Programs{}), watcher))
+	t.Cleanup(a.server.Close)
+	p := a.page()
+	p.until("the accounts", func() bool {
+		return len(p.state.Accounts) == 1 && len(p.state.Accounts[0].PullRequests) == 1
+	})
+	// The workspace is added after the watcher's pass, as a clone is, so it
+	// has no GitHub status yet.
+	change(t, db, func(tx *store.Tx) error { return tx.AddWorkspace(store.Workspace{ID: "w", Path: checkout}) })
+
+	branch := func(number string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest("POST", a.server.URL+"/workspace?action=pull-request-branch&id=w&account=alice&repo=O/R&number="+number, nil)
+		req.Header.Set("Origin", a.server.URL)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		body, _ := io.ReadAll(res.Body)
+		return res.StatusCode, strings.TrimSpace(string(body))
+	}
+	for _, c := range []struct {
+		setup  func()
+		number string
+		status int
+		want   string
+	}{
+		{nil, "7", 200, `{"name":"feature","start":"` + head + `"}`},
+		{func() { git("-C", checkout, "branch", "feature") }, "7", 200, `{"name":"feature-2","start":"` + head + `"}`},
+		{nil, "8", 409, "pull request #8 in O/R is not open for alice"},
+		{nil, "x", 400, "a pull request number is required"},
+	} {
+		if c.setup != nil {
+			c.setup()
+		}
+		if status, body := branch(c.number); status != c.status || body != c.want {
+			t.Errorf("number %s: %d %s, want %d %s", c.number, status, body, c.status, c.want)
+		}
+	}
+
+	a.post("/workspace?action=new&repo=o/r&path="+url.QueryEscape(checkout), "", 200)
+	a.post("/workspace?action=new&repo=o/r&path="+url.QueryEscape(other), "", 409)
+	var list []store.Workspace
+	if err := db.Read(func(tx *store.Tx) (err error) { list, err = tx.Workspaces(); return }); err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "w" {
+		t.Fatalf("workspaces = %+v, want only w", list)
 	}
 }
