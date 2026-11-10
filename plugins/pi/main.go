@@ -32,7 +32,7 @@ const (
 var extension []byte
 
 func main() {
-	plugin.Plugin{Product: "Pi", Executable: "pi", Serve: serve, Models: models}.Main()
+	plugin.Plugin{Product: "Pi", Executable: "pi", Serve: serve, Models: models, Generate: generate}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {

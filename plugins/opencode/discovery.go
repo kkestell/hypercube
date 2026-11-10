@@ -8,22 +8,35 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 )
 
-// models reads the same native catalog used for configuration. Discovery never
-// opens a conversation, submits a prompt, or changes the selected model.
-func models(ctx context.Context, req harness.ModelsRequest) (harness.Catalog, error) {
-	s, err := launch(ctx, req.Dir)
+// launchCatalog starts a server in dir and waits until its native plugins have
+// activated, so the model catalog is complete. The caller stops the agent.
+func launchCatalog(ctx context.Context, dir string) (*agent, error) {
+	s, err := launch(ctx, dir)
 	if err != nil {
-		return harness.Catalog{}, err
+		return nil, err
 	}
 	ag := newAgent(func(harness.Event) {})
 	ag.server = s
-	defer ag.stop()
 	if err := ag.subscribe(ctx); err != nil {
-		return harness.Catalog{}, err
+		ag.stop()
+		return nil, err
 	}
 	if err := ag.awaitCatalog(ctx); err != nil {
+		ag.stop()
+		return nil, err
+	}
+	return ag, nil
+}
+
+// models reads the same native catalog used for configuration. Discovery never
+// opens a conversation, submits a prompt, or changes the selected model.
+func models(ctx context.Context, req harness.ModelsRequest) (harness.Catalog, error) {
+	ag, err := launchCatalog(ctx, req.Dir)
+	if err != nil {
 		return harness.Catalog{}, err
 	}
+	defer ag.stop()
+	s := ag.server
 	var available []modelInfo
 	if err := s.call(ctx, "GET", "/api/model", nil, &available); err != nil {
 		return harness.Catalog{}, err

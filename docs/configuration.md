@@ -44,8 +44,9 @@ set with **Rename** stays. Without a utility model, or when naming fails, the
 title stays the start of the first message; failures appear in the service log
 (`~/.local/state/hypercube/ui.log`).
 
-Choose a Claude Code model. The call runs with no tools, MCP servers, project
-instructions, or saved conversation, in an empty temporary folder.
+Choose a model from any harness. The call runs with no tools, project
+instructions, or saved conversation, in an empty temporary folder. See
+[what each harness runs](harness-support.md#utility-model).
 
 ## Models
 

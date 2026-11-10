@@ -77,7 +77,7 @@ function DefaultSelection({draft, onChange}: SectionProps) {
   return <div className="grid gap-3">
     <span className="text-sm font-medium leading-none">Default model</span>
     <ModelSelect value={draft.default_selection ?? null} label="Default model" entries={draft.models}
-      className="self-start" onChange={default_selection => onChange({default_selection})} />
+      className="justify-self-start" onChange={default_selection => onChange({default_selection})} />
     <p className="text-sm text-muted-foreground">
       New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.
     </p>

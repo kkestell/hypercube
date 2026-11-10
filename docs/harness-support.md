@@ -22,6 +22,23 @@ A model with efforts needs one; a model without efforts takes none. OpenCode and
 Pi report the chosen effort back to the selector. Listing models does not
 create a conversation; OpenCode reads its native model catalog directly.
 
+## Utility model
+
+The [utility model](configuration.md#utility-model) runs one prompt outside any
+session, in an empty temporary folder, with no saved conversation.
+
+| Harness | What runs |
+| --- | --- |
+| Claude Code | `claude -p` in safe mode, with no tools, MCP servers, or slash commands. |
+| OpenCode | A private server's text generation request. |
+| Pi | `pi -p` with extensions, MCP servers, skills, prompt templates, context files, and themes off. |
+
+OpenCode loads its global configuration, so global MCP servers and plugins
+start for each call. Pi runs with extensions off, so models that Pi extensions
+provide are unavailable.
+
+A model or effort the harness does not offer fails before the prompt is sent.
+
 ## Messages and model changes
 
 | Harness | Follow-up during work | Model or effort change |

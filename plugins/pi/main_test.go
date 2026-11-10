@@ -570,6 +570,17 @@ func fakePi(t *testing.T, env map[string]string) (args string) {
 	t.Helper()
 	dir := t.TempDir()
 	script := `#!/bin/sh
+if [ "$1" = "-p" ]; then
+  echo "$@" > "$FAKE_ARGS.print"
+  pwd > "$FAKE_ARGS.dir"
+  cat > "$FAKE_ARGS.stdin"
+  if [ -n "$FAKE_PRINT_FAIL" ]; then
+    echo "$FAKE_PRINT_FAIL" >&2
+    exit 1
+  fi
+  cat "$FAKE_PRINT"
+  exit 0
+fi
 echo "$@" > "$FAKE_ARGS"
 echo "$HYPERCUBE_MCP" > "$FAKE_ARGS.mcp"
 cost=0.5
@@ -617,6 +628,8 @@ done
 	}
 	t.Setenv("FAKE_STREAM", stream)
 	t.Setenv("FAKE_PENDING", "")
+	t.Setenv("FAKE_PRINT", "")
+	t.Setenv("FAKE_PRINT_FAIL", "")
 	t.Setenv("FAKE_DIALOG_BEFORE_PROMPT_REPLY", "")
 	for k, v := range env {
 		t.Setenv(k, v)

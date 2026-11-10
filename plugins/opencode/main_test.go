@@ -89,6 +89,8 @@ func connected(t *testing.T) *testHarness {
 				map[string]any{"providerID": "q", "id": "b/c", "name": "No effort", "enabled": true},
 				map[string]any{"providerID": "p", "id": "disabled", "enabled": false},
 			}
+		case "/api/experimental/generate/text":
+			data = map[string]any{"text": "Fix the parser"}
 		case "/api/model/default":
 			data = map[string]any{"providerID": "p", "id": "m"}
 		case "/api/session", "/api/session/s1", "/api/session/source/fork":
@@ -349,7 +351,7 @@ func fakeExecutable(t *testing.T, url string) string {
 	t.Helper()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "launch")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" \"$OPENCODE_PASSWORD\" \"$OPENCODE_CONFIG_CONTENT\" > \"$FAKE_LAUNCH_LOG\"\nprintf '%s\\n' '{\"url\":\"" + url + "\"}'\ncat >/dev/null\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" \"$OPENCODE_PASSWORD\" \"$OPENCODE_CONFIG_CONTENT\" \"$(pwd)\" > \"$FAKE_LAUNCH_LOG\"\nprintf '%s\\n' '{\"url\":\"" + url + "\"}'\ncat >/dev/null\n"
 	if err := os.WriteFile(filepath.Join(dir, "opencode"), []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -358,9 +360,10 @@ func fakeExecutable(t *testing.T, url string) string {
 	return log
 }
 
-func TestOwnedServerDiscoveryAndLaunch(t *testing.T) {
-	h := connected(t)
-	// The executable generates the password before contacting our server.
+// owned makes the opencode executable start a server that is h's native server
+// behind a proxy checking the launch password, and returns the launch log.
+func owned(t *testing.T, h *testHarness) string {
+	t.Helper()
 	var log string
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		data, err := os.ReadFile(log)
@@ -370,15 +373,20 @@ func TestOwnedServerDiscoveryAndLaunch(t *testing.T) {
 			return
 		}
 		password := strings.Split(string(data), "\n")[1]
-		_, got, _ := r.BasicAuth()
-		if got != password {
+		if _, got, _ := r.BasicAuth(); got != password {
 			t.Error("server password was not sent")
 		}
 		r.SetBasicAuth("opencode", "test-password")
 		h.native.Config.Handler.ServeHTTP(w, r)
 	}))
-	defer proxy.Close()
+	t.Cleanup(proxy.Close)
 	log = fakeExecutable(t, proxy.URL)
+	return log
+}
+
+func TestOwnedServerDiscoveryAndLaunch(t *testing.T) {
+	h := connected(t)
+	log := owned(t, h)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	c, err := models(ctx, harness.ModelsRequest{Dir: t.TempDir(), Model: "p/m"})

@@ -63,8 +63,8 @@ offers in a directory and, for one model, its efforts, saving nothing. The
 browser lists model entries the user saves in `config.json` and never asks a
 plugin for models. `generate` sends one prompt to a model with no tools and no
 saved native conversation and returns its text; the backend uses it for the
-utility model, which names new sessions. Only the Claude Code plugin
-implements it. The plugin, not the core, checks a session's model and
+utility model, which names new sessions. The Claude Code, OpenCode, and Pi
+plugins implement it. The plugin, not the core, checks a session's model and
 effort in its native start and configure, and its start and configure replies
 report the settings the harness accepted.
 
