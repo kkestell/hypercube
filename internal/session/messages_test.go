@@ -9,6 +9,7 @@ import (
 )
 
 func TestSendMessageScope(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	f.seed(store.Session{ID: "own-child", Name: "child"}, store.Session{ID: "sibling", Name: "sibling"}, store.Session{ID: "ended", Name: "ended", Ended: true})
 	if err := f.db.Tx(func(tx *store.Tx) error {
@@ -84,6 +85,7 @@ func TestSendMessageScope(t *testing.T) {
 }
 
 func TestSendMessageAcrossWorkspaces(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	outside, err := f.rt.AddWorkspace(t.TempDir())

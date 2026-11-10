@@ -204,7 +204,7 @@ func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	if refused(w, err) {
 		return
 	}
-	cfg, err := config.Load()
+	cfg, err := s.config.Load()
 	if refused(w, err) {
 		return
 	}

@@ -41,6 +41,7 @@ func (f *fixture) openApprovals(id string) (ids []string) {
 func (f *fixture) answersOf(id string) int { return len(f.log(id, "answer")) }
 
 func TestAlwaysAllowInSession(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	a, b := f.session(), f.session()
 	first, _ := f.approve(a.ID), f.approve(a.ID)
@@ -94,6 +95,7 @@ func TestAlwaysAllowInSession(t *testing.T) {
 }
 
 func TestAlwaysAllowInAllSessions(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	a, b := f.session(), f.session()
 	request := f.approve(a.ID)
@@ -114,6 +116,7 @@ func TestAlwaysAllowInAllSessions(t *testing.T) {
 }
 
 func TestAlwaysAllowNeedsAnOpenApproval(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")

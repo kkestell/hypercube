@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/hold/holdtest"
@@ -31,6 +32,8 @@ type fixture struct {
 	plugins   string
 	root      string
 	workspace store.Workspace
+	config    config.File
+	env       map[string]string // read by Runtime.Env with Runtime.mu held
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -53,14 +56,13 @@ func newWorkspaceFixture(t *testing.T, git bool) *fixture {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	f := &fixture{t: t, dir: dir, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo")}
+	f.config = config.File(filepath.Join(dir, "config", "config.json"))
+	f.env = map[string]string{"HYPERCUBE_TEST_LOGS": f.logs}
 	for _, d := range []string{f.logs, f.plugins, f.root, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
-	t.Setenv("HYPERCUBE_TEST_LOGS", f.logs)
 	harnesstest.Install(t, f.plugins, "test")
 	if git {
 		f.git(f.root, "init", "-q", "-b", "main")
@@ -69,7 +71,7 @@ func newWorkspaceFixture(t *testing.T, git bool) *fixture {
 	if f.root, err = filepath.EvalSymlinks(f.root); err != nil {
 		t.Fatal(err)
 	}
-	if f.db, err = store.Open(); err != nil {
+	if f.db, err = store.Open(filepath.Join(dir, "state"), f.config); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { f.db.Close() })
@@ -83,9 +85,22 @@ func newWorkspaceFixture(t *testing.T, git bool) *fixture {
 // newRuntime returns a runtime over the fixture's database, ended when the test
 // ends. The test can end it sooner.
 func (f *fixture) newRuntime() *Runtime {
-	rt := New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp", Holder: holdtest.Path})
+	rt := New(f.db, f.config, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp", Holder: holdtest.Path})
+	rt.Env = func(string) []string {
+		var env []string
+		for name, value := range f.env {
+			env = append(env, name+"="+value)
+		}
+		return env
+	}
 	f.t.Cleanup(rt.Quit)
 	return rt
+}
+
+func (f *fixture) setenv(name, value string) {
+	f.rt.mu.Lock()
+	defer f.rt.mu.Unlock()
+	f.env[name] = value
 }
 
 // pauseExit holds the first plugin that reaches EOF until release. Removing
@@ -100,7 +115,7 @@ func (f *fixture) pauseExit() (release func()) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.t.Setenv("HYPERCUBE_TEST_END_GATE", path)
+	f.setenv("HYPERCUBE_TEST_END_GATE", path)
 	var once sync.Once
 	release = func() {
 		once.Do(func() {
@@ -241,7 +256,7 @@ func (f *fixture) queue(from, to string, texts ...string) {
 // shellEnded reports whether the session's shell has ended and its holder is
 // gone.
 func (f *fixture) shellEnded(session string) bool {
-	_, err := os.Stat(filepath.Join(store.Dir(), "run", terminal.Name(session)))
+	_, err := os.Stat(filepath.Join(f.db.Dir, "run", terminal.Name(session)))
 	return errors.Is(err, os.ErrNotExist)
 }
 

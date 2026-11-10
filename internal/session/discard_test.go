@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 func TestDiscardReturnsTheFamilyToItsStartingCommit(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.worktreeSession()
@@ -53,19 +55,18 @@ func TestDiscardReturnsTheFamilyToItsStartingCommit(t *testing.T) {
 }
 
 func TestDiscardRefusals(t *testing.T) {
-	f := newFixture(t)
-	f.idleAfter(time.Hour)
-	checkout := f.session()
-	worktree := f.worktreeSession()
-	child := f.child(worktree, "worker", "")
-	archived := f.worktreeSession()
-	if err := f.rt.Archive(archived.ID); err != nil {
+	t.Parallel()
+	f := newPlainFixture(t)
+	f.seed(store.Session{ID: "child", Name: "worker"})
+	if err := f.db.Tx(func(tx *store.Tx) error {
+		return tx.AddSession(store.Session{ID: "archived", Workspace: f.workspace.ID, Ended: true, Base: "base"})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ id, want string }{
-		{checkout.ID, "only a worktree session"},
-		{child.ID, "only a top-level session"},
-		{archived.ID, "archived"},
+		{"s", "only a worktree session"},
+		{"child", "only a top-level session"},
+		{"archived", "archived"},
 	} {
 		if err := f.rt.Discard(c.id); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("Discard(%s) = %v, want %q", c.id, err, c.want)

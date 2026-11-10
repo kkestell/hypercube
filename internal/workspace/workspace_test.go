@@ -262,10 +262,7 @@ func TestGitWithKeepsStderrOutOfOutput(t *testing.T) {
 }
 
 func TestWorktreeSetUp(t *testing.T) {
-	// Git refuses local submodule URLs unless file transport is allowed.
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "protocol.file.allow")
-	t.Setenv("GIT_CONFIG_VALUE_0", "always")
+	t.Parallel()
 	sub, run := gitRepo(t)
 	write(t, filepath.Join(sub, "lib"), "lib")
 	run(sub, "add", "lib")
@@ -323,10 +320,7 @@ func TestWorktreeSetUp(t *testing.T) {
 }
 
 func TestRemoveWorktreeKeepsUnpushedSubmoduleCommits(t *testing.T) {
-	// Git refuses local submodule URLs unless file transport is allowed.
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "protocol.file.allow")
-	t.Setenv("GIT_CONFIG_VALUE_0", "always")
+	t.Parallel()
 	sub, run := gitRepo(t)
 	root, _ := gitRepo(t)
 	run(root, "submodule", "-q", "add", sub, "vendor/sub")

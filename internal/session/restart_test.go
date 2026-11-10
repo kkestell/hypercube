@@ -20,13 +20,14 @@ func (f *fixture) restart() { f.t.Helper(); f.rt.Detach(); f.rt = f.newRuntime()
 func (f *fixture) holder(id string) *hold.Holder {
 	f.t.Helper()
 	s := f.storedSession(id)
-	h, err := hold.Open(filepath.Join(store.Dir(), "run", s.Launch))
+	h, err := hold.Open(filepath.Join(f.db.Dir, "run", s.Launch))
 	if err != nil {
 		f.t.Fatal(err)
 	}
 	return h
 }
 func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
@@ -84,6 +85,7 @@ func (f *fixture) recordDetachedInput(id, text string, send bool) {
 	}
 }
 func TestRestartAnswersPersistedAttention(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
@@ -100,6 +102,7 @@ func TestRestartAnswersPersistedAttention(t *testing.T) {
 	}
 }
 func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.queue("user", s.ID, "!hold", "later")
@@ -136,6 +139,7 @@ func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
 	}
 }
 func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
@@ -146,6 +150,7 @@ func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
 	f.until("delivered", func() bool { return len(f.queued(s.ID)) == 0 })
 }
 func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
@@ -185,13 +190,14 @@ func killHolder(t *testing.T, dir string) {
 	}
 }
 func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "child", "")
 	f.rt.Detach()
 	f.recordDetachedInput(child.ID, "!usage", true)
 	f.until("offline usage", func() bool { return len(f.inputs(child.ID)) == 1 })
-	dir := filepath.Join(store.Dir(), "run", f.storedSession(child.ID).Launch)
+	dir := filepath.Join(f.db.Dir, "run", f.storedSession(child.ID).Launch)
 	killHolder(t, dir)
 	f.rt = f.newRuntime()
 	f.restore()
@@ -207,6 +213,7 @@ func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
 	})
 }
 func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	f.seed()
 	f.rt.mu.Lock()
@@ -228,7 +235,7 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := strings.TrimSuffix(l.prefix, ":")
-	orphan, err := hold.Start(holdtest.Path, filepath.Join(store.Dir(), "run", "orphan"), []string{"/bin/cat"}, os.Environ(), f.root, nil)
+	orphan, err := hold.Start(holdtest.Path, filepath.Join(f.db.Dir, "run", "orphan"), []string{"/bin/cat"}, os.Environ(), f.root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,12 +248,13 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 	if orphan.Alive() {
 		t.Fatal("orphan alive")
 	}
-	if _, err = os.Stat(filepath.Join(store.Dir(), "run", "orphan")); !os.IsNotExist(err) {
+	if _, err = os.Stat(filepath.Join(f.db.Dir, "run", "orphan")); !os.IsNotExist(err) {
 		t.Fatal("orphan directory remains")
 	}
 }
 
 func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
@@ -272,6 +280,7 @@ func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
 	f.until("completed item once", func() bool { return count("working more done") == 1 })
 }
 func TestParkAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.queue("user", s.ID, "!onclose")
@@ -284,17 +293,18 @@ func TestParkAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
 	if len(f.inputs(s.ID)) != 3 {
 		t.Fatal("accepted message repeated")
 	}
-	entries, err := os.ReadDir(filepath.Join(store.Dir(), "run"))
+	entries, err := os.ReadDir(filepath.Join(f.db.Dir, "run"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("holder directories: %v %v", entries, err)
 	}
 	f.rt.Quit()
-	entries, err = os.ReadDir(filepath.Join(store.Dir(), "run"))
+	entries, err = os.ReadDir(filepath.Join(f.db.Dir, "run"))
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("Quit left directories: %v %v", entries, err)
 	}
 }
 func TestQuickExitCountSurvivesRestarts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	for exits := 1; exits <= maxQuickExits; exits++ {
@@ -316,6 +326,7 @@ func TestQuickExitCountSurvivesRestarts(t *testing.T) {
 }
 
 func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.requestTimeout = 100 * time.Millisecond
@@ -343,9 +354,10 @@ func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 }
 
 func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	f.rt.startTimeout = time.Millisecond
-	t.Setenv("HYPERCUBE_TEST_START_HOLD", "1")
+	f.setenv("HYPERCUBE_TEST_START_HOLD", "1")
 	f.seed()
 	f.rt.mu.Lock()
 	err := f.rt.save(func(tx *write) error {
@@ -372,6 +384,7 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 }
 
 func TestAdoptedIdleSessionParks(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
@@ -385,6 +398,7 @@ func TestAdoptedIdleSessionParks(t *testing.T) {
 }
 
 func TestDetachReleasesBlockedPluginSender(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	s = f.storedSession(s.ID)
@@ -437,6 +451,7 @@ func TestDetachReleasesBlockedPluginSender(t *testing.T) {
 }
 
 func TestRestoreRegistersAllFamiliesBeforeServing(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	first := f.session()
 	child := f.child(first, "worker", "")

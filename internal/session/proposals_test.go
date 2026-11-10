@@ -24,6 +24,7 @@ func (f *fixture) proposal(parentID string, options ChildOptions) string {
 }
 
 func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed task", Settings: lead, Dir: ".", Message: "brief"})
@@ -56,6 +57,7 @@ func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
 }
 
 func TestProposalCanRetryAFailedLaunchOrBeDismissed(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	options := ChildOptions{Name: "retry", Title: "Retry", Settings: harness.Settings{Harness: "missing", Model: "m", Effort: "low"}, Dir: "."}
@@ -85,6 +87,7 @@ func TestProposalCanRetryAFailedLaunchOrBeDismissed(t *testing.T) {
 }
 
 func TestForkRejectsADifferentHarness(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: harness.Settings{Harness: "other", Model: "m"}, Fork: true})
@@ -94,6 +97,7 @@ func TestForkRejectsADifferentHarness(t *testing.T) {
 }
 
 func TestArchivedProposalCannotBeDismissed(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Task", Settings: lead, Dir: "."})

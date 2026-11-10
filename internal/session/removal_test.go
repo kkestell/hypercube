@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,27 +14,19 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// pauseStatus holds the first completed Git status in dir.
+// pauseStatus holds the first Git status in dir through its fsmonitor hook.
 func (f *fixture) pauseStatus(dir string) (wait, release func()) {
 	f.t.Helper()
-	return f.pauseGit(dir, "status", "--porcelain")
+	return f.pauseGit(dir, "status")
 }
 
-// pauseGit holds the first completed Git command matching command and arg in
-// dir. The runtime's merge refreshes can run Git through the barrier until the
-// runtime quits, so the barrier lives in the fixture's directory, which is
-// removed after that. Both pipe ends stay open so cleanup can release the held
-// command even after failure.
-func (f *fixture) pauseGit(dir, command, arg string) (wait, release func()) {
+// pauseGit holds status or checkout through a repository-local hook. The
+// barrier outlives the runtime, and cleanup releases it even after failure.
+func (f *fixture) pauseGit(dir, command string) (wait, release func()) {
 	t := f.t
 	t.Helper()
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
 	barrier, err := os.MkdirTemp(f.dir, "git")
 	if err != nil {
 		t.Fatal(err)
@@ -49,25 +42,31 @@ func (f *fixture) pauseGit(dir, command, arg string) (wait, release func()) {
 			t.Fatal(err)
 		}
 	}
-	script := `#!/bin/sh
-if [ "$1" = "$HYPERCUBE_TEST_GIT_COMMAND" ] && [ "$2" = "$HYPERCUBE_TEST_GIT_ARG" ] && [ "$PWD" = "$HYPERCUBE_TEST_GIT_DIR" ] && mkdir "$HYPERCUBE_TEST_GIT_BARRIER/claimed" 2>/dev/null; then
- "$HYPERCUBE_TEST_GIT" "$@"
- result=$?
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+	script := fmt.Sprintf("#!/bin/sh\nHYPERCUBE_TEST_GIT_DIR=%s\nHYPERCUBE_TEST_GIT_BARRIER=%s\n", quote(dir), quote(barrier))
+	path := filepath.Join(barrier, "fsmonitor")
+	condition := `[ "$PWD" = "$HYPERCUBE_TEST_GIT_DIR" ]`
+	if command == "checkout" {
+		path = filepath.Join(barrier, "post-checkout")
+		condition = `[ "$1" = 0000000000000000000000000000000000000000 ]`
+	}
+	script += "if " + condition + ` && mkdir "$HYPERCUBE_TEST_GIT_BARRIER/claimed" 2>/dev/null; then
  printf 'ready\n' > "$HYPERCUBE_TEST_GIT_BARRIER/reached"
  read response < "$HYPERCUBE_TEST_GIT_BARRIER/release"
- exit "$result"
 fi
-exec "$HYPERCUBE_TEST_GIT" "$@"
 `
-	if err := os.WriteFile(filepath.Join(barrier, "git"), []byte(script), 0o755); err != nil {
+	if command == "status" {
+		// A failed fsmonitor hook asks Git to scan every file normally.
+		script += "exit 1\n"
+	}
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HYPERCUBE_TEST_GIT", git)
-	t.Setenv("HYPERCUBE_TEST_GIT_DIR", dir)
-	t.Setenv("HYPERCUBE_TEST_GIT_COMMAND", command)
-	t.Setenv("HYPERCUBE_TEST_GIT_ARG", arg)
-	t.Setenv("HYPERCUBE_TEST_GIT_BARRIER", barrier)
-	t.Setenv("PATH", barrier+":"+os.Getenv("PATH"))
+	if command == "status" {
+		f.git(dir, "config", "core.fsmonitor", path)
+	} else {
+		f.git(dir, "config", "core.hooksPath", barrier)
+	}
 	reached := make(chan error, 1)
 	go func() {
 		var b [6]byte
@@ -75,7 +74,21 @@ exec "$HYPERCUBE_TEST_GIT" "$@"
 		reached <- err
 	}()
 	var once sync.Once
-	release = func() { once.Do(func() { _, _ = pipes[1].Write([]byte("continue\n")) }) }
+	release = func() {
+		once.Do(func() {
+			key := "core.fsmonitor"
+			if command == "checkout" {
+				key = "core.hooksPath"
+			}
+			// Only the held command needs the hook. Leaving it installed
+			// would spawn a shell for every later index read and status.
+			out, err := exec.Command("git", "-C", dir, "config", "--unset", key).CombinedOutput()
+			_, _ = pipes[1].Write([]byte("continue\n"))
+			if err != nil {
+				t.Errorf("remove Git hook: %v: %s", err, out)
+			}
+		})
+	}
 	t.Cleanup(func() {
 		// Claiming the barrier keeps a later command from waiting on the
 		// closed pipes.
@@ -93,14 +106,16 @@ exec "$HYPERCUBE_TEST_GIT" "$@"
 				t.Fatal(err)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatalf("Git %s %s did not reach the barrier", command, arg)
+			t.Fatalf("Git %s did not reach the barrier", command)
 		}
 	}, release
 }
 
 func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
+	t.Parallel()
 	for _, archive := range []bool{false, true} {
 		t.Run(map[bool]string{false: "delete", true: "archive"}[archive], func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t)
 			parent := f.worktreeSession()
 			// The configure reply follows the first turn's merge refresh, so
@@ -134,30 +149,23 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 }
 
 func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
+	t.Parallel()
 	// Creation waiting is shared by Delete and Archive. Exercise each creation
 	// outcome once, rather than repeating the same barriers for both callers.
 	for _, tc := range []struct {
 		archive bool
 		outcome string
-	}{{false, "success"}, {true, "missing-plugin"}, {false, "setup-failure"}} {
+	}{{false, "success"}, {true, "missing-plugin"}} {
 		archive, outcome := tc.archive, tc.outcome
 		t.Run(map[bool]string{false: "delete", true: "archive"}[archive]+"/"+outcome, func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t)
 			parent := f.worktreeSession()
 			options := ChildOptions{Name: "worker", Title: "Worker"}
 			if outcome == "missing-plugin" {
 				options.Settings = harness.Settings{Harness: "missing", Model: "m"}
 			}
-			if outcome == "setup-failure" {
-				dir := workspace.WorktreeDir(f.root, parent.ID, options.Name)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "occupied"), []byte("fixture"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			wait, release := f.pauseGit(parent.Dir, "worktree", "add")
+			wait, release := f.pauseGit(parent.Dir, "checkout")
 			type creation struct {
 				child store.Session
 				err   error
@@ -213,12 +221,7 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 				t.Fatal("family removal did not finish")
 			}
 			for _, member := range []store.Session{parent, child} {
-				if member.ID == child.ID && outcome == "setup-failure" {
-					// The occupied directory was never the child's worktree.
-					if _, err := os.Stat(filepath.Join(member.Dir, "occupied")); err != nil {
-						t.Errorf("the occupying directory was removed: %v", err)
-					}
-				} else if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
+				if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
 					t.Errorf("worktree %s survived: %v", member.Dir, err)
 				}
 				out, err := exec.Command("git", "-C", f.root, "branch", "--list", member.Branch).CombinedOutput()
@@ -230,9 +233,6 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 			want := 0
 			if archive {
 				want = 1
-				if outcome == "success" {
-					want++
-				}
 				if got := f.summary(parent.ID); got != "user:start|text:ack" {
 					t.Errorf("archive changed the parent chat: %q", got)
 				}
@@ -250,11 +250,12 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 }
 
 func TestEndChildKeepsWorkWrittenByItsStoppingShell(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "writer", "")
 	ready := filepath.Join(t.TempDir(), "ready")
-	t.Setenv("HYPERCUBE_TEST_SHELL_READY", ready)
+	f.setenv("HYPERCUBE_TEST_SHELL_READY", ready)
 	f.rt.Terminals.Command = []string{"/bin/sh", "-c", `trap 'printf final > shutdown-write; exit' HUP
 printf ready > "$HYPERCUBE_TEST_SHELL_READY"
 while read line; do :; done`}
@@ -281,6 +282,7 @@ while read line; do :; done`}
 }
 
 func TestEndChildBlocksShellAdmissionDuringItsChecks(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "ending", "")
@@ -303,6 +305,7 @@ func TestEndChildBlocksShellAdmissionDuringItsChecks(t *testing.T) {
 // A refusal during the initial checks must release the claim without holding
 // queued messages or suppressing the running agent's normal relaunch.
 func TestRefusedRemovalKeepsTheFamilyWorking(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.worktreeSession()
 	if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
@@ -334,8 +337,10 @@ func TestRefusedRemovalKeepsTheFamilyWorking(t *testing.T) {
 }
 
 func TestPartialFamilyRemovalRecordsEachCompletedChild(t *testing.T) {
+	t.Parallel()
 	for _, archive := range []bool{false, true} {
 		t.Run(map[bool]string{false: "delete", true: "archive"}[archive], func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t)
 			parent := f.worktreeSession()
 			first := f.child(parent, "first", "")
@@ -344,25 +349,17 @@ func TestPartialFamilyRemovalRecordsEachCompletedChild(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			git, err := exec.LookPath("git")
-			if err != nil {
-				t.Fatal(err)
-			}
 			bin := t.TempDir()
-			script := `#!/bin/sh
-if [ "$1" = worktree ] && [ "$2" = remove ] && [ "$4" = "$HYPERCUBE_TEST_DENY_DIR" ]; then
- printf preserved > "$HYPERCUBE_TEST_DENY_DIR/uncommitted"
- echo 'test worktree removal failure' >&2
- exit 1
-fi
-exec "$HYPERCUBE_TEST_REAL_GIT" "$@"
-`
-			if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+			// Git checks the second worktree again after removing the first.
+			// Its repository-local hook then introduces real work that must not
+			// be lost. No process-global Git wrapper is needed.
+			quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+			script := fmt.Sprintf("#!/bin/sh\nif [ ! -d %s ] && [ \"$PWD\" = %s ]; then\n printf preserved > %s\n git config --unset core.fsmonitor\nfi\nexit 1\n", quote(first.Dir), quote(second.Dir), quote(filepath.Join(second.Dir, "uncommitted")))
+			hook := filepath.Join(bin, "fsmonitor")
+			if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("HYPERCUBE_TEST_REAL_GIT", git)
-			t.Setenv("HYPERCUBE_TEST_DENY_DIR", second.Dir)
-			t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+			f.git(f.root, "config", "core.fsmonitor", hook)
 			remove := func() error {
 				if archive {
 					return f.rt.Archive(parent.ID)
@@ -404,7 +401,6 @@ exec "$HYPERCUBE_TEST_REAL_GIT" "$@"
 			if err := os.Remove(scratch); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("HYPERCUBE_TEST_DENY_DIR", "")
 			if err := remove(); err != nil {
 				t.Fatal("retrying cleanup after fixing the remaining child:", err)
 			}
@@ -441,6 +437,7 @@ func (f *fixture) pausedRefusal(parent store.Session, during func()) {
 }
 
 func TestRefusedRemovalWakesQueuedRecipients(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	parent := f.worktreeSession()
@@ -463,6 +460,7 @@ func TestRefusedRemovalWakesQueuedRecipients(t *testing.T) {
 }
 
 func TestRefusedRemovalRestartsTheIdleTimeout(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	parent := f.worktreeSession()

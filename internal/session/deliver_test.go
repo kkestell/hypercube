@@ -9,6 +9,7 @@ import (
 )
 
 func TestSessionStartsAndDeliversInOrder(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	// The plugin starts in the parent's directory with its instructions.
@@ -62,6 +63,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 }
 
 func TestRefusedMessageStaysQueued(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	refusals := func() (n int) {
@@ -90,6 +92,7 @@ func TestRefusedMessageStaysQueued(t *testing.T) {
 }
 
 func TestMessagesGoOutWhileTheAgentWorks(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")

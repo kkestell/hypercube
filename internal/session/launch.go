@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harnessclient"
 	"github.com/kkestell/hypercube/internal/hold"
@@ -200,7 +199,7 @@ func (r *Runtime) run(l *live) {
 }
 
 func (r *Runtime) launchDir(l *live) string {
-	return filepath.Join(store.Dir(), "run", strings.TrimSuffix(l.prefix, ":"))
+	return filepath.Join(r.db.Dir, "run", strings.TrimSuffix(l.prefix, ":"))
 }
 func (r *Runtime) pluginPath(id string) (string, error) {
 	var s store.Session
@@ -216,7 +215,7 @@ func (r *Runtime) pluginPath(id string) (string, error) {
 func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartArgs, err error) {
 	var guidance string
 	if s.Parent == "" {
-		cfg, err := config.Load()
+		cfg, err := r.config.Load()
 		if err != nil {
 			return args, err
 		}
@@ -226,7 +225,7 @@ func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartAr
 	if err != nil {
 		return args, err
 	}
-	args = harness.StartArgs{MCP: r.programs.MCP, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
+	args = harness.StartArgs{MCP: r.programs.MCP, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: instructions, StateDir: r.db.Dir}
 	if s.Fork != "" {
 		parent, err := tx.Session(s.Parent)
 		if err != nil {

@@ -11,8 +11,10 @@ import (
 )
 
 func TestSelect(t *testing.T) {
+	t.Parallel()
 	for _, working := range []bool{false, true} {
 		t.Run(map[bool]string{false: "idle", true: "working"}[working], func(t *testing.T) {
+			t.Parallel()
 			f := newPlainFixture(t)
 			s := f.session()
 			if working {
@@ -49,6 +51,7 @@ func TestSelect(t *testing.T) {
 }
 
 func TestSelectPartialAndRejected(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	for _, tc := range []struct{ name, model, effort, failure string }{
@@ -69,6 +72,7 @@ func TestSelectPartialAndRejected(t *testing.T) {
 }
 
 func TestSelectUnansweredAcrossReattachment(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	result := make(chan error, 1)
@@ -98,6 +102,7 @@ func TestSelectUnansweredAcrossReattachment(t *testing.T) {
 // A child inherits its parent's accepted settings, and the harness reports
 // the effort it chose when none was given.
 func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	if err := f.rt.Select(parent.ID, harness.Selection{Model: "next", Effort: "high"}); err != nil {
@@ -129,6 +134,7 @@ func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
 
 // A proposal starts with the settings it showed, though the parent's change.
 func TestProposalKeepsItsSettings(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed", Dir: ".", Message: "brief"})
@@ -145,8 +151,9 @@ func TestProposalKeepsItsSettings(t *testing.T) {
 }
 
 func TestInstructionsIncludeGuidance(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
-	if err := config.Save(config.Config{ReviewPrompt: config.DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, ChildGuidance: "Use next for reviews."}); err != nil {
+	if err := f.config.Save(config.Config{ReviewPrompt: config.DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, ChildGuidance: "Use next for reviews."}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.rt.ScanHarnesses(context.Background()); err != nil {

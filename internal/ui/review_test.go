@@ -10,6 +10,7 @@ import (
 )
 
 func TestReviewSettings(t *testing.T) {
+	t.Parallel()
 	models := []config.ModelEntry{
 		{Harness: "claude", Model: "opus", Efforts: []string{"low", "high"}, DefaultEffort: "high"},
 		{Harness: "codex", Model: "sol"},
@@ -35,6 +36,7 @@ func TestReviewSettings(t *testing.T) {
 }
 
 func TestReviewPrompt(t *testing.T) {
+	t.Parallel()
 	got := reviewPrompt("Review #{number} ({url}); #{number} is at {url}. {other}", 7, "https://github.com/o/r/pull/7")
 	want := "Review #7 (https://github.com/o/r/pull/7); #7 is at https://github.com/o/r/pull/7. {other}"
 	if got != want {
@@ -43,6 +45,7 @@ func TestReviewPrompt(t *testing.T) {
 }
 
 func TestReviewNeedsANumber(t *testing.T) {
+	t.Parallel()
 	h := handler(t, open(t))
 	for _, number := range []string{"", "seven", "0", "-1"} {
 		req := httptest.NewRequest("POST", "http://localhost:4280/session?action=review&workspace=w&number="+number, nil)

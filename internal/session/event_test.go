@@ -9,6 +9,7 @@ import (
 )
 
 func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
@@ -24,6 +25,7 @@ func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
 }
 
 func TestLimitsAreSavedUnderTheSessionsHarness(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!usage")
@@ -39,6 +41,7 @@ func TestLimitsAreSavedUnderTheSessionsHarness(t *testing.T) {
 }
 
 func TestFinishedTurnsMarkOnlyTheirOwnSessionUnseen(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	if err := f.rt.Seen(s.ID); err != nil {
@@ -88,6 +91,7 @@ func (f *fixture) states(agent string) (kinds []string, items []TranscriptItem) 
 }
 
 func TestStateMarkersBracketTheTurnsItems(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!answer")

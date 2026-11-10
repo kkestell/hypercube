@@ -26,6 +26,7 @@ func (a *app) get(path string) (int, []byte) {
 }
 
 func TestHarnesses(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	code, body := a.get("/harnesses")
 	var harnesses []harness.Harness
@@ -35,6 +36,7 @@ func TestHarnesses(t *testing.T) {
 }
 
 func TestNewSessionAndSelection(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	query := url.Values{"action": {"new"}, "workspace": {a.session.Workspace}, "harness": {"test"}, "model": {"plain"}}
 	a.post("/session?"+query.Encode(), `{"text":"hello"}`, http.StatusOK)

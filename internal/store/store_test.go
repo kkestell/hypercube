@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/kkestell/hypercube/internal/config"
 )
 
 func open(t *testing.T) *DB {
@@ -18,7 +20,7 @@ func open(t *testing.T) *DB {
 
 func reopen(t *testing.T) *DB {
 	t.Helper()
-	db, err := Open()
+	db, err := Open(DefaultDir(), config.DefaultFile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +57,12 @@ func seed(t *testing.T, db *DB, w, path, s string, children ...string) {
 
 func TestOpenSecuresStateAndPreservesRows(t *testing.T) {
 	db := open(t)
-	if _, err := os.Stat(dbPath()); err != nil {
+	if _, err := os.Stat(filepath.Join(db.Dir, "hypercube.db")); err != nil {
 		t.Fatal(err)
 	}
 	assertPrivate := func() {
 		t.Helper()
-		info, err := os.Stat(Dir())
+		info, err := os.Stat(db.Dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,10 +74,10 @@ func TestOpenSecuresStateAndPreservesRows(t *testing.T) {
 	seed(t, db, "w", "/repo", "s")
 	db.Close()
 	// Existing installations used a directory readable by other accounts.
-	if err := os.Chmod(Dir(), 0o755); err != nil {
+	if err := os.Chmod(db.Dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Open()
+	again, err := Open(db.Dir, config.DefaultFile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +311,7 @@ func TestLastText(t *testing.T) {
 // Concurrent transactions from goroutines and from another process all commit.
 func TestConcurrentTransactions(t *testing.T) {
 	if os.Getenv("HYPERCUBE_STORE_CHILD") == "1" {
-		db, err := Open()
+		db, err := Open(DefaultDir(), config.DefaultFile())
 		if err != nil {
 			os.Exit(1)
 		}

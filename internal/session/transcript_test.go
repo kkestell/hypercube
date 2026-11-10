@@ -9,6 +9,7 @@ import (
 )
 
 func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
@@ -38,6 +39,7 @@ func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
 }
 
 func TestRequestsNewestFirst(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "w1", "")
@@ -51,6 +53,7 @@ func TestRequestsNewestFirst(t *testing.T) {
 }
 
 func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")

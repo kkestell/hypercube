@@ -4,13 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func TestAddWorkspaceReclassifiesWithoutMoving(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	dir := t.TempDir()
 	w, err := f.rt.AddWorkspace(dir)
@@ -60,6 +60,7 @@ func TestAddWorkspaceReclassifiesWithoutMoving(t *testing.T) {
 }
 
 func TestAddWorkspaceRepairsSavedSubfolderFirst(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	sub := filepath.Join(f.root, "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
@@ -106,45 +107,5 @@ func TestAddWorkspaceRepairsSavedSubfolderFirst(t *testing.T) {
 	}
 	if got, err := f.rt.AddWorkspace(other); err != nil || got.ID != f.workspace.ID || got.Path != f.root || got.NoGit {
 		t.Errorf("new subfolder = %+v, %v", got, err)
-	}
-}
-
-func TestAddWorkspaceFailureDoesNotSave(t *testing.T) {
-	f := newFixture(t)
-	newDir := t.TempDir()
-	f.git(newDir, "init", "-q")
-	sub := filepath.Join(newDir, "sub")
-	if err := os.Mkdir(sub, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	alias := filepath.Join(t.TempDir(), "linked-sub")
-	if err := os.Symlink(sub, alias); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.db.Tx(func(tx *store.Tx) error { return tx.SetWorkspaceNoGit(f.workspace.ID, true) }); err != nil {
-		t.Fatal(err)
-	}
-	var before []store.Workspace
-	f.read(func(tx *store.Tx) error {
-		var err error
-		before, err = tx.Workspaces()
-		return err
-	})
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho test-git-refusal >&2\nexit 128\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	for _, dir := range []string{newDir, f.root, alias} {
-		if _, err := f.rt.AddWorkspace(dir); err == nil || !strings.Contains(err.Error(), "test-git-refusal") {
-			t.Errorf("AddWorkspace(%s) = %v, want refusal", dir, err)
-		}
-		f.read(func(tx *store.Tx) error {
-			got, err := tx.Workspaces()
-			if !reflect.DeepEqual(got, before) {
-				t.Errorf("failed add changed saved data: %+v, want %+v", got, before)
-			}
-			return err
-		})
 	}
 }

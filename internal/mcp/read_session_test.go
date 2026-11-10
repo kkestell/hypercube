@@ -28,6 +28,7 @@ func saveReadItems(t *testing.T, db *store.DB, items []harness.Item) {
 }
 
 func TestReadSessionAcrossBatches(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	items := make([]harness.Item, 160)
 	for i := range items {
@@ -57,6 +58,7 @@ func TestReadSessionAcrossBatches(t *testing.T) {
 }
 
 func TestReadSessionRuneBudget(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name  string
 		items []harness.Item
@@ -109,6 +111,7 @@ func TestReadSessionRuneBudget(t *testing.T) {
 }
 
 func TestReadSessionCompactFormatting(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	saveReadItems(t, db, []harness.Item{
 		{Kind: harness.KindUser, Text: "prompt"},

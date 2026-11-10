@@ -12,6 +12,7 @@ import (
 )
 
 func TestArchivedWorktreesAreNotMeasured(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		return tx.AddSession(store.Session{ID: "archived", Workspace: f.workspace.ID, Ended: true,
@@ -34,6 +35,7 @@ func TestArchivedWorktreesAreNotMeasured(t *testing.T) {
 }
 
 func TestArchivingForgetsMergeStatus(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	f.merge(s.ID, "the worktree's merge status", func(workspace.Merge) bool { return true })
@@ -46,6 +48,7 @@ func TestArchivingForgetsMergeStatus(t *testing.T) {
 }
 
 func TestMergeUsesTheLiveTarget(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	f.merge(s.ID, "the target main", func(m workspace.Merge) bool { return m.Target == "main" })
@@ -68,23 +71,22 @@ func TestMergeUsesTheLiveTarget(t *testing.T) {
 }
 
 func TestMergeRefusesSessionsWithoutTheirOwnBranch(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
+	f.seed(store.Session{ID: "child", Name: "worker"})
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		return tx.AddSession(store.Session{ID: "archived", Workspace: f.workspace.ID, Ended: true,
 			Base: "base", Branch: "hypercube/archived", Dir: filepath.Join(f.root, "removed")})
 	}); err != nil {
 		t.Fatal(err)
 	}
-	plain := f.session()
-	parent := f.worktreeSession()
-	child := f.child(parent, "w1", "start")
-	for _, id := range []string{"archived", plain.ID, child.ID} {
-		before := len(f.inputs(id))
-		if err := f.rt.Merge(id, "main"); err == nil {
-			t.Errorf("Merge(%s) succeeded", id)
-		}
-		if got := f.inputs(id); len(got) != before {
-			t.Errorf("a refused merge sent input to %s: %q", id, got)
+	for _, tc := range []struct{ id, want string }{
+		{"archived", "the session has ended"},
+		{"s", "only a top-level worktree session can be merged"},
+		{"child", "only a top-level worktree session can be merged"},
+	} {
+		if err := f.rt.Merge(tc.id, "main"); err == nil || err.Error() != tc.want {
+			t.Errorf("Merge(%s) = %v, want %q", tc.id, err, tc.want)
 		}
 	}
 }

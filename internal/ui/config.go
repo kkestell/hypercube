@@ -8,8 +8,8 @@ import (
 	"github.com/kkestell/hypercube/internal/config"
 )
 
-func getConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load()
+func (s *server) getConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.config.Load()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -19,7 +19,7 @@ func getConfig(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(cfg)
 }
 
-func saveConfig(w http.ResponseWriter, r *http.Request) {
+func (s *server) saveConfig(w http.ResponseWriter, r *http.Request) {
 	var cfg config.Config
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -35,7 +35,7 @@ func saveConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := config.Save(cfg); err != nil {
+	if err := s.config.Save(cfg); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

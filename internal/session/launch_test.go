@@ -11,6 +11,7 @@ import (
 )
 
 func TestRelaunchAfterTheProcessEnds(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "hello")
@@ -34,6 +35,7 @@ func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 }
 
 func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	ended := func() (n int) {
@@ -65,6 +67,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 }
 
 func TestFailedResumeIsAnError(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.park(s.ID)
@@ -98,6 +101,7 @@ func TestFailedResumeIsAnError(t *testing.T) {
 }
 
 func TestFailedRelaunchStaysEnded(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	if err := f.db.Tx(func(tx *store.Tx) error {
@@ -125,6 +129,7 @@ func TestFailedRelaunchStaysEnded(t *testing.T) {
 }
 
 func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	script := "#!/bin/sh\necho 'unsupported harness: not ported' >&2\nexit 1\n"
 	if err := os.WriteFile(filepath.Join(f.plugins, "hypercube-harness-old"), []byte(script), 0o755); err != nil {

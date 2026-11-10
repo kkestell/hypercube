@@ -19,6 +19,7 @@ import (
 )
 
 func TestSnapshotShowsGitHubStatusAndPullRequests(t *testing.T) {
+	t.Parallel()
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {
 		for _, w := range []store.Workspace{{ID: "gh", Path: "/src/w"}, {ID: "plain", Path: "/src/plain"}} {
@@ -108,7 +109,7 @@ func TestStateCarriesGitHubStatusAndAccountChoice(t *testing.T) {
 	t.Cleanup(func() { cancel(); <-done })
 
 	a := &app{t: t, db: db}
-	a.server = httptest.NewServer(Handler(db, session.New(db, "", session.Programs{}), watcher))
+	a.server = httptest.NewServer(Handler(db, configFile(db), session.New(db, configFile(db), "", session.Programs{}), watcher))
 	t.Cleanup(a.server.Close)
 	p := a.page()
 	p.until("the GitHub status", func() bool {
@@ -166,7 +167,7 @@ func TestCloneAction(t *testing.T) {
 	t.Cleanup(func() { cancel(); <-done })
 
 	a := &app{t: t, db: db}
-	a.server = httptest.NewServer(Handler(db, session.New(db, "", session.Programs{}), watcher))
+	a.server = httptest.NewServer(Handler(db, configFile(db), session.New(db, configFile(db), "", session.Programs{}), watcher))
 	t.Cleanup(a.server.Close)
 	p := a.page()
 	p.until("the accounts", func() bool {

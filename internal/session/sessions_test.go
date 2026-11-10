@@ -16,6 +16,7 @@ import (
 )
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s, err := f.rt.Create(f.workspace.ID, lead, false, "\n  Fix the  parser \nand the lexer")
 	parent := s
@@ -43,6 +44,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 }
 
 func TestCreateRefusesIncompleteSettings(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	for want, settings := range map[string]harness.Settings{
 		"missing harness":                 {Model: "m"},
@@ -63,6 +65,7 @@ func TestCreateRefusesIncompleteSettings(t *testing.T) {
 }
 
 func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	for _, c := range []struct {
 		text   string
@@ -89,6 +92,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 }
 
 func TestParkedSessionWakesForInputAndMessages(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.park(s.ID)
@@ -115,6 +119,7 @@ func TestParkedSessionWakesForInputAndMessages(t *testing.T) {
 }
 
 func TestQuitLeavesSessionsParkedAndInputResumes(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
@@ -168,6 +173,7 @@ func TestQuitLeavesSessionsParkedAndInputResumes(t *testing.T) {
 }
 
 func TestDeletingASessionEndsItsAgents(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.session()
 	child := f.child(s, "w1", "")
@@ -192,6 +198,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 }
 
 func TestShellsEndWithTheirSession(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	s := f.session()
@@ -220,6 +227,7 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 }
 
 func TestWorkspaceAndSessionEdits(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	if w, err := f.rt.AddWorkspace(f.root); err != nil || w.ID != f.workspace.ID {
 		t.Fatalf("existing workspace = %+v, %v", w, err)
@@ -251,6 +259,7 @@ func TestWorkspaceAndSessionEdits(t *testing.T) {
 // Delete refuses, changing nothing, while a child's branch is unmerged or its
 // worktree is dirty, and otherwise removes worktrees, branches, and the session.
 func TestDelete(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	dir, branch := workspace.WorktreeDir(f.root, "s", "w1"), workspace.ChildBranch("s", "w1")
 	if err := workspace.AddWorktree(f.root, dir, branch, ""); err != nil {
@@ -296,6 +305,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteMissingCheckout(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.seed(store.Session{ID: "b", Name: "w", Dir: filepath.Join(f.root, ".hypercube/s/w"), Branch: "hypercube/s/w"})
 	if err := os.RemoveAll(f.root); err != nil {
@@ -316,6 +326,7 @@ func TestDeleteMissingCheckout(t *testing.T) {
 // A session cannot wake while Delete waits for its plugins to end, so no
 // plugin of it outlives the delete.
 func TestDeletingSessionCannotStart(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	release := f.pauseExit()
 	s := f.session()
@@ -369,6 +380,7 @@ func (f *fixture) merge(id, what string, check func(workspace.Merge) bool) {
 }
 
 func TestWorktreeSession(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	head, err := workspace.Head(f.root)
 	if err != nil {
@@ -429,6 +441,7 @@ func TestWorktreeSession(t *testing.T) {
 }
 
 func TestWorktreeSessionOnNamedBranchAtStart(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	first, err := workspace.Head(f.root)
@@ -472,6 +485,7 @@ func TestWorktreeSessionOnNamedBranchAtStart(t *testing.T) {
 }
 
 func TestCreateRefusesAnExistingBranch(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.git(f.root, "branch", "taken")
 	if _, err := f.rt.CreateSubmission(f.workspace.ID, lead, &NewWorktree{Branch: "taken"}, "", "start"); err == nil || !strings.Contains(err.Error(), "already exists") {
@@ -487,6 +501,7 @@ func TestCreateRefusesAnExistingBranch(t *testing.T) {
 }
 
 func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	outside, err := f.rt.AddWorkspace(t.TempDir())
 	if err != nil {
@@ -505,6 +520,7 @@ func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {
 }
 
 func TestMergeStatusFailureStaysWithItsSession(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	f.park(s.ID)
@@ -523,6 +539,7 @@ func TestMergeStatusFailureStaysWithItsSession(t *testing.T) {
 // it in the checkout's .hypercube directory, and both
 // worktrees go once their work is merged.
 func TestWorktreeSessionChild(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	f.git(s.Dir, "commit", "-q", "--allow-empty", "-m", "parent work")
@@ -558,6 +575,7 @@ func TestWorktreeSessionChild(t *testing.T) {
 // A worktree session whose worktree was removed still deletes with its child,
 // whose branch the checkout holds.
 func TestDeleteWorktreeSessionWithoutItsWorktree(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	child := f.child(s, "w1", "")
@@ -580,6 +598,7 @@ func TestDeleteWorktreeSessionWithoutItsWorktree(t *testing.T) {
 }
 
 func TestArchiveFamily(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	child := f.child(s, "worker", "brief")
@@ -618,6 +637,7 @@ func TestArchiveFamily(t *testing.T) {
 }
 
 func TestArchiveRefusesDirtyWorktree(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	child := f.child(s, "worker", "")

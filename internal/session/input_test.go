@@ -9,6 +9,7 @@ import (
 )
 
 func TestAttentionRequests(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!ask")
@@ -53,6 +54,7 @@ func TestAttentionRequests(t *testing.T) {
 }
 
 func TestInterruptAndUsage(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
@@ -72,6 +74,7 @@ func TestInterruptAndUsage(t *testing.T) {
 }
 
 func TestImagePrompts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}

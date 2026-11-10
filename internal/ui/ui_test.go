@@ -39,8 +39,8 @@ func dial(t *testing.T, server *httptest.Server, path string) (*websocket.Conn, 
 // open returns a database in a temporary state directory.
 func open(t *testing.T) *store.DB {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	db, err := store.Open()
+	dir := t.TempDir()
+	db, err := store.Open(dir, config.File(filepath.Join(dir, "config.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,11 +48,16 @@ func open(t *testing.T) *store.DB {
 	return db
 }
 
+func configFile(db *store.DB) config.File {
+	return config.File(filepath.Join(db.Dir, "config.json"))
+}
+
 // handler returns the view's handler over a runtime whose agents are never
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, "", session.Programs{Holder: holdtest.Path}), &github.Watcher{})
+	preferences := configFile(db)
+	return Handler(db, preferences, session.New(db, preferences, "", session.Programs{Holder: holdtest.Path}), &github.Watcher{})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -63,9 +68,9 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 }
 
 func TestConfig(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	path := filepath.Join(dir, "hypercube/config.json")
+	t.Parallel()
+	db := open(t)
+	path := string(configFile(db))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +78,7 @@ func TestConfig(t *testing.T) {
 	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	handler := handler(t, open(t))
+	handler := handler(t, db)
 	get := func() *httptest.ResponseRecorder {
 		t.Helper()
 		res := httptest.NewRecorder()
@@ -102,6 +107,7 @@ func TestConfig(t *testing.T) {
 }
 
 func TestFavicon(t *testing.T) {
+	t.Parallel()
 	res := httptest.NewRecorder()
 	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
@@ -110,6 +116,7 @@ func TestFavicon(t *testing.T) {
 }
 
 func TestActions(t *testing.T) {
+	t.Parallel()
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {
 		tx.AddWorkspace(store.Workspace{ID: "w", Path: t.TempDir()})
@@ -183,6 +190,7 @@ type app struct {
 	server  *httptest.Server
 	db      *store.DB
 	rt      *session.Runtime
+	logs    string
 	session store.Session
 }
 
@@ -200,16 +208,16 @@ func newApp(t *testing.T) *app {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
-	t.Setenv("HYPERCUBE_TEST_LOGS", logs)
 	harnesstest.Install(t, plugins, "test")
-	db, err := store.Open()
+	state := filepath.Join(dir, "state")
+	preferences := config.File(filepath.Join(state, "config.json"))
+	db, err := store.Open(state, preferences)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	rt := session.New(db, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
+	rt := session.New(db, preferences, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
+	rt.Env = func(string) []string { return []string{"HYPERCUBE_TEST_LOGS=" + logs} }
 	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {
@@ -234,8 +242,8 @@ func newApp(t *testing.T) *app {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(db, rt, &github.Watcher{}))
+	a := &app{t: t, db: db, rt: rt, logs: logs, session: s}
+	a.server = httptest.NewServer(Handler(db, preferences, rt, &github.Watcher{}))
 	t.Cleanup(a.server.Close)
 	return a
 }
@@ -366,6 +374,7 @@ func (a *app) input(text string, want int) {
 }
 
 func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	child := a.child("first")
 	p := a.page()
@@ -465,6 +474,7 @@ func (p *page) session(id string) shownSession {
 }
 
 func TestSnapshotOrder(t *testing.T) {
+	t.Parallel()
 	db := open(t)
 	seedSnapshot(t, db, "b", "/src/zeta", "s1")
 	seedSnapshot(t, db, "a", "/src/alpha", "s2")

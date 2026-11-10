@@ -15,6 +15,7 @@ import (
 )
 
 func TestBranchChangesRoutes(t *testing.T) {
+	t.Parallel()
 	checkout := t.TempDir()
 	run := func(dir string, args ...string) {
 		t.Helper()

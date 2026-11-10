@@ -8,26 +8,28 @@ package ui
 import (
 	"net/http"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 type server struct {
-	db *store.DB
-	rt *session.Runtime
-	gh *github.Watcher
+	db     *store.DB
+	rt     *session.Runtime
+	gh     *github.Watcher
+	config config.File
 }
 
 // Handler serves the browser view's routes. gh supplies the GitHub status of
 // workspaces.
-func Handler(db *store.DB, rt *session.Runtime, gh *github.Watcher) http.Handler {
-	s := &server{db: db, rt: rt, gh: gh}
+func Handler(db *store.DB, preferences config.File, rt *session.Runtime, gh *github.Watcher) http.Handler {
+	s := &server{db: db, config: preferences, rt: rt, gh: gh}
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(assets()))
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /config", getConfig)
-	mux.HandleFunc("POST /config", saveConfig)
+	mux.HandleFunc("GET /config", s.getConfig)
+	mux.HandleFunc("POST /config", s.saveConfig)
 	mux.HandleFunc("GET /harnesses", s.harnesses)
 	mux.HandleFunc("GET /branches", s.branches)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)

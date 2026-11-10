@@ -7,6 +7,7 @@ import (
 )
 
 func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
@@ -48,6 +49,7 @@ func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
 }
 
 func TestReportArrivingDuringDeliveryIsNotLost(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
@@ -67,6 +69,7 @@ func TestReportArrivingDuringDeliveryIsNotLost(t *testing.T) {
 // A child waiting on the user's answer does not hold back another child's
 // report, and the parent learns that it waits.
 func TestWaitingChildIsNamedWithReports(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
@@ -84,6 +87,7 @@ func TestWaitingChildIsNamedWithReports(t *testing.T) {
 
 // Reports wait while the parent works.
 func TestParentWorkDelaysReports(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
@@ -99,6 +103,7 @@ func TestParentWorkDelaysReports(t *testing.T) {
 }
 
 func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
@@ -120,6 +125,7 @@ func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
 }
 
 func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
@@ -137,6 +143,7 @@ func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
 }
 
 func TestForkChildUsesItsOwnConversationOnRestart(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: lead, Fork: true})

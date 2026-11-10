@@ -13,6 +13,7 @@ import (
 )
 
 func TestBrowserPreviews(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {

@@ -3,7 +3,6 @@ package ui
 import (
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"testing"
 
@@ -12,6 +11,7 @@ import (
 )
 
 func TestQuestionSelectionsReachPlugin(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	p := a.page()
 	p.send(`{"select":"` + a.session.ID + `"}`)
@@ -49,7 +49,7 @@ func TestQuestionSelectionsReachPlugin(t *testing.T) {
 			it, found := p.find(a.session.ID, func(it harness.Item) bool { return it.ID == item.ID })
 			return found && it.Done
 		})
-		entries := harnesstest.Log(t, os.Getenv("HYPERCUBE_TEST_LOGS"), a.session.ID, "answer")
+		entries := harnesstest.Log(t, a.logs, a.session.ID, "answer")
 		if !slices.Equal(entries[len(entries)-1].Choices, choices) {
 			t.Fatalf("plugin answers = %+v", entries)
 		}

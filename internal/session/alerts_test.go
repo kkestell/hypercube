@@ -36,6 +36,7 @@ func (f *fixture) nextAlert(alerts <-chan Alert) Alert {
 }
 
 func TestRequestAlerts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	alerts := f.watch()
@@ -61,6 +62,7 @@ func TestRequestAlerts(t *testing.T) {
 }
 
 func TestReplyAlerts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "worker", "")
@@ -79,6 +81,7 @@ func TestReplyAlerts(t *testing.T) {
 // A page that marks the shown session seen as the turn ends does not hide the
 // reply from the watcher.
 func TestSeenRepliesStillAlert(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)
@@ -111,6 +114,7 @@ func TestSeenRepliesStillAlert(t *testing.T) {
 }
 
 func TestExistingRequestsAndRepliesAreNotAlerted(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
@@ -129,6 +133,7 @@ func TestExistingRequestsAndRepliesAreNotAlerted(t *testing.T) {
 }
 
 func TestWatcherStartedDuringQuestionIgnoresEarlierReply(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
@@ -160,6 +165,7 @@ func TestWatcherStartedDuringQuestionIgnoresEarlierReply(t *testing.T) {
 }
 
 func TestOfferRequestAlerts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)
@@ -183,6 +189,7 @@ func TestOfferRequestAlerts(t *testing.T) {
 }
 
 func TestDeletedCapturedRequestDoesNotStopAlerts(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)

@@ -14,6 +14,7 @@ import (
 )
 
 func TestWorkspaceFilesUseMainCheckout(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()

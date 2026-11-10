@@ -28,6 +28,7 @@ func nextChange(t *testing.T, changes <-chan Change, match func(Change) bool) Ch
 }
 
 func TestWritePublishesAfterCommit(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	changes, cancel := f.rt.Subscribe()
@@ -42,6 +43,7 @@ func TestWritePublishesAfterCommit(t *testing.T) {
 }
 
 func TestFailedWritePublishesNothing(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
@@ -57,6 +59,7 @@ func TestFailedWritePublishesNothing(t *testing.T) {
 }
 
 func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	changes, cancel := f.rt.Subscribe()
@@ -87,6 +90,7 @@ func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 }
 
 func TestDeliveredMessagePublishesItsItem(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "worker", "")
@@ -102,6 +106,7 @@ func TestDeliveredMessagePublishesItsItem(t *testing.T) {
 }
 
 func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
@@ -117,6 +122,7 @@ func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
 }
 
 func TestParkedSessionPublishesDrainedItems(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
@@ -131,6 +137,7 @@ func TestParkedSessionPublishesDrainedItems(t *testing.T) {
 }
 
 func TestSlowSubscriberIsDropped(t *testing.T) {
+	t.Parallel()
 	r := &Runtime{}
 	changes, cancel := r.Subscribe()
 	defer cancel()
@@ -153,6 +160,7 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 }
 
 func TestCancelStopsDelivery(t *testing.T) {
+	t.Parallel()
 	r := &Runtime{}
 	changes, cancel := r.Subscribe()
 	cancel()
@@ -166,6 +174,7 @@ func TestCancelStopsDelivery(t *testing.T) {
 // A completed item reported again keeps its saved position, and its change
 // says so.
 func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")

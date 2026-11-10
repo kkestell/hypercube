@@ -22,6 +22,7 @@ func (f *fixture) offerItem(session, id string) harness.Item {
 }
 
 func TestOfferAnswers(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	options := func(title string) ChildOptions {
@@ -102,6 +103,7 @@ func TestOfferAnswers(t *testing.T) {
 
 // Dismiss closes an offer without creating a child.
 func TestDismissOffer(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id, err := f.rt.OfferChild(parent.ID, "Task")
@@ -140,6 +142,7 @@ func TestDismissOffer(t *testing.T) {
 // An unanswered offer stays open across interruption, parking, and backend
 // reattachment, and its answer wakes the parked parent.
 func TestOfferStaysOpen(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id, err := f.rt.OfferChild(parent.ID, "Task")
@@ -165,6 +168,7 @@ func TestOfferStaysOpen(t *testing.T) {
 }
 
 func TestArchivedOfferWaitsForUnarchive(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id, err := f.rt.OfferChild(parent.ID, "Task")
@@ -190,6 +194,7 @@ func TestArchivedOfferWaitsForUnarchive(t *testing.T) {
 }
 
 func TestOfferRequestsSurviveParkingAndRestoration(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id, err := f.rt.OfferChild(parent.ID, "Task")
@@ -223,6 +228,7 @@ func TestOfferRequestsSurviveParkingAndRestoration(t *testing.T) {
 }
 
 func TestArchivedOffersLeaveRequestsUntilUnarchived(t *testing.T) {
+	t.Parallel()
 	f := newPlainFixture(t)
 	parent := f.session()
 	id, err := f.rt.OfferChild(parent.ID, "Task")
