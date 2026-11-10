@@ -85,8 +85,10 @@ Documentation procedures are in [documentation](documentation.md).
   text as plain phrases and sentences, with facts joined by words or given
   their own lines rather than separator characters.
 - Animate every change a person can see happen. Controls that appear on hover
-  or focus fade with Tailwind's default transition on opacity and visibility;
-  `CollapsibleContent` slides open and closed, with children that do not
+  or focus fade with Tailwind's default transition on opacity and visibility
+  and show while their row has keyboard focus; a control in a group with
+  nothing else to focus fades on opacity alone, so the keyboard still reaches
+  it. `CollapsibleContent` slides open and closed, with children that do not
   depend on whether it is open; menus and dialogs keep shadcn's animations.
   `internal/ui/web/base.css` holds the timings and turns CSS motion off for a
   reduced-motion setting; animation written in JavaScript checks
