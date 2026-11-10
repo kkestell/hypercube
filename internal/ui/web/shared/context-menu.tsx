@@ -15,13 +15,15 @@ export interface ContextMenuItem {
 }
 
 interface ItemsProps {
+  open: boolean;
   items: ContextMenuItem[][];
   onClose: () => void;
   invoker: HTMLElement | null;
 }
 
-function Items({items, onClose, invoker}: ItemsProps) {
+function Items({open, items, onClose, invoker}: ItemsProps) {
   const selected = useRef(false);
+  useEffect(() => { if (open) selected.current = false; }, [open]);
   return <DropdownMenuContent className="context-menu" align="start" sideOffset={0}
     onCloseAutoFocus={e => { e.preventDefault(); if (!selected.current) invoker?.focus(); }}>
     {items.filter(group => group.length).map((group, i) => <Fragment key={group[0].label}>
@@ -35,20 +37,21 @@ function Items({items, onClose, invoker}: ItemsProps) {
 }
 
 interface ContextMenuProps {
+  open?: boolean;
   x: number;
   y: number;
   items: ContextMenuItem[][];
   onClose: () => void;
 }
 
-export function ContextMenu({x, y, items, onClose}: ContextMenuProps) {
+export function ContextMenu({open = true, x, y, items, onClose}: ContextMenuProps) {
   const [invoker] = useState(focusedElement);
   useEffect(() => {
     addEventListener('blur', onClose);
     return () => removeEventListener('blur', onClose);
   }, [onClose]);
-  return <DropdownMenu open onOpenChange={open => { if (!open) onClose(); }}>
+  return <DropdownMenu open={open} onOpenChange={open => { if (!open) onClose(); }}>
     <DropdownMenuTrigger asChild><span aria-hidden="true" className="fixed size-0" style={{left: x, top: y}} /></DropdownMenuTrigger>
-    <Items items={items} onClose={onClose} invoker={invoker} />
+    <Items open={open} items={items} onClose={onClose} invoker={invoker} />
   </DropdownMenu>;
 }

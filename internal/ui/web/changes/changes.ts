@@ -2,6 +2,8 @@
 // its directory; diff records and request generations use full tab IDs.
 import {fetchChanges, HttpError, readDiff} from '../api.ts';
 import type {Store} from '../store.ts';
+import {errorText} from '../shared/error-text.ts';
+import {tones} from '../shared/tones.ts';
 import type {ChangeComparison, ChangeStatus, ChangeTree, Changes, DiffRead, OpenDiff} from './types.ts';
 
 export const diffTabId = (path: string, comparison: ChangeComparison = 'uncommitted') => (comparison === 'branch' ? 'branch-diff:' : 'diff:') + path;
@@ -18,7 +20,7 @@ const statusLabels: Record<ChangeStatus, string> = {modified: 'Modified', added:
 export const statusLabel = (status: ChangeStatus) => statusLabels[status];
 
 export const statusColor: Record<ChangeStatus, string> = {
-  modified: 'text-amber-700 dark:text-amber-500/70', added: 'text-green-700 dark:text-green-500/70', untracked: 'text-green-700 dark:text-green-500/70', deleted: 'text-muted-foreground',
+  modified: tones.warning, added: tones.success, untracked: tones.success, deleted: tones.muted,
 };
 
 export const diffTitle = (path: string, status?: ChangeStatus, comparison: ChangeComparison = 'uncommitted') =>
@@ -59,7 +61,7 @@ export async function loadChanges(store: Store, comparison: ChangeComparison = '
   } catch (error) {
     changes = error instanceof HttpError && error.status === 404
       ? {missing: true}
-      : {error: error instanceof Error ? error.message : String(error)};
+      : {error: errorText(error)};
   }
   store.update(state => {
     if (state.editor?.id !== editor.id || state.editorVersion !== attachment || state[version] !== request || JSON.stringify(state.editor[field]) === JSON.stringify(changes)) return state;
@@ -84,7 +86,7 @@ export async function readOpenDiff(store: Store, path: string, comparison: Chang
   try {
     result = await readDiff(editor.target, path, comparison);
   } catch (error) {
-    result = {error: error instanceof Error ? error.message : String(error)};
+    result = {error: errorText(error)};
   }
   store.update(state => {
     if (state.editor?.id !== editor.id || state.editorVersion !== attachment || state.diffReadVersions[id] !== request) return state;

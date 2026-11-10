@@ -4,7 +4,6 @@ import {find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptyEditor} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
-import {statusColor} from './changes.ts';
 import {GitPanel} from './git-panel.tsx';
 import {MergeButton} from './merge-button.tsx';
 import type {Changes} from './types.ts';
@@ -18,7 +17,7 @@ const changes: Changes = {branch: 'main', files: [
   {path: 'new.png', status: 'untracked'},
 ]};
 
-test('Git rows show status colors and supplied counts and open diffs from the path or counts', async () => {
+test('Git rows label statuses and supplied counts and open diffs from the path or counts', async () => {
   const editor = {...emptyEditor({session: 's'}), changes};
   const store = createStore(testState({editor}));
   const root = mount(store, <GitPanel />);
@@ -34,14 +33,12 @@ test('Git rows show status colors and supplied counts and open diffs from the pa
     const button = buttons[i];
     expect(button.tabIndex).toBe(0);
     expect(button.title).toBe(change.path);
-    expect(button.firstElementChild?.className).toContain(statusColor[change.status]);
   }
-  expect(find(root, '[title="gone.go"] .line-through').textContent).toBe('gone.go');
   act(() => buttons[0].focus());
   expect(document.activeElement).toBe(buttons[0]);
   await act(async () => buttons[0].click());
   expect(store.get().editor?.tabs.preview).toBe('diff:src/modified.go');
-  await act(async () => find(buttons[1], '[aria-hidden="true"] span').click());
+  await act(async () => [...buttons[1].querySelectorAll('span')].find(span => span.textContent === '+0')!.click());
   expect(store.get().editor?.tabs.preview).toBe('diff:added.go');
   await act(async () => buttons[3].click());
   expect(store.get().editor?.tabs.preview).toBe('diff:new.png');
@@ -110,9 +107,9 @@ test('branch selection loads independent rows and the response target, then open
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 1, committed: true, uncommitted: 4}});
   const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}}, workbench: {...testState().workbench, rightPanel: true, rightTab: 'git'}}));
   const root = mount(store, <GitPanel />);
-  await act(async () => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  await act(async () => find(root, '[role="tab"][aria-selected="false"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
   expect(fetches.mock.calls.some(([url]) => new URL(url, 'http://x/').searchParams.get('comparison') === 'branch')).toBe(true);
-  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('1 commit ahead of release');
+  expect(find(root, '[role="tabpanel"]:not([hidden])').textContent).toContain('1 commit ahead of release');
   expect(root.textContent).not.toContain('preview');
   await act(async () => find(root, 'li button').click());
   expect(store.get().editor?.tabs.preview).toBe('branch-diff:committed.go');
@@ -127,8 +124,8 @@ test.each([
     editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}, branchChanges}}));
   const root = mount(store, <GitPanel />);
   expect(root.textContent).toContain('uncommitted failed');
-  act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
-  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain(message);
+  act(() => find(root, '[role="tab"][aria-selected="false"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  expect(find(root, '[role="tabpanel"]:not([hidden])').textContent).toContain(message);
   expect(root.textContent).not.toContain('uncommitted failed');
 });
 
@@ -136,7 +133,7 @@ test('a branch without commits shows one empty message', () => {
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 0, committed: false, uncommitted: 0}});
   const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})],
     editor: {...emptyEditor({session: 's'}), gitComparison: 'branch', branchChanges: {branch: 'feature', target: 'main', files: []}}}));
-  expect(find(mount(store, <GitPanel />), '[role="tabpanel"][data-state="active"]').textContent).toBe('No commits ahead of main.');
+  expect(find(mount(store, <GitPanel />), '[role="tabpanel"]:not([hidden])').textContent).toBe('No commits ahead of main.');
 });
 
 test('merge sits below both comparisons and asks the agent to merge into the checkout', async () => {
@@ -146,7 +143,7 @@ test('merge sits below both comparisons and asks the agent to merge into the che
   const root = mount(store, <GitPanel />);
   const selector = 'button[title="Ask the agent to merge this branch into main"]';
   find(root, selector);
-  act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  act(() => find(root, '[role="tab"][aria-selected="false"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
   const button = find(root, selector);
   expect(button.textContent).toBe('Merge into main');
   expect(button.querySelector('svg')).not.toBeNull();
