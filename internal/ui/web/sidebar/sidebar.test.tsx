@@ -34,8 +34,8 @@ function setup(sessions: Session[], selected: string | null = null) {
 }
 
 const click = (element: HTMLElement) => act(() => clickControl(element));
-const sessionRows = (root: HTMLElement) => findAll(root, '[data-session]').map(row => row.dataset.session);
-const row = (root: HTMLElement, id: string) => find(root, `[data-session="${id}"]`);
+const sessionRows = (root: HTMLElement) => findAll(root, '[data-row]').map(row => row.dataset.row);
+const row = (root: HTMLElement, id: string) => find(root, `[data-row="${id}"]`);
 const pick = (label: string) => {
   const item = findAll(document, '[role=menuitem]').find(item => item.textContent === label);
   if (!item) throw new Error('No menu item ' + label);
@@ -135,7 +135,7 @@ test('an active family hides its ended children until its menu shows them, and m
   const ended = session('ended', {parent: 'a', ended: true});
   const {root, posted} = setup([session('a', {activity: 'exited', children: [ended, live]}), session('b'), session('old', {ended: true})], 'live');
   expect(sessionRows(root)).toEqual(['a', 'live', 'b']);
-  choose(root, '[data-session="a"]', 'Show Ended Sessions');
+  choose(root, '[data-row="a"]', 'Show Ended Sessions');
   expect(sessionRows(root)).toEqual(['a', 'ended', 'live', 'b']);
   expect(row(root, 'ended').querySelector('.opacity-60')).not.toBeNull();
   expect(row(root, 'a').querySelector('.opacity-60')).not.toBeNull();
@@ -149,10 +149,10 @@ test('an active family hides its ended children until its menu shows them, and m
   contextMenu(row(root, 'b'));
   expect(menuLabels()).toEqual(['Rename', 'Restart Agent', 'Archive Session', 'Delete Session']);
   key(document.activeElement as HTMLElement, 'Escape');
-  choose(root, '[data-session="a"]', 'Archive Session');
-  choose(root, '[data-session="live"]', 'Restart Agent');
+  choose(root, '[data-row="a"]', 'Archive Session');
+  choose(root, '[data-row="live"]', 'Restart Agent');
   click(find(root, '[role=tab][data-state=inactive]'));
-  choose(root, '[data-session="old"]', 'Unarchive');
+  choose(root, '[data-row="old"]', 'Unarchive');
   expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'restart', id: 'live'}, {action: 'unarchive', id: 'old'}]);
 });
 
@@ -177,12 +177,12 @@ test('Discard All Changes is offered for an active top-level worktree session, a
   key(document.activeElement as HTMLElement, 'Escape');
   click(find(root, '[role=tab][data-state=inactive]'));
 
-  choose(root, '[data-session="w"]', 'Discard All Changes');
+  choose(root, '[data-row="w"]', 'Discard All Changes');
   expect(dialogReference('aria-labelledby')).toBe("Are you sure you want to discard all changes in 'Session w'?");
   expect(dialogReference('aria-describedby')).toContain('branch feature');
   act(() => dialogButton('Cancel').click());
   expect(posted()).toEqual([]);
-  choose(root, '[data-session="w"]', 'Discard All Changes');
+  choose(root, '[data-row="w"]', 'Discard All Changes');
   act(() => dialogButton('Discard All Changes').click());
   expect(posted()).toEqual([{action: 'discard', id: 'w'}]);
 });
@@ -229,7 +229,7 @@ test.each([false, true])('session shortcuts skip hidden ended children and wrap 
 
 test('deleting a session asks first and posts only on Delete', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-session="a"]', 'Delete Session');
+  choose(root, '[data-row="a"]', 'Delete Session');
   expect(openDialog().getAttribute('data-state')).toBe('open');
   expect(document.activeElement === dialogButton('Cancel')).toBe(true);
   expect(dialogReference('aria-labelledby')).toBe("Are you sure you want to delete 'Session a'?");
@@ -239,7 +239,7 @@ test('deleting a session asks first and posts only on Delete', () => {
   expect(dialog()).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-session="a"]', 'Delete Session');
+  choose(root, '[data-row="a"]', 'Delete Session');
   act(() => dialogButton('Delete').click());
   expect(dialog()).toBeNull();
   expect(posted()).toEqual([{action: 'delete', id: 'a'}]);
@@ -247,7 +247,7 @@ test('deleting a session asks first and posts only on Delete', () => {
 
 test('only one row is tabbable, and the arrow keys move and open rows', () => {
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
-  const tabbable = () => findAll(root, '[role="treeitem"][tabindex="0"]').map(r => r.dataset.session);
+  const tabbable = () => findAll(root, '[role="treeitem"][tabindex="0"]').map(r => r.dataset.row);
   expect(tabbable()).toEqual(['a']);
   act(() => row(root, 'a').focus());
   key(row(root, 'a'), 'ArrowLeft');
@@ -287,7 +287,7 @@ test.each([
   expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(view);
   click(find(tabs, '[data-state=inactive]'));
   expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(other);
-  expect(root.querySelector(`[data-session="${id}"]`)).toBeNull();
+  expect(root.querySelector(`[data-row="${id}"]`)).toBeNull();
   answer(() => Response.json([{id, title: 'Session ' + id, workspace: 'repo', text: 'matching words'}]));
   await act(async () => clickControl(find(root, '[aria-label="Search sessions"]')));
   const input = element(document, '[cmdk-input]', HTMLInputElement);
@@ -295,7 +295,7 @@ test.each([
   await act(async () => clickControl(find(document, '[cmdk-item]')));
   expect(store.get().selected).toBe(id);
   expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(view);
-  expect(root.querySelector(`[data-session="${id}"]`)).not.toBeNull();
+  expect(root.querySelector(`[data-row="${id}"]`)).not.toBeNull();
 });
 
 test('archive menu hides the family while search can select its chat', () => {
@@ -305,7 +305,7 @@ test('archive menu hides the family while search can select its chat', () => {
   const tablists = findAll(root, '[role=tablist]');
   expect(tablists).toHaveLength(1);
   expect(findAll(tablists[0], '[role=tab]').map(tab => tab.getAttribute('aria-label'))).toEqual(['Sessions', 'Archived']);
-  choose(root, '[data-session="active"]', 'Archive Session');
+  choose(root, '[data-row="active"]', 'Archive Session');
   expect(posted()).toEqual([{action: 'archive', id: 'active'}]);
   act(() => chooseSession(store, 'child'));
   expect(store.get().selected).toBe('child');
@@ -346,11 +346,19 @@ test('a saved offer shows waiting while its session is parked', () => {
   expect(row(root, 'a').querySelector('[aria-label="Waiting on you"]')).toBeNull();
 });
 
+test('a working session shows the working dot over its unseen reply until it goes idle', () => {
+  const {root, store} = setup([session('a', {activity: 'busy', unseen: true}), session('b')], 'b');
+  const status = () => row(root, 'a').querySelector('[aria-label=Working], [aria-label="New reply"], [aria-label=Idle]')?.getAttribute('aria-label');
+  expect(status()).toBe('Working');
+  act(() => store.update(state => ({...state, workspaces: state.workspaces.map(w => ({...w, sessions: w.sessions.map(s => s.id === 'a' ? {...s, activity: 'idle' as const} : s)}))})));
+  expect(status()).toBe('New reply');
+});
+
 test('the parent chevron toggles children without selecting the parent', () => {
   const {root, store} = setup([session('a', {title: 'A long session title', children: [session('child', {parent: 'a'})]})], 'child');
   const parent = row(root, 'a');
   const title = byText(parent, 'A long session title');
-  const chevron = parent.querySelector('[data-icon=chevron-right]')!.parentElement!;
+  const chevron = parent.querySelector('.lucide-chevron-right')!.parentElement!;
   click(chevron);
   expect(sessionRows(root)).toEqual(['a']);
   expect(store.get().selected).toBe('child');

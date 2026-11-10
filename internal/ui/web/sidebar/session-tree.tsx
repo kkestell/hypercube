@@ -4,7 +4,6 @@
 // closed beneath it, and leave the keyboard order while it is collapsed.
 import {Fragment, useRef, type KeyboardEvent} from 'react';
 import {Collapsible, CollapsibleContent} from '../components/ui/collapsible';
-import {slide} from '../shared/motion.ts';
 import {useTreeFocus} from '../shared/use-tree-focus.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {expandSession} from '../app/workbench.ts';
@@ -37,7 +36,7 @@ export function SessionTree({label, groups}: {label: string; groups: SessionGrou
       {groups.map(({parent, children}) => <Fragment key={parent.id}>
         {item(parent)}
         {children.length > 0 && <Collapsible open={parent.expanded}>
-          <CollapsibleContent className={`flex flex-col ${slide}`}>{children.map(item)}</CollapsibleContent>
+          <CollapsibleContent className="flex flex-col">{children.map(item)}</CollapsibleContent>
         </Collapsible>}
       </Fragment>)}
     </div>

@@ -20,7 +20,7 @@ const icons = new Map<string, {viewBox: string; paths: ReactNode}>([
 export function harnessIcon(harness: string) {
   const icon = icons.get(harness);
   if (!icon) return null;
-  return <svg className="harness-icon size-4 shrink-0" viewBox={icon.viewBox} role="img" aria-label={displayName(harness)}>
+  return <svg className="size-4 shrink-0" viewBox={icon.viewBox} role="img" aria-label={displayName(harness)}>
     {icon.paths}
   </svg>;
 }

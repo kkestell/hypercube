@@ -46,6 +46,9 @@ function buttonNamed(root: ParentNode, name: string): HTMLElement {
   return button;
 }
 
+// transcriptView is the transcript's scroller, around its list.
+const transcriptView = (root: ParentNode) => find(root, '[aria-label=Transcript]').parentElement!;
+
 const sendDisabled = (root: ParentNode) => {
   const button = find(root, '[aria-label=Send]');
   return button instanceof HTMLButtonElement && button.disabled;
@@ -77,7 +80,7 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   act(() => { field.dispatchEvent(handled); });
   expect(requests).toHaveLength(1);
 
-  act(() => { find(root, '[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})); });
+  act(() => { find(root, '[data-row="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})); });
   keydown(find(document, '[role=menu]'), 'Escape');
   expect(document.querySelector('[role=menu]')).toBeNull();
   expect(requests).toHaveLength(1);
@@ -116,19 +119,19 @@ test('chat stays mounted outside file tabs while files open, split, and close', 
   store.update(state => rememberScroll(state, 'a', 'a', {top: 120, left: 0, following: false}));
   const root = mount(store, <App store={store} />);
   const chat = find(root, '[aria-label=Chat]');
-  const transcript = find(root, '.transcript');
+  const transcript = transcriptView(root);
   const composer = element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement);
   expect(chat.closest('[data-editor-area]')).toBeNull();
   expect(chat.textContent).toContain('Always-visible reply');
   expect(findAll(chat, '[role=tab]').map(tab => tab.textContent)).toEqual(['Visible chat']);
   expect(chat.querySelector('[aria-label^="Close"]')).toBeNull();
   expect(chat.querySelector('[aria-label="Fixed Width"]')).toBeNull();
-  expect(find(chat, '.transcript-list').className).not.toContain('max-w-');
-  expect(find(chat, '.composer').className).not.toContain('max-w-');
+  expect(find(chat, '[aria-label=Transcript]').className).not.toContain('max-w-');
+  expect(find(chat, 'textarea[aria-label=Message]').closest('form')!.className).not.toContain('max-w-');
   expect(root.querySelector('[data-editor-area]')).toBeNull();
   const unchanged = () => {
     expect(find(root, '[aria-label=Chat]')).toBe(chat);
-    expect(find(root, '.transcript')).toBe(transcript);
+    expect(transcriptView(root)).toBe(transcript);
     expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement)).toBe(composer);
     expect(composer.value).toBe('unfinished prompt');
     expect(transcript.scrollTop).toBe(120);
@@ -158,14 +161,14 @@ test('Find follows focus between chat and files, and focusing the composer leave
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false})}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
   await act(async () => { openFileTab(store, 'a.py'); });
-  act(() => find(root, '.file-view').focus());
+  act(() => find(root, '[aria-label="File contents"]').focus());
   keydown(document.activeElement!, 'f', {metaKey: true});
   expect(root.querySelector('[role=search][aria-label="Find in file"]')).not.toBeNull();
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).toBeNull();
   keydown(document.activeElement!, 'Escape');
   keydown(document.activeElement!, 'l', {metaKey: true});
   expect(document.activeElement).toBe(find(root, 'textarea[aria-label=Message]'));
-  expect(find(root, '.file-view').textContent).toContain('import math');
+  expect(find(root, '[aria-label="File contents"]').textContent).toContain('import math');
   keydown(document.activeElement!, 'f', {metaKey: true});
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).not.toBeNull();
   expect(root.querySelector('[role=search][aria-label="Find in file"]')).toBeNull();
@@ -175,14 +178,14 @@ test('a new session draft is a sidebar row that reopens its prompt and can be di
   answer(() => Response.json(testConfig()));
   const store = appStore({selected: 'a'}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
-  const draftRow = () => root.querySelector<HTMLElement>(`[data-region=sidebar] [data-session="${unsentKey('w')}"]`);
+  const draftRow = () => root.querySelector<HTMLElement>(`[data-region=sidebar] [data-row="${unsentKey('w')}"]`);
   act(() => store.update(state => openUnsent(state, 'w')));
-  act(() => find(root, '[data-region=sidebar] [data-session="a"]').click());
+  act(() => find(root, '[data-region=sidebar] [data-row="a"]').click());
   expect(draftRow()).toBeNull();
 
   act(() => store.update(state => typed(openUnsent(state, 'w'), unsentKey('w'), 'finish this later')));
   expect(draftRow()?.getAttribute('aria-selected')).toBe('true');
-  act(() => find(root, '[data-region=sidebar] [data-session="a"]').click());
+  act(() => find(root, '[data-region=sidebar] [data-row="a"]').click());
   expect(store.get().selected).toBe('a');
   act(() => draftRow()!.click());
   expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement).value).toBe('finish this later');
@@ -204,16 +207,16 @@ test('archived families open from the sidebar and can be deleted', async () => {
   const store = createStore(receivedWorkspaces(testState({selected: 'active', workbench: workbench({rightPanel: false})}),
     [testWorkspace({id: 'w', name: 'My workspace', path: '/repo', sessions: [active, archived]})]));
   const root = mount(store, <App store={store} />);
-  expect(root.querySelector('[data-session="archived"]')).toBeNull();
+  expect(root.querySelector('[data-row="archived"]')).toBeNull();
   act(() => { clickControl(find(root, '[aria-label="Sidebar"] [role=tab][aria-label="Archived"]')); });
-  expect(root.querySelector('[data-region=sidebar] [data-session="active"]')).toBeNull();
-  act(() => { find(root, '[data-session="archived"]').click(); });
+  expect(root.querySelector('[data-region=sidebar] [data-row="active"]')).toBeNull();
+  act(() => { find(root, '[data-row="archived"]').click(); });
   expect(store.get().selected).toBe('archived');
   expect(sendDisabled(root)).toBe(true);
-  act(() => { find(root, '[data-session="child"]').click(); });
+  act(() => { find(root, '[data-row="child"]').click(); });
   expect(store.get().selected).toBe('child');
   expect(sendDisabled(root)).toBe(true);
-  act(() => { find(root, '[data-session="archived"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
+  act(() => { find(root, '[data-row="archived"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
   const deleteItem = findAll(document, '[role=menuitem]').find(item => item.textContent === 'Delete Session');
   if (!deleteItem) throw new Error('No Delete Session item');
   act(() => { clickControl(deleteItem); });
@@ -277,11 +280,11 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   expect(store.get().selected).toBe('workspace:w');
   expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
   expect(find(root, '[aria-label="Expand repo"]')).toBeDefined();
-  await act(async () => clickControl(find(root, '[data-file="main.go"]')));
+  await act(async () => clickControl(find(root, '[role=treeitem][data-row="main.go"]')));
   expect(store.get().editor?.tabs.preview).toBe('file:main.go');
   await act(async () => clickControl(find(root, '[data-region=rightPanel] [role=tab][aria-label="Git"]')));
   expect(store.get().workbench.rightTab).toBe('git');
-  const git = find(root, '.git-panel');
+  const git = find(root, '[aria-label="Git changes"]');
   expect(git.closest('[role=tabpanel]')?.hasAttribute('hidden')).toBe(false);
   await act(async () => clickControl(find(git, '[aria-label="main.go, Modified, 1 added, 1 removed"] [aria-hidden="true"] span')));
   expect(store.get().editor?.tabs.preview).toBe('diff:main.go');
@@ -299,7 +302,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   expect(store.get().selected).toBe('s1');
   expect(store.get().session?.id).toBe('s1');
   await act(async () => clickControl(find(root, '[data-region=rightPanel] [role=tab][aria-label="Git"]')));
-  await act(async () => clickControl(find(root, '.git-panel [aria-label="main.go, Modified, 1 added, 1 removed"]')));
+  await act(async () => clickControl(find(root, '[aria-label="Git changes"] [aria-label="main.go, Modified, 1 added, 1 removed"]')));
   expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.get('session')).toBe('s1');
   expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.has('workspace')).toBe(false);
 });

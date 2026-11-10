@@ -34,7 +34,7 @@ export function SessionItem({row, tabbable, onToggle}: {row: SidebarRow; tabbabl
 
   return (
     <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm" className={classes}><div
-      role="treeitem" data-row={session.id} data-session={session.id}
+      role="treeitem" data-row={session.id}
       aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
       tabIndex={tabbable ? 0 : -1}
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}

@@ -58,8 +58,8 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
   };
 
   return (
-    <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-pane={pane.id}
-      onFocusCapture={activate} onPointerDownCapture={activate} data-drop={drop ?? undefined} onDragEnter={over} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+    <div className="relative flex h-full min-h-0 min-w-0 flex-col" data-pane={pane.id}
+      onFocusCapture={activate} onPointerDownCapture={activate} onDragEnter={over} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {drop && <div aria-hidden="true" className={`pointer-events-none absolute z-10 animate-in fade-in rounded-md border bg-accent/50 ${
         drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}

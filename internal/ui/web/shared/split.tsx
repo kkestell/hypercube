@@ -2,7 +2,7 @@
 import {Children, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode} from 'react';
 import type {PanelImperativeHandle} from 'react-resizable-panels';
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '../components/ui/resizable';
-import {useReducedMotion} from './motion.ts';
+import {useReducedMotion} from './use-reduced-motion.ts';
 
 // Split divides its two children. A vertical split places them side by side
 // and a horizontal one stacks them. fixed names the child that keeps its
@@ -71,14 +71,14 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
       groupResizeBehavior={fixed === 'start' ? 'preserve-pixel-size' : 'preserve-relative-size'}
       collapsible={fixed === 'start'} minSize={minStart}
       onResize={value => { if (fixed === 'start' && !collapsed && value.inPixels > 0) kept.current = value.inPixels; }}>
-      <div className="h-full min-h-0 min-w-0 overflow-hidden" style={held('start')} data-side="start" inert={collapsed === 'start'}>{start}</div>
+      <div className="h-full min-h-0 min-w-0 overflow-hidden" style={held('start')} inert={collapsed === 'start'}>{start}</div>
     </ResizablePanel>
     <ResizableHandle hidden={!!collapsed} />
     <ResizablePanel id={id + '-end'} panelRef={last} className="overflow-hidden!" defaultSize={fixed === 'end' ? size : undefined}
       groupResizeBehavior={fixed === 'end' ? 'preserve-pixel-size' : 'preserve-relative-size'}
       collapsible={fixed === 'end'} minSize={minEnd}
       onResize={value => { if (fixed === 'end' && !collapsed && value.inPixels > 0) kept.current = value.inPixels; }}>
-      <div className="h-full min-h-0 min-w-0 overflow-hidden" style={held('end')} data-side="end" inert={collapsed === 'end'}>{end}</div>
+      <div className="h-full min-h-0 min-w-0 overflow-hidden" style={held('end')} inert={collapsed === 'end'}>{end}</div>
     </ResizablePanel>
   </ResizablePanelGroup>;
 }

@@ -220,7 +220,7 @@ async function settled(scene, contents, theme) {
   await pageCondition(contents, `document.documentElement.classList.contains('dark') === ${theme === 'dark'} && document.querySelector('main')`);
   if (actions.comparison === 'branch') {
     await contents.executeJavaScript(`[...document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === 'Committed').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))`);
-    await pageCondition(contents, `document.querySelector('.git-panel')?.textContent.match(/ ahead of |Compared with/)`);
+    await pageCondition(contents, `document.querySelector('[aria-label="Change comparison"]')?.closest('[role=tabpanel]')?.textContent.match(/ ahead of |Compared with/)`);
   }
   if (actions.openModelPicker) {
     await contents.executeJavaScript(`document.querySelector('button[aria-label^="Model:"]').click()`);
@@ -250,16 +250,16 @@ async function settled(scene, contents, theme) {
     await type(contents, '#new-branch-name', actions.newBranch);
   }
   if (actions.sessionMenu) {
-    const row = `document.querySelector('[data-session="${actions.sessionMenu.session}"]')`;
+    const row = `document.querySelector('[role=treeitem][data-row="${actions.sessionMenu.session}"]')`;
     await pageCondition(contents, row);
     await contents.executeJavaScript(`(() => {
       const row = ${row};
       const {left, bottom} = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: left + 24, clientY: bottom}));
     })()`);
-    await pageCondition(contents, `document.querySelector('.context-menu [role=menuitem]')`);
-    await contents.executeJavaScript(`[...document.querySelectorAll('.context-menu [role=menuitem]')].find(item => item.textContent === ${JSON.stringify(actions.sessionMenu.item)}).click()`);
-    await pageCondition(contents, `!document.querySelector('.context-menu')`);
+    await pageCondition(contents, `document.querySelector('[role=menu] [role=menuitem]')`);
+    await contents.executeJavaScript(`[...document.querySelectorAll('[role=menu] [role=menuitem]')].find(item => item.textContent === ${JSON.stringify(actions.sessionMenu.item)}).click()`);
+    await pageCondition(contents, `!document.querySelector('[role=menu]')`);
   }
   if (actions.openSearch) {
     await contents.executeJavaScript(`document.querySelector('button[aria-label="Search sessions"]').click()`);
@@ -268,16 +268,19 @@ async function settled(scene, contents, theme) {
     await pageCondition(contents, `document.querySelector('[cmdk-item]')`);
   }
   if (actions.terminal) {
-    await pageCondition(contents, `[...document.querySelectorAll('.terminal-panel .xterm-rows > div')].some(row => row.textContent.trimEnd().endsWith(${JSON.stringify(actions.terminal)}))`);
+    await pageCondition(contents, `[...document.querySelectorAll('[data-region=panel] .xterm-rows > div')].some(row => row.textContent.trimEnd().endsWith(${JSON.stringify(actions.terminal)}))`);
   }
   await frames(contents);
-  // File and diff highlighters run in workers after their text loads.
-  await pageCondition(contents, `[...document.querySelectorAll('.file-view-code, .diff-view-lines')]
+  // File and diff highlighters run in workers after their text loads; a
+  // source view or diff is done once a line has Shiki's colors. Markdown and
+  // browser previews have no source lines.
+  await pageCondition(contents, `[...document.querySelectorAll('[role=region][aria-label="File contents"], table[aria-label="File changes"]')]
+    .filter(view => !view.querySelector('.prose, iframe, object, img, audio, video') && view.querySelector('code'))
     .every(view => view.querySelector('code span[style*="--shiki"]'))`);
   await frames(contents);
   // An error card is the one card that names no session.
-  const error = await contents.executeJavaScript(`[...document.querySelectorAll('.notification-card')]
-    .find(card => !card.querySelector('.notification-card-session'))?.textContent ?? ''`);
+  const error = await contents.executeJavaScript(`[...document.querySelectorAll('[aria-label=Notifications] [role=alert]')]
+    .find(card => !card.querySelector('[aria-label="View Session"]'))?.textContent ?? ''`);
   if (error) throw new Error(`the page shows an error: ${error}`);
 }
 

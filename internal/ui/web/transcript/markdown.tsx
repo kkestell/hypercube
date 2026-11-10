@@ -110,7 +110,7 @@ interface MarkdownProps extends Pick<Options, 'imageSource' | 'renderLink'> {
 
 export function Markdown({text, style, muted, imageSource, renderLink}: MarkdownProps) {
   return (
-    <div className={`markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+    <div className={`${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
       {tokens(lexer(text), {preview: style === 'preview', imageSource, renderLink})}
     </div>
   );

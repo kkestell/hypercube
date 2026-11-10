@@ -47,7 +47,7 @@ export function GitPanel() {
     if (value !== 'uncommitted' && value !== 'branch') return;
     store.update(state => setGitComparison(state, value));
   };
-  return <div className="git-panel flex h-full min-h-0 flex-col">
+  return <div className="flex h-full min-h-0 flex-col">
     <div className="min-h-0 flex-1 overflow-auto p-2 pt-1">
       {!editor ? <Message className="px-2">Select a session or workspace to see its changes.</Message>
         : !session?.worktree ? <ChangeRows changes={editor.changes} comparison="uncommitted" />

@@ -2,7 +2,7 @@
 // Lines fade with depth. It animates while mounted, and holds still, redrawn
 // only when its size changes, while the reduced-motion setting is on.
 import {useEffect, useRef} from 'react';
-import {useReducedMotion} from '../shared/motion.ts';
+import {useReducedMotion} from '../shared/use-reduced-motion.ts';
 
 const vertexShader = `#version 300 es
 void main() {

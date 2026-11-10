@@ -26,7 +26,7 @@ function DiffLines({text, path, wrap}: {text: string; path: string; wrap: boolea
   ], [rows]);
   const html = useHighlight([old, next], language(path.slice(path.lastIndexOf('/') + 1)), rows.length > 0);
   if (!rows.length) return <Message fill>{diffNote(text)}</Message>;
-  return <table aria-label="File changes" className={`diff-view-lines w-full border-collapse font-mono text-xs leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
+  return <table aria-label="File changes" className={`w-full border-collapse font-mono text-xs leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.[0]?.[row.old - 1] : html?.[1]?.[row.new - 1];
     return (
       <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={background[row.kind]}>

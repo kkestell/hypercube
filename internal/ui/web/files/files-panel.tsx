@@ -8,7 +8,6 @@ import {useScrollMemory} from '../shared/use-scroll-memory.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {useTreeFocus, type TreeRow} from '../shared/use-tree-focus.ts';
 import {Message} from '../shared/message.tsx';
-import {slide} from '../shared/motion.ts';
 import {useStore} from '../store.ts';
 import {fileRow} from './file-row.ts';
 import {listedFolder, loadTree, setFolderOpen, shownFolders, treeEntries} from './files.ts';
@@ -45,22 +44,22 @@ export function FilesPanel() {
     const path = dir ? dir + '/' + entry.name : entry.name;
     const change = entry.dir ? undefined : changes.files.get(path);
     const status = entry.dir ? changes.folders.get(path) : change?.status;
-    const props = {role: 'treeitem', 'data-path': path, 'data-row': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
+    const props = {role: 'treeitem', 'data-row': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
       ...menu.handlers(path), title: status ? `${path}, ${statusLabel(status)}` : path,
       'aria-label': status ? `${entry.name}, ${statusLabel(status)}` : entry.name,
       className: fileRow};
     const label = <ChangedFile name={entry.name} status={status} icon={entry.dir ? <Chevron open={expanded[path]} /> : undefined} />;
     if (entry.dir) return <Collapsible key={path} open={!!expanded[path]} onOpenChange={open => setFolderOpen(store, path, open)}>
-      <CollapsibleTrigger asChild><Button variant="ghost" size="sm" {...props} data-dir="" aria-expanded={!!expanded[path]}>
+      <CollapsibleTrigger asChild><Button variant="ghost" size="sm" {...props} aria-expanded={!!expanded[path]}>
         {label}
       </Button></CollapsibleTrigger>
-      <CollapsibleContent role="group" className={`pl-4 ${slide}`}>
+      <CollapsibleContent role="group" className="pl-4">
         {listingErrors[path] && <Message error className="px-2">{listingErrors[path]}</Message>}
         {entries(path, level + 1)}
       </CollapsibleContent>
     </Collapsible>;
     const deleted = change?.status === 'deleted';
-    return <Button key={path} variant="ghost" size="sm" {...props} data-file={path} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
+    return <Button key={path} variant="ghost" size="sm" {...props} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
       onDoubleClick={() => { if (!deleted) store.update(s => keepOpen(s, fileTabId(path))); }}>{label}</Button>;
   });
   return <div ref={scroller} className="h-full min-h-0 overflow-auto">

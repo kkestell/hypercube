@@ -22,7 +22,8 @@ const workspaces = [testWorkspace({id: 'w', name: 'repo', sessions: [
 const sidebar = (store: ReturnType<typeof createStore>) => mount(store, <Sidebar />);
 const click = (element: HTMLElement) => act(() => clickControl(element));
 const tab = (root: HTMLElement, name: string) => find(root, `[role=tab][aria-label="${name}"]`);
-const body = (root: HTMLElement, name: string) => find(root, `[data-sidebar-tab=${name}]`);
+// body is a sidebar tab's scrolling list, inside the panel its tab controls.
+const body = (root: HTMLElement, name: string) => find(root, '#' + CSS.escape(tab(root, name === 'archived' ? 'Archived' : 'Sessions').getAttribute('aria-controls')!)).firstElementChild as HTMLElement;
 const scroll = (element: HTMLElement, top: number) => act(() => {
   element.scrollTop = top;
   element.dispatchEvent(new Event('scroll'));
@@ -33,8 +34,8 @@ test('sidebar choices, independent scroll positions, and panel sizes survive a b
   const stop = startViewStorage(store);
   let root = sidebar(store);
   const active = body(root, 'sessions');
-  act(() => find(root, '[data-session=parent]').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true})));
-  expect(root.querySelector('[data-session=child]')).toBeNull();
+  act(() => find(root, '[data-row=parent]').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true})));
+  expect(root.querySelector('[data-row=child]')).toBeNull();
   scroll(active, 110);
   click(tab(root, 'Archived'));
   const archived = body(root, 'archived');
@@ -59,10 +60,10 @@ test('sidebar choices, independent scroll positions, and panel sizes survive a b
   expect(restored.get().workbench.sizes).toEqual({sidebar: 290, rightPanel: 390, panel: 210, editor: 560});
   expect(find(root, '[aria-label="Expand repo"]').getAttribute('aria-expanded')).toBe('false');
   click(find(root, '[aria-label="Expand repo"]'));
-  expect(root.querySelector('[data-session=archived]')).not.toBeNull();
+  expect(root.querySelector('[data-row=archived]')).not.toBeNull();
   click(tab(root, 'Sessions'));
-  expect(root.querySelector('[data-session=parent]')).not.toBeNull();
-  expect(root.querySelector('[data-session=child]')).toBeNull();
+  expect(root.querySelector('[data-row=parent]')).not.toBeNull();
+  expect(root.querySelector('[data-row=child]')).toBeNull();
   expect(body(root, 'sessions').scrollTop).toBe(110);
   unmountAll();
   stopRestored();

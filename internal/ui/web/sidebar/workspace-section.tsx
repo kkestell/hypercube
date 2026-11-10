@@ -5,7 +5,6 @@
 import {expandWorkspace} from '../app/workbench.ts';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {slide} from '../shared/motion.ts';
 import {Chevron, Icon} from '../shared/icon.tsx';
 import {IconButton} from '../shared/icon-button.tsx';
 import {workspaceKey} from '../editor/target.ts';
@@ -50,7 +49,7 @@ export function WorkspaceSection({workspace, groups}: {workspace: Workspace; gro
           <IconButton icon="add" label="New Session" className={`invisible col-start-1 row-start-1 opacity-0 ${shown}`} onClick={() => store.update(s => openUnsent(s, workspace.id))} />
         </div>
       </div>
-      <CollapsibleContent className={slide}>
+      <CollapsibleContent>
         <SessionTree label={workspace.name} groups={groups} />
       </CollapsibleContent>
     </section>

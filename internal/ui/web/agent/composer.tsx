@@ -90,7 +90,7 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className="composer @container/composer relative my-4 shrink-0 px-4" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+    <form className="@container/composer relative my-4 shrink-0 px-4" onSubmit={e => { e.preventDefault(); send(); }}>
       {isUnsent(session.id) && <WorktreeSelect />}
       {/* The text field draws no focus ring of its own; the box shows focus. */}
       <Card className="rounded-2xl py-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
@@ -109,7 +109,7 @@ export function Composer({session}: {session: Session}) {
           <MentionList mentions={mentions} />
           <div className="flex items-end gap-1">
             <IconButton icon="attach" label="Attach Image" type="button" className="mb-1 text-muted-foreground" onClick={() => picker.current?.click()} />
-            <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${firstKeys('composer')})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
+            <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${firstKeys('composer')})`} className="flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
               role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
               aria-controls={suggesting ? mentions.listId : undefined}
               aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}

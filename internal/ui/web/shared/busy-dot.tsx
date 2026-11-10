@@ -3,7 +3,7 @@
 // they appear. A reduced-motion setting holds it still. An outlined dot is
 // hollow.
 import {useEffect, useRef} from 'react';
-import {useReducedMotion} from './motion.ts';
+import {useReducedMotion} from './use-reduced-motion.ts';
 import {DotBox, dotClass} from './status-dot.tsx';
 import {tones} from './tones.ts';
 

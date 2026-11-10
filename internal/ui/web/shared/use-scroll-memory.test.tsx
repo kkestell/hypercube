@@ -1,6 +1,6 @@
-import {afterEach, expect, mock, test} from 'bun:test';
+import {afterEach, beforeEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {find, mount, unmountAll} from '../../test-render.tsx';
+import {find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {startViewStorage} from '../app/view-storage.ts';
 import {FileView} from '../files/file-view.tsx';
@@ -12,6 +12,8 @@ import {receivedTranscript} from '../transcript/transcripts.ts';
 import {openTab} from '../editor/tab-layout.ts';
 
 const imageComplete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'complete')!;
+// The tests supply file content themselves; reads they start never answer.
+beforeEach(() => stubFetch(() => new Promise<Response>(() => {})));
 afterEach(() => {
   unmountAll(); mock.restore(); localStorage.clear();
   Object.defineProperty(HTMLImageElement.prototype, 'complete', imageComplete);
@@ -43,7 +45,7 @@ test('file scroll waits for loaded content, saves late unmount, and survives a r
     return state.editor?.files.open['guide.md'] ? <FileView key={state.editor.id} id="file:guide.md" path="guide.md" /> : null;
   }
   const root = mount(store, <SelectedFile />);
-  let view = find(root, '.file-view');
+  let view = find(root, '[aria-label="File contents"]');
   let height = scrollArea(view);
   expect(view.scrollTop).toBe(0);
   const loaded = () => {
@@ -59,7 +61,7 @@ test('file scroll waits for loaded content, saves late unmount, and survives a r
   act(() => store.update(state => selectSession(state, 'b')));
   expect(store.get().sessionViews.a.scroll['file:guide.md'].top).toBe(345);
   act(() => store.update(state => selectSession(state, 'a')));
-  view = find(root, '.file-view');
+  view = find(root, '[aria-label="File contents"]');
   height = scrollArea(view);
   expect(view.scrollTop).toBe(0);
   loaded();
@@ -80,7 +82,7 @@ test.each(['load', 'error', 'user scroll'])('Markdown scroll waits for images: %
   state.editor!.scroll['file:guide.md'] = {top: 500, left: 0, following: false};
   const store = createStore(state);
   const root = mount(store, <FileView id="file:guide.md" path="guide.md" />);
-  const view = find(root, '.file-view');
+  const view = find(root, '[aria-label="File contents"]');
   const height = scrollArea(view);
   act(() => store.update(state => ({...state, editor: {...state.editor!, files: {...state.editor!.files, open: {
     ...state.editor!.files.open, 'guide.md': {...unreadFile, text: '![diagram](diagram.png)'},
@@ -112,7 +114,7 @@ test.each([false, true])('transcript restoration keeps following=%s after delaye
   state.editor!.scroll.a = {top: 200, left: 0, following};
   const store = createStore(state);
   const root = mount(store, <Transcript session={testSession({id: 'a'})} />);
-  const view = find(root, '.transcript');
+  const view = find(root, '[aria-label=Transcript]').parentElement!;
   const height = scrollArea(view);
   height(1000);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [{id: 'answer', seq: 1, kind: 'text', text: 'saved answer'}]})));
@@ -132,7 +134,7 @@ test.each([false, true])('transcript preserves image restoration and follow inte
   state.editor!.scroll.a = {top: 500, left: 0, following: false};
   const store = createStore(state);
   const root = mount(store, <Transcript session={testSession({id: 'a'})} />);
-  const view = find(root, '.transcript');
+  const view = find(root, '[aria-label=Transcript]').parentElement!;
   const height = scrollArea(view);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [
     {id: 'image', seq: 1, kind: 'text', images: ['/transcript-image?index=0']},

@@ -72,8 +72,8 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" inline />
-      <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto">
-        <section ref={list} aria-label="Transcript" onClickCapture={holdTrigger} className="transcript-list flex w-full flex-1 flex-col gap-3 px-4 py-4">
+      <div ref={view} className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <section ref={list} aria-label="Transcript" onClickCapture={holdTrigger} className="flex w-full flex-1 flex-col gap-3 px-4 py-4">
           {rows.map(row => {
             const id = row.type === 'activity' ? row.key : row.item.id;
             const submission = submissions.find(entry => entry.id === id);
@@ -91,7 +91,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
           })}
         </section>
       </div>
-      <div className="transcript-footer relative flex max-h-3/4 min-h-0 shrink-0 flex-col bg-tab">
+      <div className="relative flex max-h-3/4 min-h-0 shrink-0 flex-col bg-tab">
         {away && (
           <IconButton icon="arrow-down" label="Scroll to newest output" type="button" variant="secondary" className="absolute -top-9 left-1/2 -translate-x-1/2 rounded-full animate-in fade-in"
             onClick={() => { followEnd(true); focusComposerField(); }} />

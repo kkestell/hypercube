@@ -44,7 +44,7 @@ export function Sidebar() {
 
   const contextMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
-    const session = sidebarSession(state, e.target.closest<HTMLElement>('[data-session]')?.dataset.session);
+    const session = sidebarSession(state, e.target.closest<HTMLElement>('[data-row]')?.dataset.row);
     const workspace = workspaceOf(e.target);
     const items = session ? sessionMenu(session) : workspace && workspaceItems(store, workspace);
     if (!items) return;
@@ -64,8 +64,8 @@ export function Sidebar() {
       showMenu({...below(header), items: workspaceItems(store, workspace)});
       return;
     }
-    const row = e.target.closest<HTMLElement>('[data-session]');
-    const session = sidebarSession(state, row?.dataset.session);
+    const row = e.target.closest<HTMLElement>('[data-row]');
+    const session = sidebarSession(state, row?.dataset.row);
     if (!row || !session || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
     if (e.key === 'F2') {
@@ -138,7 +138,7 @@ function SidebarBody({tab, active, onContextMenu, onKeyDown, children}: {
       window.removeEventListener('pagehide', save);
     };
   }, [save]);
-  return <div ref={ref} className="h-full min-h-0 overflow-auto p-2 pt-1" data-sidebar-tab={tab}
+  return <div ref={ref} className="h-full min-h-0 overflow-auto p-2 pt-1"
     onContextMenu={onContextMenu} onKeyDown={onKeyDown} onScroll={event => {
       if (active) top.current = event.currentTarget.scrollTop;
     }}>{children}</div>;

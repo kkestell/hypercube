@@ -26,7 +26,7 @@ interface IconProps extends Omit<LucideProps, 'name'> {
 
 export function Icon({name, className = '', title, ...props}: IconProps) {
   const Component = icons[name];
-  return <Component className={`size-4 shrink-0 ${className}`} data-icon={name} {...{title}} aria-label={title} aria-hidden={title || props['aria-label'] ? undefined : true} {...props} />;
+  return <Component className={`size-4 shrink-0 ${className}`} {...{title}} aria-label={title} aria-hidden={title || props['aria-label'] ? undefined : true} {...props} />;
 }
 
 // Chevron marks an expandable item, turning to point down as it opens.

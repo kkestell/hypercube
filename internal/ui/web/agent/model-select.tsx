@@ -6,6 +6,7 @@ import {Command, CommandEmpty, CommandInput, CommandItem, CommandList} from '../
 import {Popover, PopoverContent, PopoverTrigger} from '../components/ui/popover';
 import {Slider} from '../components/ui/slider';
 import {Icon} from '../shared/icon.tsx';
+import {Message} from '../shared/message.tsx';
 import {useStore} from '../store.ts';
 import {harnessIcon} from './harness-icon.tsx';
 import {displayName, effortLabel, settingsText} from './selection-label.ts';
@@ -43,7 +44,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
     </PopoverTrigger>
     <PopoverContent side="top" align="start" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2"
       onOpenAutoFocus={event => { event.preventDefault(); input.current?.focus(); }}>
-      {list === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
+      {list === null ? <Message className="p-2">Loading models…</Message> : empty ? <div className="p-2 text-sm">
         <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => openSettings(s, 'Agents')); }}>Open Settings</Button>
       </div> : <>
         <Command loop>

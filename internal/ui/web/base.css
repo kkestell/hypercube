@@ -102,7 +102,7 @@
 
 /* Motion. Anything that appears on hover or focus fades over 150ms, the
    default transition duration. Anything that opens, closes, or changes size
-   slides over 200ms: collapsible content (slide in shared/motion.ts) and
+   slides over 200ms: collapsible content (components/ui/collapsible.tsx) and
    panels shown or hidden (shared/split.tsx). Menus and dialogs
    fade and zoom over 150ms. A reduced-motion setting turns it all off. */
 @layer base {

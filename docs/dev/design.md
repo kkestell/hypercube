@@ -32,49 +32,42 @@ OKLCH. Opacity modifiers on utilities produce additional translucent colors.
 | input | `0.922 0 0` | `1 0 0 / 15%` | Control borders and some control backgrounds |
 | ring | `0.708 0 0` | `0.556 0 0` | Focus outlines and rings |
 | sidebar | `0.985 0 0` | `0.205 0 0` | Sidebar and right panel surfaces |
+| tab | background and card mixed equally in OKLab | the same mix | Center views, their tab bars, the transcript footer, and source line numbers |
 | chart-1 | `0.646 0.222 41.116` | `0.488 0.243 264.376` | Defined; no chart use found |
 | chart-2 | `0.6 0.118 184.704` | `0.696 0.17 162.48` | Defined; no chart use found |
 | chart-3 | `0.398 0.07 227.392` | `0.769 0.188 70.08` | Defined; no chart use found |
 | chart-4 | `0.828 0.189 84.429` | `0.627 0.265 303.9` | Defined; no chart use found |
 | chart-5 | `0.769 0.188 70.08` | `0.645 0.246 16.439` | Defined; no chart use found |
 
-The body instead defaults to Tailwind `neutral-700` in light mode and
-`neutral-300` in dark mode. Components also use transparent, black and white:
-black at 50% for dialog overlays, black shadows, white text on destructive
-buttons and a white HTML preview background. Gradients fade from transparent to
+Body text uses the foreground token. Components also use transparent, black
+and white: black at 50% for dialog overlays, black shadows, white text on
+destructive buttons and a white HTML preview background. Gradients fade from transparent to
 the surrounding surface. Search highlights use the browser's `Highlight`
 and `HighlightText` system colors; search results also use native `mark` styling.
 
 ## Status and data colors
 
-Tailwind names below identify the actual palette utilities, including their
-opacity where specified. See [session status](../../internal/ui/web/sidebar/session-item.tsx),
-[status dots](../../internal/ui/web/shared/status-dot.tsx),
-[branch icons](../../internal/ui/web/shared/branch-icon.tsx),
-[files](../../internal/ui/web/files/files-panel.tsx),
-[diffs](../../internal/ui/web/changes/diff-view.tsx), and
-[limits](../../internal/ui/web/agent/limits.tsx).
+Status colors come from [tones](../../internal/ui/web/shared/tones.ts), which
+give each meaning one text color. Dots take their tone with `bg-current` or
+`border-current`.
 
-| Color | Observed use |
-| --- | --- |
-| Amber 500 | Session waiting on the user; subscription usage at 75–89%; dark uncommitted branch icon |
-| Amber 600 / 500 | Uncommitted branch icon, light / dark |
-| Amber 700 / 500 at 70% | Modified file name, light / dark |
-| Sky 500 | Unseen session reply |
-| Neutral 600, neutral 500 outline | Idle session, filled / outlined respectively; ended sessions always use the neutral 500 outline |
-| Neutral 500, 20% track | Subscription usage below 75% and its track |
-| Green 600 / 500 | Unmerged branch icon, light / dark |
-| Green 700 / 500 at 70% | Added and untracked file names, light / dark |
-| Green 500 at 15% | Added diff line background |
-| Red 500 at 15% | Removed diff line background |
-| Red 500 | Subscription usage at 90% or more |
-| Green 600 to 400 | Running session and transcript dots breathe between these shades |
+| Tone | Color | Uses |
+| --- | --- | --- |
+| error | destructive token | Errors and failed items; a pull request whose checks fail; a branch whose state cannot be read |
+| warning | Amber 600 / 500, light / dark | Session waiting on the user; uncommitted branch; modified file; pull request with merge conflicts, behind its base, or with changes requested; subscription usage at 75% or more |
+| info | Sky 600 / 500 | Unseen session reply; pull request waiting on the user's review or reply |
+| success | Green 600 / 500 | Running session and transcript dots; unmerged branch; added and untracked files; approved pull request or one ready to merge |
+| muted | muted-foreground token | Idle and ended sessions; merged or empty branch; deleted file; draft and other pull requests |
 
-Running dots breathe between `green-600` (`#16a34a`) and `green-400`
-(`#4ade80`), filled for parent sessions and outlined for child sessions.
-Other session dots are filled for parent sessions and outlined for children,
-except ended dots, which are always outlined. Transcript running dots also use
-the shared busy-dot component.
+Running dots breathe by fading their opacity, filled for parent sessions and
+outlined for child sessions; with reduced motion they hold still. Other session
+dots are filled for parent sessions and outlined for children, except ended
+dots, which are always outlined. Subscription usage bars are the stock primary
+progress bar.
+
+[Diffs](../../internal/ui/web/changes/diff-view.tsx) shade added lines Green 500
+at 15% and removed lines Red 500 at 15%. Added and removed line counts are
+muted wherever they show.
 
 ## Other palettes
 
@@ -100,17 +93,11 @@ the shared busy-dot component.
 
 ## Inconsistencies to revisit
 
-- The development convention reserves red for errors, but removed diff lines
-  and high subscription usage also use red. Destructive controls use the red
-  destructive token, which also marks errors.
-- Amber means waiting, modified or uncommitted work, and elevated usage; green
-  means added files, added diff lines and unmerged branches, as well as the
-  working-session indicator. These meanings depend on context.
-- The same Git change is colored differently by surface: modified file names
-  and uncommitted branch icons use different amber shades; added file names and
-  diff backgrounds use different greens. Deleted files are muted while removed
-  diff lines are red. Added and untracked files share a color.
-- Body text uses neutral utilities rather than the foreground token.
+- Red marks errors, destructive controls, and removed diff lines; the
+  destructive token serves both errors and destructive actions.
+- Each tone covers several meanings, told apart by context: warning means
+  waiting on the user, uncommitted or modified work, and elevated usage;
+  success means running, added, unmerged, and approved.
 - Theme names do not imply distinct visible colors: secondary, muted and accent
   surfaces have identical values in each theme. Dark terminal colors other than
   its background are delegated to xterm, unlike the explicit light palette.

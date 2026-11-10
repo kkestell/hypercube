@@ -6,7 +6,6 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components
 import {Button} from '../components/ui/button';
 import {Chevron} from '../shared/icon.tsx';
 import {Message} from '../shared/message.tsx';
-import {slide} from '../shared/motion.ts';
 import {expandPullRequestGroup} from '../app/workbench.ts';
 import {useStore} from '../store.ts';
 import {turnGroups, type Turn} from './turns.ts';
@@ -33,7 +32,7 @@ export function PullRequestGroups({turns, row}: {turns: AccountTurn[]; row: (tur
             <Chevron open={open} />
           </Button>
         </CollapsibleTrigger>
-        <CollapsibleContent className={slide}>
+        <CollapsibleContent>
           <ul aria-label={group.title} className="space-y-4">
             {group.turns.map(turn => row(turn, turn.turn.reason === group.implied))}
           </ul>

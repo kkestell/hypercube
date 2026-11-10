@@ -23,7 +23,7 @@ interface SourceProps {
 
 function Source({text, lines, lang, wrap}: SourceProps) {
   const html = useHighlight([text], lang)?.[0];
-  return <div className={`file-view-code grid min-w-full grid-cols-[auto_minmax(0,1fr)] font-mono text-xs leading-5 ${wrap ? 'w-full' : 'w-max'}`}>
+  return <div className={`grid min-w-full grid-cols-[auto_minmax(0,1fr)] font-mono text-xs leading-5 ${wrap ? 'w-full' : 'w-max'}`}>
     {text.split('\n').map((line, i) => {
       const selected = lines.some(({start, end = start}) => i + 1 >= start && i + 1 <= end);
       return <Fragment key={i}>
@@ -79,7 +79,7 @@ export function FileView({id, path, active = true}: FileViewProps) {
   }
   return <div className="relative flex min-h-0 flex-1 flex-col">
     {!preview && <Find list={list} view={view} active={active} label="Find in file" />}
-    <div ref={view} role="region" aria-label="File contents" tabIndex={0} className={`file-view min-h-0 flex-1 overflow-auto ${preview ? 'flex flex-col' : ''}`}>
+    <div ref={view} role="region" aria-label="File contents" tabIndex={0} className={`min-h-0 flex-1 overflow-auto ${preview ? 'flex flex-col' : ''}`}>
       {preview ? content : <div ref={list}>{content}</div>}
     </div>
   </div>;

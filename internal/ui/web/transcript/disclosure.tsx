@@ -2,7 +2,6 @@
 // store under the row's key, so it survives the row being drawn again.
 import type {ReactNode} from 'react';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {slide} from '../shared/motion.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {setExpanded} from './transcripts.ts';
@@ -34,6 +33,6 @@ export function Disclosure({id, className = '', summary, preview, marker, childr
       {marker && <span className="flex h-5 w-(--disclosure-indent) shrink-0 items-center">{marker}</span>}
       <span className="flex min-w-0 flex-1 items-center gap-2">{summary}{!open && preview}{!marker && <Chevron open={open} />}</span>
     </CollapsibleTrigger>
-    <CollapsibleContent className={`${slide} ${marker ? 'pl-(--disclosure-indent)' : ''}`}>{children}</CollapsibleContent>
+    <CollapsibleContent className={marker ? 'pl-(--disclosure-indent)' : ''}>{children}</CollapsibleContent>
   </Collapsible>;
 }

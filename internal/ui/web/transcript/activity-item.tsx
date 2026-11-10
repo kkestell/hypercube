@@ -3,7 +3,6 @@
 // activity, when open, below the rule. Closed, the turn's response follows the
 // rule.
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {slide} from '../shared/motion.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {useExpanded} from './disclosure.tsx';
 import {formatDuration} from './duration.ts';
@@ -19,7 +18,7 @@ export function ActivityItem({row}: {row: ActivityRow}) {
         {label}<Chevron open={open} />
       </CollapsibleTrigger>
       <div className="mt-1 border-t" />
-      <CollapsibleContent className={`flex flex-col gap-3 pt-4 ${slide}`}>
+      <CollapsibleContent className="flex flex-col gap-3 pt-4">
         {row.rows.map(inner => <TranscriptRow key={inner.item.id} row={inner} />)}
       </CollapsibleContent>
     </Collapsible>
