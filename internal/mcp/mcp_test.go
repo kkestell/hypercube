@@ -608,6 +608,7 @@ func TestListModels(t *testing.T) {
 		{map[string]any{"harness": "one"}, []string{`"id": "m"`, `"id": "plain"`, `"default": "m"`}},
 		{map[string]any{"harness": "one", "query": "PLAIN"}, []string{`"id": "plain"`}},
 		{map[string]any{"harness": "one", "model": "m"}, []string{`"efforts": [`}},
+		{map[string]any{"query": "PLAIN"}, []string{`"harness": "one"`, `"harness": "two"`, `"id": "plain"`}},
 	} {
 		text, failed := callTool(t, parent, "list_models", tc.args)
 		for _, want := range tc.want {
@@ -618,6 +619,15 @@ func TestListModels(t *testing.T) {
 	}
 	if text, _ := callTool(t, parent, "list_models", map[string]any{"harness": "one", "query": "plain"}); strings.Contains(text, `"id": "m"`) {
 		t.Errorf("query kept other models: %s", text)
+	}
+	if text, _ := callTool(t, parent, "list_models", map[string]any{"query": "plain"}); strings.Contains(text, `"id": "m"`) || strings.Contains(text, `"installed"`) {
+		t.Errorf("query without a harness = %s", text)
+	}
+	if text, _ := callTool(t, parent, "list_models", map[string]any{"query": "nothing"}); strings.TrimSpace(text) != "[]" {
+		t.Errorf("query without matches = %s", text)
+	}
+	if text, failed := callTool(t, parent, "list_models", map[string]any{"model": "m"}); !failed || !strings.Contains(text, "needs a harness") {
+		t.Errorf("list_models for a model without a harness = %q", text)
 	}
 	if text, failed := callTool(t, parent, "list_models", map[string]any{"harness": "one", "model": "gone"}); !failed || !strings.Contains(text, "not offered") {
 		t.Errorf("list_models for an unknown model = %q", text)
