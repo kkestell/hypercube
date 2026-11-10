@@ -53,11 +53,11 @@ give each meaning one text color. Dots take their tone with `bg-current` or
 
 | Tone | Color | Uses |
 | --- | --- | --- |
-| error | destructive token | Errors and failed items; a pull request whose checks fail; a branch whose state cannot be read |
-| warning | Amber 600 / 500, light / dark | Session waiting on the user; uncommitted branch; modified file; pull request with merge conflicts, behind its base, or with changes requested; subscription usage at 75% or more |
-| info | Sky 600 / 500 | Unseen session reply; pull request waiting on the user's review or reply |
-| success | Green 600 / 500 | Running session and transcript dots; unmerged branch; added and untracked files; approved pull request or one ready to merge |
-| muted | muted-foreground token | Idle and ended sessions; merged or empty branch; deleted file; draft and other pull requests |
+| error | destructive token | Errors and failed items; a session's pull request whose checks fail; a branch whose state cannot be read |
+| warning | Amber 600 / 500, light / dark | Session waiting on the user; uncommitted branch; modified file; a session's pull request with changes requested; subscription usage at 75% or more |
+| info | Sky 600 / 500 | Unseen session reply |
+| success | Green 600 / 500 | Running session and transcript dots; unmerged branch; added and untracked files; a session's approved pull request |
+| muted | muted-foreground token | Idle and ended sessions; merged or empty branch; deleted file; a session's draft or other pull request; every status icon in the Pull Requests tab |
 
 Running dots breathe by fading their opacity, filled for parent sessions and
 outlined for child sessions; with reduced motion they hold still. Other session

@@ -78,7 +78,7 @@ page before capturing it:
 - `now`: the page's clock, in milliseconds since the epoch, so relative times
   stay as written.
 - `address`: the page's hash: a session ID, `workspace:<ID>` for a workspace's
-  dashboard, or empty for the Pull Requests view.
+  dashboard, or empty for no selection.
 - `views`: the saved workbench, tabs, splits, and expanded items, as the page
   keeps them in local storage under `hypercube.views`. Editor panes give the
   conversation two fifths of the width beside the sidebar and right panel.

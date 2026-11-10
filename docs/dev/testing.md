@@ -7,7 +7,8 @@ writing tests, and the Linux test environment. Project conventions are in
 ## Run the checks
 
 - `make check` runs every check: it builds the browser view and the programs,
-  type-checks and tests the browser view and the desktop app with Bun, runs
+  type-checks the browser view, tests the browser view and the desktop app with
+  Bun, runs
   `go vet` and `gofmt`, and runs `go test -race ./...`. Run it before
   committing code.
 - While working, run focused checks: `go test -run` on the packages you

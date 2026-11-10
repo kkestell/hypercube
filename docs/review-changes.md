@@ -12,6 +12,11 @@ shows its last three lines under **Thinking…**, or **Thought** once it finishe
 expand it to read the whole trace, even while it streams. Expand a tool call for its input and output.
 Failed and interrupted turns leave activity visible.
 
+While a turn runs, a **Working…** row ends the transcript when nothing new has
+arrived for a few seconds, so a pause in output does not look like a stopped
+agent. A running tool shows its own status instead, and the row stays hidden
+while a question or approval waits on you.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/details-dark.png">
   <img alt="An expanded turn with reasoning, tool calls, and native subagent activity" src="images/details-light.png">
@@ -45,7 +50,7 @@ remains available on the right for opening another file.
 2. Choose the comparison:
    - **Uncommitted** shows staged, unstaged, and untracked changes against
      the current commit.
-   - **Committed**, available for managed worktree sessions, shows the
+   - **Committed**, available for top-level managed worktree sessions, shows the
      branch's committed changes since the common ancestor of the session's
      branch and the original checkout's current branch. Above the file list,
      it names that branch and counts the commits ahead of it.
@@ -69,7 +74,7 @@ This status refreshes when a session in that workspace finishes a turn.
 </picture>
 
 Added lines are green and removed lines are red. In this example, the diff
-and conversation occupy separate panes while the file tree shows other edits.
+and conversation occupy separate panes.
 
 The bar above chat shows the working directory and current Git branch.
 Click the branch name to open the Git panel. For top-level worktree sessions
@@ -89,16 +94,15 @@ file or diff. Move between diff changes with **Option+F5** /
 | Find in the open file or diff | Command+F | Ctrl+F |
 
 Project search is case-insensitive plain text. Select a result to open its
-line. Ignored and hidden paths are excluded in Git projects; see
+line. Git-ignored files and version-control folders are excluded; see
 [viewer and search limits](interface.md#files-and-search-limits) if an expected
 file or result is missing.
 
 ## Arrange the view
 
-The conversation is a tab like any file, except that it never closes. Drag
-tabs, the conversation's included, between panes, or onto a pane edge to split
-the view. Drag dividers
-to resize panes and panels. Toolbar buttons toggle the sidebar, terminal, and
+The conversation, or a workspace's dashboard, is a tab like any file, except
+that it never closes. Drag tabs, that one included, between panes, or onto a
+pane edge to split the view. Drag dividers to resize panes and panels. Toolbar buttons toggle the sidebar, terminal, and
 right panel. Each session remembers its tabs, splits, and scroll positions.
 
 Use **View → Zoom In**, **Zoom Out**, or **Actual Size** in the desktop app

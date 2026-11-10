@@ -56,12 +56,14 @@ Files, and Settings. On Linux, terminal copy/paste uses **Ctrl+Shift+C** /
 | Hollow dot | Child session; its state is shown with the same conventions. A child that finishes its turn goes idle and reports to its parent, without a blue dot. |
 | Dimmed row | Agent is not running, or the session has ended. Opening a parked session resumes its conversation. |
 
-Click a workspace heading to open its dashboard of recent sessions, including
-archived sessions. The separate chevron collapses or expands its sidebar list.
+Click a workspace heading to open its dashboard, which lists the workspace's ten
+most recently archived sessions. The chevron that shows on hover collapses or
+expands its sidebar list, and **New Session** takes the place of its pull
+request count on hover.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
-  <img alt="The harbor workspace dashboard listing the workspace's recent sessions with their status dots" src="images/dashboard-light.png">
+  <img alt="The harbor workspace dashboard, with the repository, account, and branch under its name and an empty Archived Sessions list" src="images/dashboard-light.png">
 </picture>
 
 Children are grouped under their parent. An active parent's ended children
@@ -97,7 +99,7 @@ within the window. After reset, the last reading is dimmed and marked
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/usage-dark.png">
-  <img alt="Below the message box, a five-hour subscription meter at 38% with 2h 13m until reset, and the context ring" src="images/usage-light.png">
+  <img alt="Below the message box, a five-hour subscription meter dimmed at 38% and marked Waiting after its reset, and the context ring" src="images/usage-light.png">
 </picture>
 
 ## Files and search limits
@@ -109,9 +111,9 @@ within the window. After reset, the last reading is dimmed and marked
 | HTML/SVG source | Available for supported text encodings within the text limit. |
 | Media | Images, audio, video, and PDFs open in the app, without the text limit. Some formats and codecs may not play. |
 | Git → Uncommitted | Staged, unstaged, and untracked changes within the current view’s directory, compared with the current commit. |
-| Git → Committed | Managed worktree sessions only: the branch's committed changes since the merge base with the original checkout's current branch. |
-| Git → Merge into … | Top-level worktree sessions with unmerged commits, at the bottom of the Git panel. |
-| Quick Open and project search | In Git: tracked and untracked files, excluding ignored and hidden paths. |
+| Git → Committed | Top-level managed worktree sessions only: the branch's committed changes since the merge base with the original checkout's current branch. |
+| Git → Merge into … | Top-level worktree sessions with commits made after their starting point that are not on the target branch, at the bottom of the Git panel. |
+| Quick Open and project search | In Git: tracked and untracked files, excluding ignored files. Everywhere: excluding `.git`, `.svn`, `.hg`, `.hypercube`, `.DS_Store`, and `Thumbs.db`. The first 50,000 such files. |
 | Project text search | Case-insensitive plain text; skips files over 256 KiB; stops at 1,000 matching lines. |
 
 On a workspace dashboard, file tools and the terminal use the workspace’s main
@@ -147,8 +149,9 @@ shell keeps the account it started with until it restarts.
 
 About once a minute, Hypercube fetches each GitHub workspace's tracked remote.
 It also reads the open pull requests of every signed-in account, in all
-repositories, whether or not a workspace uses that account. A workspace's
-dashboard shows the pull requests of its account that belong to its repository.
+repositories, whether or not a workspace uses that account: up to 50 recently
+updated pull requests the account is involved in, plus up to 20 whose review
+was requested from it. Lists and counts cover those pull requests.
 
 A GitHub workspace's dashboard shows, under its name, a link to the repository,
 the account in use, and whether the checked-out branch is ahead of or behind its
@@ -157,79 +160,77 @@ several are signed in, the dashboard shows a chooser for the account instead; th
 started afterward. When an update fails, the dashboard says why and shows the
 time of the data it still has.
 
-Below that, the dashboard lists the open pull requests that need the account,
-under **Your move**, and the ones it is waiting on, under **Waiting on
-others**. Each row shows the pull request's icon, its number and title as a link
-to GitHub, why it is listed, and its author when someone else wrote it.
+While a GitHub account is signed in, the right panel's **Pull Requests** tab
+lists the pull requests of each signed-in account, from every repository,
+including ones without a workspace, with a warning for each account that could
+not be read. Its icon shows how many pull requests need you across accounts, and
+each workspace's heading in the sidebar shows how many need its account.
 
-**Your move** lists, in this order:
+The tab groups the pull requests, with a count on each heading. Click a heading
+to collapse or expand its group; the choice is remembered.
 
-- Pull requests whose review was requested from the account.
-- Pull requests where the account requested changes and the author has since
-  pushed or commented.
-- Pull requests with replies to the account's review comments.
-- The account's own pull requests that have a failed required check, merge
-  conflicts, a base branch they must catch up with before merging, requested
-  changes not yet answered by a push, or unanswered comments. A comment is
-  unanswered when it is in an unresolved review thread and someone else spoke
-  last, or when it is the latest comment in the conversation and is newer than
-  both the account's last reply and the last commit. After a push answers
-  requested changes, only comments newer than the last commit count as
-  unanswered.
-- The account's own pull requests that are ready to merge.
-- Pull requests whose review was requested from one of the account's teams,
-  until the account reviews them.
+- **To fix**: the account's own pull requests that have a failed required
+  check, merge conflicts, a base branch they must catch up with before merging,
+  requested changes not yet answered by a push, or unanswered comments, in that
+  order. A comment is unanswered when it is in an unresolved review thread and
+  someone else spoke last, or when it is the latest comment in the conversation
+  and is newer than both the account's last reply and the last commit. After a
+  push answers requested changes, only comments newer than the last commit
+  count as unanswered.
+- **Replies**: pull requests where the account requested changes and the author
+  has since pushed or commented, then pull requests with replies to the
+  account's review comments.
+- **Ready to merge**: the account's own pull requests that can merge.
+- **To review**: pull requests whose review was requested from the account,
+  then ones requested from one of the account's teams, until the account
+  reviews them.
+- **Waiting on others**: the account's other pull requests, such as drafts and
+  ones waiting for review or checks, and pull requests where the account
+  requested changes and the author has not responded. These rows are dimmed.
 
-**Waiting on others** lists the account's other pull requests, such as drafts
-and ones waiting for review or checks, and pull requests where the account
-requested changes and the author has not responded. Below the lists,
-**All open pull requests** opens the repository's pull requests on GitHub.
-
-In the sidebar's Sessions tab, **Pull Requests** opens a view of the pull
-requests of each signed-in account, from every repository, including ones
-without a workspace, with the repository and the account on each row and a
-warning for each account that could not be read. It groups them, with a count
-on each heading, under **Your pull requests to fix**, **Replies and
-re-reviews**, **Ready to merge**, **Reviews to do**, and **Waiting on others**.
-Click a heading to collapse or expand its group; the choice is remembered. The view also shows when nothing is selected. The button
-shows how many pull requests need you across accounts. Each workspace's row in
-the sidebar shows the number of pull requests that need its account.
+Each row shows an icon for why it is listed and the pull request's title.
+Hover over the icon for the reason, and over the row for the repository,
+number, and author.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/pull-requests-dark.png">
-  <img alt="The Pull Requests view grouping pull requests from three repositories, with a Chat button on every row and Review on requested reviews" src="images/pull-requests-light.png">
+  <img alt="The Pull Requests tab in the right panel, grouping pull requests from three repositories under To fix, Replies, Ready to merge, To review, and Waiting on others, with a count on the tab's icon" src="images/pull-requests-light.png">
 </picture>
 
-Every pull request row, on a dashboard or the Pull Requests view, shows
-**Chat**. Chat fetches the pull request's head commit and opens the
-workspace's new session with **New worktree on branch…** set to the pull
-request's branch, starting at that commit, and the cursor in the message box.
-Nothing is sent: write the first prompt and send it. Text already typed in
-that new session, and its model, stay. When the workspace's checkout already
-has a branch of that name, the new branch is named with the first free suffix,
-such as `feature-2`. The name can be edited before sending.
+Hovering over a row, or moving the keyboard focus to it, shows **Chat** and,
+when the account's review was requested, **Review** at its right edge.
+Right-click a row, or press Shift+F10 while it has the focus, for **Review**,
+**Chat**, **Open on GitHub**, and **Copy URL**.
 
-On the Pull Requests view, Chat on a row whose repository has no workspace
-first opens **Add {repository}**. **Clone** clones the repository over HTTPS
-with the row's account into the folder shown, suggested beside a workspace of
-the same GitHub owner; **Choose…** picks the parent folder. The clone records
-that account in its own `credential.githubAccount` setting. The dialog shows
-Git's error if the clone fails, and closing it cancels the clone. **Use
-Existing Folder…** adds a folder that already holds the repository: its
-current branch's remote, or else `origin`, must be the row's repository on
-GitHub, and otherwise the dialog says which repository the folder holds. Either
-way the folder becomes a workspace, and Chat continues in it.
+**Chat** fetches the pull request's head commit and opens the workspace's new
+session with **New worktree on branch…** set to the pull request's branch,
+starting at that commit, and the cursor in the message box. Nothing is sent:
+write the first prompt and send it. Text already typed in that new session, and
+its model, stay. When the workspace's checkout already has a branch of that
+name, the new branch is named with the first free suffix, such as `feature-2`.
+The name can be edited before sending.
 
-A pull request whose review was requested from the account shows **Review**.
-It fetches the pull request's head commit, starts a new worktree session at that
-commit, and opens the session. The session's model and first prompt come from
-[**Settings › Review**](configuration.md#review). The pull
-request's own commits do not count as the session's unmerged work, so
-**Merge into …** appears only after the agent commits. On the Pull Requests
-view, **Review** is disabled until a workspace holds the repository.
+Chat on a row whose repository has no workspace first opens **Add
+{repository}**. **Clone** clones the repository over HTTPS with the row's
+account into the folder shown, suggested beside a workspace of the same GitHub
+owner; **Choose…** picks the parent folder. The clone records that account in
+its own `credential.githubAccount` setting. The dialog shows Git's error if the
+clone fails, and closing it cancels the clone. **Use Existing Folder…** adds a
+folder that already holds the repository: its current branch's remote, or else
+`origin`, must be the row's repository on GitHub, and otherwise the dialog says
+which repository the folder holds. Either way the folder becomes a workspace,
+and Chat continues in it.
 
-A session whose branch has an open pull request involving the account shows a pull request icon at the
-right edge of its row. Hover over the icon for the pull request's number, title,
+**Review** fetches the pull request's head commit, starts a new worktree session
+at that commit, and opens the session. The session's model and first prompt come
+from [**Settings › Review**](configuration.md#review). The pull request's own
+commits do not count as the session's unmerged work, so **Merge into …** appears
+only after the agent commits. **Review** is disabled until a workspace holds the
+repository.
+
+A session whose branch has an open pull request involving the account, with its
+head branch in the workspace's repository rather than a fork, shows a pull
+request icon at the right edge of its row. Hover over the icon for the pull request's number, title,
 review, and checks.
 
 | Icon | Pull request |

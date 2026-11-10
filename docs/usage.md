@@ -18,8 +18,8 @@ folder. Choosing a folder that is already a workspace opens that workspace.
 Click a workspace's name to open its dashboard, or use its chevron to collapse
 it; see [sidebar states](interface.md#sidebar-states).
 
-Hover over a workspace's name for **New Session** and **More Actions**. More
-Actions, or right-clicking the name, opens the workspace's menu, including
+Hover over a workspace's name for **New Session**. Right-click the name, or
+press Shift+F10 while it has the focus, to open the workspace's menu, including
 **Delete Workspace**.
 
 ## Start a session
@@ -118,7 +118,7 @@ Select an active session and send a prompt to continue its conversation.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/search-dark.png">
-  <img alt="Session search for "conflict" listing matching sessions from two workspaces with their matching text" src="images/search-light.png">
+  <img alt="Session search for &quot;conflict&quot; listing matching sessions from two workspaces with their matching text" src="images/search-light.png">
 </picture>
 
 A session's title comes from its first message, or from the
@@ -139,7 +139,8 @@ See [session lifecycle](lifecycle.md) if you need to know what restarts.
 2. Choose **Archive Session** in the session's menu to keep searchable,
    read-only conversations while removing the family from the active list.
 3. Find it later through Search or the sidebar's **Archived** tab. Choose
-   **Unarchive** to make it active again.
+   **Unarchive** to make it active again. Its children stay ended and
+   read-only.
 
 **Discard All Changes** permanently deletes the uncommitted files and the
 commits that a worktree session and its children made since the session
@@ -164,8 +165,7 @@ kept.
 
 1. Commit any work you want to keep from the workspace's managed worktrees,
    and merge or push it.
-2. Right-click the workspace's name, or choose **More Actions** beside it, and
-   choose **Delete Workspace**.
+2. Right-click the workspace's name and choose **Delete Workspace**.
 3. Choose **Delete** to confirm.
 
 Sessions are deleted one family at a time. If a worktree fails the Git checks,

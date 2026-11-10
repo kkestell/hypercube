@@ -45,8 +45,9 @@ See [program discovery](../../cmd/hypercube/programs.go),
 
 Each `hypercube-harness-<name>` executable runs beside `hypercube`. The backend
 starts it with `serve` under a holder and exchanges commands and events as
-JSON Lines. The plugin owns the native protocol; the core and browser interface
-do not name individual harnesses.
+JSON Lines. The plugin owns the native protocol, and the backend handles
+harness IDs generically. The browser interface supplies names and branded icons
+for the bundled harnesses.
 
 The [protocol types](../../internal/harness/protocol.go) define commands, replies,
 transcript items, and usage fields. Native mappings live in the

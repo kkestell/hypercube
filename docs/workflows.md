@@ -64,7 +64,8 @@ The bar above chat shows the current branch.
      left the checkout's branch.
 4. Choose **Merge into main** at the bottom of the **Git** panel. The button
    names the branch checked out in the workspace folder. It appears once the
-   session's branch has commits that are not on that branch.
+   session has commits made after its starting point that are not on that
+   branch.
 
    The button sends the agent a request to commit its remaining work and merge
    its branch into that branch in the workspace folder, resolving conflicts.
@@ -168,9 +169,9 @@ token for the workspace's GitHub account; see [GitHub](interface.md#github).
    > Push your branch and open a pull request against `main` with `gh`.
 
 3. A pull request icon appears on the session's row. Hover over it for the
-   pull request's review and check status. The workspace's dashboard lists the
-   pull request under **Your move** when it needs you, such as after a failed
-   check or a review comment.
+   pull request's review and check status. The right panel's **Pull Requests**
+   tab lists the pull request under **To fix** when it needs you, such as after
+   a failed check or a review comment.
 4. To address review feedback, send the comments, or ask the agent to read
    them with `gh`, in the same session. Have it commit and push.
 5. After the pull request merges on GitHub, update the workspace folder's
@@ -178,11 +179,11 @@ token for the workspace's GitHub account; see [GitHub](interface.md#github).
 
 ## Review a pull request
 
-When someone requests your review on GitHub, the pull request appears in the
-workspace's dashboard and in **Pull Requests** in the sidebar, with a
-**Review** button.
+When someone requests your review on GitHub, the pull request appears under
+**To review** in the right panel's **Pull Requests** tab.
 
-1. Choose **Review**. Hypercube fetches the pull request, starts a **New
+1. Hover over its row and choose **Review**, or right-click the row and choose
+   **Review**. Hypercube fetches the pull request, starts a **New
    worktree** session at its latest commit, and sends the review prompt from
    **Settings › Review**.
 2. Read the agent's findings. By default it posts nothing to GitHub.
@@ -192,11 +193,11 @@ workspace's dashboard and in **Pull Requests** in the sidebar, with a
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/pull-requests-dark.png">
-  <img alt="The Pull Requests view grouping pull requests from three repositories, with a Chat button on every row and Review on requested reviews" src="images/pull-requests-light.png">
+  <img alt="The Pull Requests tab in the right panel, grouping pull requests from three repositories under To fix, Replies, Ready to merge, To review, and Waiting on others" src="images/pull-requests-light.png">
 </picture>
 
-In **Pull Requests**, **Review** stays disabled on a pull request from a
-repository with no workspace. Choose **Chat** on its row to clone the
+**Review** stays disabled on a pull request from a repository with no
+workspace. Choose **Chat** on its row to clone the
 repository or use a folder that already holds it; that adds the workspace, and
 **Review** becomes available. To
 choose the review model and prompt, see
@@ -217,7 +218,9 @@ and combine their work on its own branch.
    > `--timeout` flag in `cmd/`; the other adds its tests in `cmd/cmd_test.go`.
    > Each commits on its branch. Do not merge yet.
 
-4. Review each child's work in its own session's **Git** panel.
+4. Review each child's work in its own session: its **Git** panel shows
+   uncommitted files, and the agent can compare the child's branch with its
+   starting point for committed work.
 5. Ask the parent to merge the children's branches into its branch and end
    the children. Ending a child removes its worktree and branch once its
    commits are on the parent's branch.
@@ -251,7 +254,8 @@ Ending such a child leaves its directory and branches in place.
    Git checks in [session cleanup](storage.md#session-cleanup).
 3. To resume, find the session through search or the sidebar's **Archived**
    tab and choose **Unarchive**. Hypercube recreates the worktree with its
-   branch at the commit it held when archived.
+   branch at the commit it held when archived. Only the top-level session
+   returns; its children stay ended and read-only.
 
 If archiving is refused, see
 [Archive or delete is refused](troubleshooting.md#archive-or-delete-is-refused).

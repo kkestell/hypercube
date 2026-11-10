@@ -87,5 +87,5 @@ implementation details are in [architecture](architecture.md).
 - **utility model**: The harness, model, and effort chosen in Settings for
   short background prompts, such as naming sessions. A utility prompt runs
   without tools and saves no native conversation.
-- **panel terminal**: A session's on-demand interactive shell, owned by a
-  holder and separate from the agent's tools.
+- **panel terminal**: A session's or workspace's on-demand interactive shell,
+  owned by a holder and separate from the agent's tools.
