@@ -108,3 +108,64 @@ desktop bridge.
   `insteadOf`. Focus was checked in happy-dom, not a real browser.
 - Use Existing Folder… was not exercised through the real native folder
   chooser.
+
+## Round 2
+
+- Author: reviewer child of Hypercube session 32a6c484 (Claude Code,
+  native conversation ID `3a6882f8-2edc-4c46-982a-6e4de94863b7`,
+  claude-opus-5-5 / default effort)
+- Code base: `42cc82bd4f5936e077612f2ce20caa0552c3f0be`
+- Reviewed Code head: `d1d33e8e4211fbd3a2a07f53ae804b14ce8c2ae3`
+  (implementation commits `26c8ebb` work, `d1d33e8` fix)
+- Checkout: `hypercube/session-32a6c484` at
+  `a619aa45a5980c621a55f0d4bbf12c2a962054ac`, clean. After `26c8ebb`, the only
+  changes outside the fix are the round 1 review (`b742dcf`) and the work log
+  (`a619aa4`).
+- Verdict: **accept**
+- Independence: I did not plan or implement this change or its fix.
+
+### Assessment
+
+Round 1 reviewed `26c8ebb` and still applies. The fix changes only
+`row-action.ts`, both lists, and one test. `useRowAction` now returns
+`{run, running}`. Both callers of each hook (`all-pull-requests.tsx` and
+`pull-requests.tsx`) switched to `run` with the same keys as before, so Review
+and the dashboard's Chat behave as in round 1.
+
+On the Pull Requests view, an untracked row's Chat is now undefined, and so
+disabled, while `running(rowKey(account, pr))` holds. The chat that follows an
+add runs under that same key through `chatIn`. The row is disabled from the
+add until that chat finishes, whether or not the watcher has listed the new
+workspace. Once it does list it, the row switches to `chatIn`, whose `run`
+returns undefined for the running key. A refused chat clears the key and
+re-enables the row.
+
+The implementer did not use the round 1 suggestion of wrapping the
+open-dialog handler in the running key. Wrapping it would have disabled the
+opener while the dialog opened and broken focus returning to it. Tracking
+only the chat after the add is the right choice. The new test checks the
+button really is disabled while the post-add `pull-request-branch` request is
+pending, and enabled after it answers.
+
+### Resolution
+
+| Finding | Status at `d1d33e8` | Evidence |
+| --- | --- | --- |
+| N1 (stricter remote rule than the request's wording) | Unchanged by design; for the parent to mention to the user | No code change needed; reasoning in round 1 |
+| N2 (untracked row's Chat enabled during the chat after an add) | Resolved | `all-pull-requests.tsx` `onChat` checks `chat.running(rowKey(account, pr))`; test "an untracked row stays disabled while the chat after an add is starting" in `all-pull-requests.test.tsx` |
+
+No new findings.
+
+### Verification
+
+| Check | Target | Result | Source |
+| --- | --- | --- | --- |
+| `bunx tsc -p .`, `bun test` in `internal/ui` | `d1d33e8` | no errors; 481 pass, 0 fail | reused, work log repair round 1 |
+| `make check` | `d1d33e8` | exit 0 | reused, work log repair round 1 |
+| Go race tests, screenshots | `26c8ebb` | as in round 1 | reused; the fix touches only browser code under `internal/ui/web/github/`, with no rendering change |
+| `git grep useRowAction` at `d1d33e8` | `d1d33e8` | the only callers are the two lists, both updated | run, to confirm the return-shape change reached every caller |
+
+### Limitations
+
+Same as round 1: no `make dev` run against a real GitHub pull request, and no
+run through the real native folder chooser.
