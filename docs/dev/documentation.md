@@ -12,7 +12,7 @@ Use [Diátaxis](https://diataxis.fr/) to choose a page's purpose:
 | Type | Reader's need | Existing pages |
 | --- | --- | --- |
 | Tutorial | Learn by completing a safe, concrete exercise. | `getting-started.md` |
-| How-to | Complete a particular task. | `installation.md`, `usage.md`, `teamwork.md`, `review-changes.md`, `upgrades.md`, `troubleshooting.md` |
+| How-to | Complete a particular task. | `installation.md`, `usage.md`, `teamwork.md`, `workflows.md`, `review-changes.md`, `upgrades.md`, `troubleshooting.md` |
 | Reference | Look up precise behavior, values, or limits. | `configuration.md`, `harness-support.md`, `interface.md`, `storage.md` |
 | Explanation | Understand relationships and tradeoffs. | `introduction.md`, `lifecycle.md` |
 

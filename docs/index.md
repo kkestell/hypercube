@@ -14,6 +14,8 @@ task, or browse the user and developer references below.
 - [Manage sessions](usage.md) — add workspaces; start, steer, resume, and archive
   work.
 - [Work with a team](teamwork.md) — delegate, review, and merge changes.
+- [Branch, merge, and use worktrees](workflows.md) — Git workflows from feature
+  branches to pull requests.
 - [Review files and changes](review-changes.md) — inspect output beside chat.
 - [Upgrade Hypercube](upgrades.md) — update the app and background service.
 - [Troubleshoot Hypercube](troubleshooting.md) — fix setup, start, and cleanup
