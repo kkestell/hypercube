@@ -73,15 +73,17 @@ The driver puts a stand-in `gh` first on the backend's `PATH`. In a scene with
 own GraphQL server through `HYPERCUBE_GITHUB_API`; in other scenes it has no
 accounts. `docs/screenshots/repos/github.json` names the account and
 gives each fixture repository its `github.com` name, how many commits its
-`main` is `behind`, and its open `pullRequests`. Each workspace's `origin` is
-that `github.com` address; Git fetches it from a local bare repository through
-`url.insteadOf`.
+`main` is `behind`, and its open `pullRequests`; `elsewhere` holds pull
+requests, each with its `repo`, in repositories no workspace holds. Each
+workspace's `origin` is that `github.com` address; Git fetches it from a local
+bare repository through `url.insteadOf`.
 
 A pull request declares its `number`, `title`, and head `branch`, and
 optionally its `author` (the account by default), `draft`, `review` (GitHub's
 review decision), `checks`, `merge` (GitHub's merge state, `BLOCKED` by
 default), `pendingReviews`, `requested` (`user` or `team`), the account's own
-`reviewed` state, `unanswered` review threads, and `requiredFailed`.
+`reviewed` state, `unanswered` review threads and the `replier` who spoke last
+in them, and `requiredFailed`.
 
 ### Scene contents
 

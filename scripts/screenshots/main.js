@@ -32,7 +32,7 @@ const sceneFiles = process.argv.slice(2).filter(arg => arg.endsWith('.json'));
 const defaultWorkbench = {
   sidebar: true, rightPanel: true, rightTab: 'files', wrap: false, fixedWidth: true,
   sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}, sidebarTab: 'sessions',
-  collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
+  collapsedWorkspaces: {}, collapsedSessions: {}, collapsedPullRequestGroups: {}, sidebarScroll: {sessions: 0, archived: 0},
 };
 
 // Animations would make captures differ from run to run.
@@ -321,12 +321,13 @@ async function startGitHub() {
 }
 
 // pullRequests lists the scene's pull requests with their repositories: each
-// workspace's fixture's, then the workspace's own.
+// workspace's fixture's, then the workspace's own, then those in repositories
+// no workspace holds.
 function pullRequests(scene) {
-  return scene.workspaces.flatMap(w => {
+  return [...scene.workspaces.flatMap(w => {
     const {repo, pullRequests: shared = []} = githubFixtures.repos[w.repo];
     return [...shared, ...(w.pullRequests ?? [])].map(pr => ({...pr, repo}));
-  });
+  }), ...githubFixtures.elsewhere];
 }
 
 // answer answers the watcher's queries: the account can push to every
@@ -566,7 +567,7 @@ async function capture(scene, ids, workspaces, backend, window, name) {
   // tabs' content, or the selected workspace's dashboard, and whatever the
   // scene opens, the window has the theme, and nothing is loading.
   const workbench = views.workbench;
-  const tabs = workbench.rightPanel && workbench.rightTab === 'files' ? ['/files/tree?', '/changes?'] : [];
+  const tabs = selected && workbench.rightPanel && workbench.rightTab === 'files' ? ['/files/tree?', '/changes?'] : [];
   const panes = node => node ? (node.tabs ? [node] : node.children.flatMap(panes)) : [];
   for (const pane of panes(top?.view?.tabs.root)) {
     const [kind, file] = [pane.active.slice(0, pane.active.indexOf(':')), pane.active.slice(pane.active.indexOf(':') + 1)];
@@ -583,7 +584,7 @@ async function capture(scene, ids, workspaces, backend, window, name) {
   };
   const shown = top ? `document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`
     : selected ? `document.querySelector('[aria-label="Recent sessions"]')?.children.length === ${Math.min(10, scene.workspaces[w]?.sessions.length)}`
-    : `document.querySelector('[aria-label="Your move"]')`;
+    : `document.querySelector('[aria-label="Pull requests across accounts"] ul')`;
   // The terminal's rows, and whether one is a prompt: the scene's zsh prompt
   // ends with % after the directory.
   const rows = `[...document.querySelectorAll('.terminal-panel .xterm-rows > div')].map(row => row.textContent.trimEnd())`;

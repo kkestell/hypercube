@@ -14,6 +14,7 @@
       "behind": 2,
       "pullRequests": [
         {"number": 118, "title": "Retry conflicted writes with backoff", "branch": "conflict-backoff", "review": "REVIEW_REQUIRED", "checks": "FAILURE", "requiredFailed": true, "pendingReviews": 1},
+        {"number": 119, "title": "Compress sync payloads with zstd", "author": "kenji-ota-dev", "branch": "zstd-payloads", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1, "unanswered": 1, "replier": "kenji-ota-dev"},
         {"number": 121, "title": "Add device names to the sync log", "author": "tomas-hallberg-dev", "branch": "device-names", "requested": "team", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
       ]
     },
@@ -29,5 +30,8 @@
         {"number": 12, "title": "Add a print stylesheet to the plain theme", "branch": "print-styles", "draft": true, "checks": "PENDING"}
       ]
     }
-  }
+  },
+  "elsewhere": [
+    {"repo": "quayside-tools/harbor-docs", "number": 8, "title": "Explain the build cache in the user guide", "author": "kenji-ota-dev", "branch": "build-cache-docs", "requested": "user", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
+  ]
 }

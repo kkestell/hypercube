@@ -191,6 +191,11 @@ Click a heading to collapse or expand its group; the choice is remembered. The v
 shows how many pull requests need you across accounts. Each workspace's row in
 the sidebar shows the number of pull requests that need its account.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/pull-requests-dark.png">
+  <img alt="The Pull Requests view grouping pull requests from three repositories, with Review and Clone buttons on requested reviews" src="images/pull-requests-light.png">
+</picture>
+
 A row whose repository has no workspace shows **Clone**. It asks for a folder,
 suggesting one beside a workspace of the same GitHub owner, and clones the
 repository over HTTPS with the row's account. The clone records that account in
