@@ -28,9 +28,11 @@ export function AllPullRequests() {
   const [cloning, setCloning] = useState<{pr: PullRequest; account: string} | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const review = useRowAction();
+  // The chat after an add runs under the row's key, so the row stays disabled
+  // until that chat opens, even before the added workspace is listed.
   const chat = useRowAction();
   const chatIn = (workspaceId: string, account: string, pr: PullRequest) =>
-    chat(rowKey(account, pr), () => startChat(store, workspaceId, account, pr));
+    chat.run(rowKey(account, pr), () => startChat(store, workspaceId, account, pr));
   const failed = accounts.filter(account => account.error);
   const checking = !failed.length && accounts.every(account => !account.updated);
   return <section aria-label="Pull requests across accounts" className="min-h-0 flex-1 overflow-auto p-6">
@@ -42,8 +44,9 @@ export function AllPullRequests() {
         const workspace = tracking(workspaces, pr.repo);
         return <PullRequestRow key={rowKey(account, pr)} pr={pr} turn={turn} account={account} hideReason={implied} place={<>
           <Icon name="repo" className="size-3.5" /><span className="truncate">{pr.repo}</span>
-        </>} onReview={workspace && review(`${workspace.id}\n${pr.number}`, () => startReview(store, workspace.id, pr.number))}
-          onChat={workspace ? chatIn(workspace.id, account, pr) : () => { setCloning({pr, account}); setCloneOpen(true); }} />;
+        </>} onReview={workspace && review.run(`${workspace.id}\n${pr.number}`, () => startReview(store, workspace.id, pr.number))}
+          onChat={workspace ? chatIn(workspace.id, account, pr)
+            : chat.running(rowKey(account, pr)) ? undefined : () => { setCloning({pr, account}); setCloneOpen(true); }} />;
       }} />}
   </section>;
 }

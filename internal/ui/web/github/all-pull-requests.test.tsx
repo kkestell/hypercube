@@ -113,6 +113,18 @@ test('before any account has been read it says GitHub is being checked', () => {
   expect(view([account('a', [], {updated: 0})]).textContent).toContain('Checking GitHub.');
 });
 
+test('an untracked row stays disabled while the chat after an add is starting', async () => {
+  let answer!: (response: Response) => void;
+  stubFetch(url => url.includes('action=clone') ? new Response('new-ws') : new Promise<Response>(resolve => { answer = resolve; }));
+  const root = mount(tracked(), <AllPullRequests />);
+  clickControl(button(root, 'Chat', 1));
+  clickControl(button(document, 'Clone'));
+  await flush();
+  expect(button(root, 'Chat', 1).disabled).toBe(true);
+  await act(async () => answer(Response.json({name: 'feature', start: 'abc123'})));
+  expect(button(root, 'Chat', 1).disabled).toBe(false);
+});
+
 test('closing the dialog returns focus to Chat and allows opening it again', async () => {
   const root = view([account('a', [pr({repo: 'o/r'})])]);
   const opener = button(root, 'Chat');

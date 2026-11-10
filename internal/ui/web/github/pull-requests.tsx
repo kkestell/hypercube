@@ -39,7 +39,7 @@ export function PullRequests({workspace}: {workspace: Workspace}) {
     {empty ? <Message error={!!status.account && !!status.error}>{empty}</Message>
       : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({pr, turn}, implied) =>
         <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} hideReason={implied}
-          onReview={review(`${workspace.id}\n${pr.number}`, () => startReview(store, workspace.id, pr.number))}
-          onChat={chat(`${status.account}\n${pr.url}`, () => startChat(store, workspace.id, status.account, pr))} />} />}
+          onReview={review.run(`${workspace.id}\n${pr.number}`, () => startReview(store, workspace.id, pr.number))}
+          onChat={chat.run(`${status.account}\n${pr.url}`, () => startChat(store, workspace.id, status.account, pr))} />} />}
   </section>;
 }
