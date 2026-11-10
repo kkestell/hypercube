@@ -34,6 +34,13 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 		}
 	}
 	f.until("the session idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle && len(f.transcript(s.ID)) == 8 })
+	var latest int64
+	for _, it := range f.transcript(s.ID) {
+		latest = max(latest, it.At)
+	}
+	if got := f.storedSession(s.ID).LastActive; got == 0 || got < latest {
+		t.Fatalf("last active = %d, want at least %d", got, latest)
+	}
 	// The plugin's replies and the next delivery race, so a reply can land
 	// after the next message's item. The messages keep their order.
 	var users []string

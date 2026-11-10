@@ -341,7 +341,7 @@ func repoNode(repo string, number int) map[string]any {
 func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	s := newStand(t, "alice")
 	s.api.SetPullRequests([]map[string]any{
-		{"number": 7, "title": "Add it", "url": "https://github.com/o/r/pull/7", "isDraft": false,
+		{"number": 7, "title": "Add it", "url": "https://github.com/o/r/pull/7", "isDraft": false, "updatedAt": "2026-01-02T03:04:05Z",
 			"repository":        map[string]string{"nameWithOwner": "o/r"},
 			"isCrossRepository": false, "headRefName": "feature", "author": map[string]string{"login": "dana"},
 			"reviewDecision": "APPROVED", "mergeStateStatus": "CLEAN", "statusCheckRollup": map[string]string{"state": "SUCCESS"}},
@@ -357,7 +357,8 @@ func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	s.until("the pull requests", s.queried(id))
 	got := s.w.Statuses()[id]
 	want := []PullRequest{
-		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Repo: "o/r", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS", Merge: "CLEAN"},
+		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Repo: "o/r", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS", Merge: "CLEAN",
+			Updated: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC).UnixMilli()},
 		{Number: 5, Title: "Ghost", URL: "https://github.com/o/r/pull/5", Repo: "o/r", Branch: "fork-branch", Fork: true, Draft: true},
 	}
 	if !reflect.DeepEqual(got.PullRequests, want) || got.Error != "" {

@@ -128,6 +128,34 @@ func TestSaveSessionWritesMutableFields(t *testing.T) {
 	})
 }
 
+func TestTouchSetsLastActiveAndSaveSessionKeepsIt(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		if s.LastActive != 0 {
+			t.Errorf("new session LastActive = %d", s.LastActive)
+		}
+		if err := tx.Touch("s", 500); err != nil {
+			return err
+		}
+		s.Title = "renamed"
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		if s, err = tx.Session("s"); err != nil {
+			return err
+		}
+		if s.LastActive != 500 || s.Title != "renamed" {
+			t.Errorf("after Touch and SaveSession: %+v", s)
+		}
+		return nil
+	})
+}
+
 func TestAddSessionKeepsBase(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s")

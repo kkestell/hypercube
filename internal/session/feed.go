@@ -81,7 +81,8 @@ func (r *Runtime) save(fn func(*write) error) error {
 	return nil
 }
 
-// putItem saves an item. One that replaces a saved item keeps its start time.
+// putItem saves an item and records session activity. One that replaces a saved
+// item keeps its start time.
 func (w *write) putItem(id string, seq int64, item harness.Item) error {
 	saved, replaces, err := w.Entry(id, item.ID)
 	if err != nil {
@@ -106,5 +107,5 @@ func (w *write) putItem(id string, seq int64, item harness.Item) error {
 		return err
 	}
 	w.items = append(w.items, Change{Session: id, Seq: seq, Item: item})
-	return nil
+	return w.Touch(id, time.Now().UnixMilli())
 }

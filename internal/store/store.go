@@ -77,6 +77,10 @@ type Session struct {
 	// Archived is when the session was archived, in Unix milliseconds. It is
 	// zero for an active session and for one archived before it was recorded.
 	Archived int64
+	// LastActive is when the session's transcript last changed, in Unix
+	// milliseconds. It is zero before that and for activity before it was
+	// recorded.
+	LastActive int64
 }
 
 // Message is a queued message. From is empty for Hypercube's own messages.
@@ -135,8 +139,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
   base TEXT NOT NULL DEFAULT '', tip TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
-  -- Required inert field in the current schema; initialized to created.
-  last_active INTEGER NOT NULL, UNIQUE (parent, name));
+  last_active INTEGER NOT NULL DEFAULT 0, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -173,7 +176,8 @@ CREATE TABLE IF NOT EXISTS limits (
 type DB struct{ sql *sql.DB }
 
 // Open opens the database in Dir, creating its tables if they are missing,
-// adding the session columns earlier builds lacked, and moving model entries
+// adding the session columns earlier builds lacked, resetting the last-active
+// times earlier builds filled with creation times, and moving model entries
 // saved by earlier builds to config.json.
 // Writes take the database lock when they begin and wait up to five seconds
 // for it.
@@ -198,7 +202,10 @@ func Open() (*DB, error) {
 		if err := tx.addColumn("tip", `TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
-		return tx.addColumn("archived", `INTEGER NOT NULL DEFAULT 0`)
+		if err := tx.addColumn("archived", `INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+		return tx.replaceInertLastActive()
 	}); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("%s: %w", dbPath(), err)
@@ -258,6 +265,22 @@ func (t *Tx) addColumn(name, definition string) error {
 		return err
 	}
 	return t.exec(`ALTER TABLE sessions ADD COLUMN ` + name + ` ` + definition)
+}
+
+// replaceInertLastActive recreates last_active with a default of 0 in a
+// database whose column has none. Earlier builds filled the column with the
+// creation time, which is not activity; recreating it reads 0 for those rows.
+func (t *Tx) replaceInertLastActive() error {
+	var inert bool
+	if err := t.tx.QueryRow(`SELECT dflt_value IS NULL FROM pragma_table_info('sessions') WHERE name = 'last_active'`).Scan(&inert); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if inert {
+		if err := t.exec(`ALTER TABLE sessions DROP COLUMN last_active`); err != nil {
+			return err
+		}
+	}
+	return t.addColumn("last_active", `INTEGER NOT NULL DEFAULT 0`)
 }
 
 func (t *Tx) AddWorkspace(w Workspace) error {
@@ -326,12 +349,18 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base, tip, fork, input_pending)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Ended,
 		s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Tip, s.Fork, s.InputPending)
+		s.Usage.Cost, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Tip, s.Fork, s.InputPending)
+}
+
+// Touch records session activity at the given time, in Unix milliseconds.
+// SaveSession leaves it alone.
+func (t *Tx) Touch(session string, at int64) error {
+	return t.exec(`UPDATE sessions SET last_active = ? WHERE id = ?`, at, session)
 }
 
 // SaveSession writes every mutable field.
@@ -346,14 +375,14 @@ func (t *Tx) SaveSession(s Session) error {
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending, archived`
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending, archived, last_active`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Ended,
 		&s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Tip, &s.Fork, &s.InputPending, &s.Archived)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Tip, &s.Fork, &s.InputPending, &s.Archived, &s.LastActive)
 	return s, err
 }
 

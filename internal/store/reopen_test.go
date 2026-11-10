@@ -193,7 +193,6 @@ INSERT INTO model_entries VALUES ('b', 'claude', 'opus', 'Opus', '["low","high"]
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// The installed schema requires last_active even after reopening.
 	next := Session{ID: "next", Workspace: "plain", Dir: "/plain", Activity: Exited, Created: 120}
 	tx(t, again, func(tx *Tx) error { return tx.AddSession(next) })
 	if err := again.Read(func(tx *Tx) error {
@@ -226,6 +225,15 @@ INSERT INTO sessions (id, workspace, title, ended, harness, model, effort, dir, 
 	}
 	if got := read(); got != want {
 		t.Fatalf("saved session = %+v, want %+v", got, want)
+	}
+	// The creation time earlier builds stored in last_active is not activity.
+	// The upgrade runs once: a recorded time survives the next open.
+	tx(t, db, func(tx *Tx) error { return tx.Touch(want.ID, 500) })
+	db.Close()
+	db = reopen(t)
+	want.LastActive = 500
+	if got := read(); got != want {
+		t.Fatalf("session after reopening = %+v, want %+v", got, want)
 	}
 	want.Tip = "tip-commit"
 	tx(t, db, func(tx *Tx) error { return tx.SaveSession(want) })

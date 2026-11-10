@@ -46,17 +46,18 @@ type Account struct {
 
 // PullRequest is an open pull request as an account sees it.
 type PullRequest struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	URL    string `json:"url"`
-	Repo   string `json:"repo"` // owner/name
-	Author string `json:"author"`
-	Branch string `json:"branch"` // head branch
-	Fork   bool   `json:"fork"`   // head is in another repository
-	Draft  bool   `json:"draft"`
-	Review string `json:"review"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or empty
-	Checks string `json:"checks"` // SUCCESS, PENDING, EXPECTED, FAILURE, ERROR, or empty with no checks
-	Merge  string `json:"merge"`  // GitHub's merge state: BEHIND, BLOCKED, CLEAN, DIRTY, DRAFT, HAS_HOOKS, UNKNOWN, or UNSTABLE
+	Number  int    `json:"number"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Repo    string `json:"repo"` // owner/name
+	Author  string `json:"author"`
+	Branch  string `json:"branch"` // head branch
+	Fork    bool   `json:"fork"`   // head is in another repository
+	Draft   bool   `json:"draft"`
+	Review  string `json:"review"`  // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or empty
+	Checks  string `json:"checks"`  // SUCCESS, PENDING, EXPECTED, FAILURE, ERROR, or empty with no checks
+	Updated int64  `json:"updated"` // Unix ms of GitHub's last change to the pull request; 0 when unknown
+	Merge   string `json:"merge"`   // GitHub's merge state: BEHIND, BLOCKED, CLEAN, DIRTY, DRAFT, HAS_HOOKS, UNKNOWN, or UNSTABLE
 
 	// RequiredFailed says a required check failed. It is known only for the
 	// account's own pull requests.

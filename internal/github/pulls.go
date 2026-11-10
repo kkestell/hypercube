@@ -16,7 +16,7 @@ import (
 // 20 review threads of each; remainingThreads reads the rest.
 const pullRequestsQuery = threadFragment + `
 fragment pr on PullRequest{
-  id number title url isDraft isCrossRepository headRefName headRefOid
+  id number title url updatedAt isDraft isCrossRepository headRefName headRefOid
   repository{nameWithOwner}
   author{login} reviewDecision mergeStateStatus statusCheckRollup{state}
   reviewRequests{totalCount}
@@ -98,10 +98,11 @@ type reviewThreads struct {
 
 // pullRequestNode is a pull request as pullRequestsQuery reads it.
 type pullRequestNode struct {
-	ID         string `json:"id"`
-	Number     int    `json:"number"`
-	Title      string `json:"title"`
-	URL        string `json:"url"`
+	ID         string    `json:"id"`
+	Number     int       `json:"number"`
+	Title      string    `json:"title"`
+	URL        string    `json:"url"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 	Repository struct {
 		NameWithOwner string `json:"nameWithOwner"`
 	} `json:"repository"`
@@ -255,6 +256,9 @@ func fromNode(n pullRequestNode, login string, requested, direct bool) PullReque
 	pr := PullRequest{Number: n.Number, Title: n.Title, URL: n.URL, Repo: n.Repository.NameWithOwner, Branch: n.HeadRefName,
 		Fork: n.IsCrossRepository, Draft: n.IsDraft, Review: n.ReviewDecision, Merge: n.MergeStateStatus,
 		PendingReviews: n.ReviewRequests.TotalCount}
+	if !n.UpdatedAt.IsZero() {
+		pr.Updated = n.UpdatedAt.UnixMilli()
+	}
 	if n.Author != nil {
 		pr.Author = n.Author.Login
 	}
