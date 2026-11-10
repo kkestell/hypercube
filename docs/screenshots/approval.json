@@ -17,8 +17,7 @@
       "sizes": {
         "sidebar": 290,
         "rightPanel": 320,
-        "panel": 240,
-        "editor": 498
+        "panel": 240
       },
       "sidebarTab": "sessions",
       "collapsedWorkspaces": {},

@@ -15,6 +15,7 @@ import {useStore} from '../store.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Chevron} from '../shared/icon.tsx';
+import {fade} from '../shared/fading-text.tsx';
 import {stopRenaming, type SidebarRow} from './sidebar-rows.ts';
 
 export function SessionItem({row, tabbable, onToggle}: {row: SidebarRow; tabbable: boolean; onToggle: () => void}) {
@@ -54,9 +55,7 @@ export function SessionItem({row, tabbable, onToggle}: {row: SidebarRow; tabbabl
   );
 }
 
-// A title too long to fit fades out over --fade-width, 1.5rem before an icon,
-// ending --fade-end before its right edge.
-const fade = '[mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--fade-end)_-_var(--fade-width,1.5rem)),transparent_calc(100%_-_var(--fade-end)))] [--fade-end:0px]';
+// A title too long to fit fades out, over 1.5rem before an icon.
 // With no icon after it, a title runs through the row's padding to its edge
 // and fades out over a shorter 1rem.
 const toEdge = '-mr-2 [--fade-width:1rem]';

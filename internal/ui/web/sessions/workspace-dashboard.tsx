@@ -1,5 +1,4 @@
 import {GitHubError, WorkspaceContext} from '../github/github-header.tsx';
-import {PullRequests} from '../github/pull-requests.tsx';
 import {Button} from '../components/ui/button';
 import {selectedWorkspace} from '../editor/target.ts';
 import {useStore} from '../store.ts';
@@ -19,19 +18,16 @@ export function WorkspaceDashboard() {
     <WorkspaceContext workspace={workspace} />
     <div className="min-h-0 flex-1 overflow-auto p-6">
       <GitHubError failure={workspace.github} />
-      <div className="grid gap-10 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <PullRequests workspace={workspace} />
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">Archived Sessions</h2>
-          {archived.length ? <ul aria-label="Archived sessions" className="space-y-1">{archived.map(session => <li key={session.id}>
-            <Button variant="ghost" className="-ml-2 w-full justify-start px-2 font-normal" onClick={() => chooseSession(store, session.id)}>
-              <StatusDot kind="ended" title="Ended" />
-              <span className="flex-1 truncate text-left">{session.title}</span>
-              {session.archived && <time dateTime={new Date(session.archived).toISOString()} className="shrink-0 text-xs text-muted-foreground">{archivedText(session.archived)}</time>}
-            </Button>
-          </li>)}</ul> : <Message>No archived sessions.</Message>}
-        </section>
-      </div>
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">Archived Sessions</h2>
+        {archived.length ? <ul aria-label="Archived sessions" className="space-y-1">{archived.map(session => <li key={session.id}>
+          <Button variant="ghost" className="-ml-2 w-full justify-start px-2 font-normal" onClick={() => chooseSession(store, session.id)}>
+            <StatusDot kind="ended" title="Ended" />
+            <span className="flex-1 truncate text-left">{session.title}</span>
+            {session.archived && <time dateTime={new Date(session.archived).toISOString()} className="shrink-0 text-xs text-muted-foreground">{archivedText(session.archived)}</time>}
+          </Button>
+        </li>)}</ul> : <Message>No archived sessions.</Message>}
+      </section>
     </div>
   </section>;
 }

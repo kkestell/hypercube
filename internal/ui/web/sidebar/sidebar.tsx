@@ -1,7 +1,6 @@
 // Workspace groups show either active sessions or archived families.
 import {useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {addWorkspace} from '../sessions/session-actions.ts';
-import {homeShown, showHome} from '../sessions/selection.ts';
 import {isUnsent} from '../agent/drafts.ts';
 import {hypercube} from '../app/window.ts';
 import {openSettings, scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
@@ -15,9 +14,6 @@ import {sessionItems, workspaceItems} from './sidebar-menus.ts';
 import {sidebarSession, sidebarWorkspaces, startRenaming, stopRenaming} from './sidebar-rows.ts';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
-import {Button} from '../components/ui/button';
-import {Icon} from '../shared/icon.tsx';
-import {yourMoves} from '../github/turns.ts';
 
 const below = (element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
@@ -73,17 +69,7 @@ export function Sidebar() {
     } else showMenu({...below(row), items: sessionMenu(session)});
   };
 
-  const needYou = yourMoves(state.accounts).length;
-  const home = homeShown(state);
   const tree = <>
-    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky -top-1 z-10 -mt-1 bg-sidebar pt-1 pb-2">
-      <Button variant={home ? 'secondary' : 'ghost'} size="sm" className={`h-8 w-full justify-start gap-2 px-2 font-normal ${home ? 'hover:bg-secondary' : ''}`} aria-pressed={home} onClick={() => store.update(s => showHome(stopRenaming(s)))}>
-        <Icon name="git-pull-request" className="text-muted-foreground" />
-        <span className="flex-1 text-left">Pull Requests</span>
-        {needYou > 0 && <span className="text-xs text-muted-foreground">{needYou}</span>}
-      </Button>
-    </div>}
-    {view === 'sessions' && workspaces.length > 0 && <h2 className="mt-2 flex h-8 items-center px-2 text-xs font-medium text-muted-foreground">Workspaces</h2>}
     {workspaces.map(({workspace, groups}) => <WorkspaceSection key={workspace.id} workspace={workspace} groups={groups} />)}
   </>;
 

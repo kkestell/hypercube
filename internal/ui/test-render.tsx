@@ -79,6 +79,27 @@ export const find = (root: ParentNode, selector: string) => element(root, select
 
 export const findAll = (root: ParentNode, selector: string) => [...root.querySelectorAll<HTMLElement>(selector)];
 
+// menuItems right-clicks target and returns the items of the menu it opens.
+export function menuItems(target: Element): HTMLElement[] {
+  act(() => { target.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})); });
+  return findAll(document, '[role=menuitem]');
+}
+
+// menuChoices lists the items of target's context menu as label and whether it
+// can be chosen, then closes the menu.
+export function menuChoices(target: Element): [string, boolean][] {
+  const choices = menuItems(target).map(item => [item.textContent ?? '', !item.hasAttribute('data-disabled')] as [string, boolean]);
+  act(() => { (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})); });
+  return choices;
+}
+
+// choose picks the item reading label from target's context menu.
+export function choose(target: Element, label: string) {
+  const item = menuItems(target).find(entry => entry.textContent === label);
+  if (!item) throw new Error(`No menu item ${label}`);
+  clickControl(item);
+}
+
 // testBridge is a desktop app's bridge on macOS, with overrides, for a test to
 // assign to globalThis.hypercube and delete afterwards.
 export const testBridge = (overrides: Partial<NonNullable<typeof globalThis.hypercube>> = {}): NonNullable<typeof globalThis.hypercube> => ({

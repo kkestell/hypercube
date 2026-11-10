@@ -1,5 +1,5 @@
-// The tab bar above the unsent session's chat or the pull requests. Its one
-// tab is always active and cannot be closed or moved.
+// The tab bar above the unsent session's chat. Its one tab is always active
+// and cannot be closed or moved.
 import {LayoutToggles} from '../app/layout-toggles.tsx';
 import {barTabs} from '../app/title-bar.ts';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';

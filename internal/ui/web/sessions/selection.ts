@@ -144,13 +144,6 @@ export function selectSession(state: State, id: string): State {
   return attach({...next, selected: id, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}});
 }
 
-// showHome shows the home view: nothing selected, so the center lists the
-// pull requests that need the user.
-export const showHome = (state: State): State => attach({...parkUnsent(state), selected: null, pending: null});
-
-// homeShown is whether the center is the home view.
-export const homeShown = (state: State) => state.selected === null && !state.unsent && !state.editor;
-
 // openUnsent reopens the workspace's unfinished session or creates one.
 export function openUnsent(state: State, workspace?: string | null): State {
   workspace ??= state.unsent?.workspace ?? selectedWorkspace(state)?.id ?? state.workspaces[0]?.id ?? null;

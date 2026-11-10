@@ -7,11 +7,13 @@ import {barTabs} from '../app/title-bar.ts';
 import {Icon, type IconName} from './icon.tsx';
 import {TopBar} from './top-bar.tsx';
 
-// PanelTab is one tab: its ID, title, and icon.
+// PanelTab is one tab: its ID, title, and icon, and a count shown beside the
+// icon when it is above zero.
 export interface PanelTab<Id extends string = string> {
   id: Id;
   title: string;
   icon: IconName;
+  count?: number;
 }
 
 interface PanelTabsProps<Id extends string> {
@@ -29,8 +31,9 @@ export function PanelTabs<Id extends string>({label, tabs, selected, onSelect, a
   return <Tabs value={selected} onValueChange={value => { const tab = tabs.find(t => t.id === value); if (tab) onSelect?.(tab.id); }} className="flex h-full min-h-0 flex-col gap-0">
     <TopBar leftEdge={clearsWindowButtons ? 'always' : 'never'} actions={actions}>
       <TabsList aria-label={label} className={barTabs}>
-        {tabs.map(tab => <TabsTrigger key={tab.id} value={tab.id} title={tab.title} aria-label={tab.title}>
+        {tabs.map(tab => <TabsTrigger key={tab.id} value={tab.id} title={tab.title} aria-label={tab.count ? `${tab.title}, ${tab.count}` : tab.title}>
           <Icon name={tab.icon} />
+          {!!tab.count && <span className="text-xs text-muted-foreground">{tab.count}</span>}
         </TabsTrigger>)}
       </TabsList>
     </TopBar>

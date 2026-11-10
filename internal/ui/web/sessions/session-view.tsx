@@ -1,27 +1,21 @@
-// The center: a session's or workspace's tabs, the unsent session's chat, or
-// the pull requests that need the user when nothing is selected, or a
-// workspace invitation when none exists.
+// The center: a session's or workspace's tabs, or the unsent session's chat.
+// With nothing selected it is empty, inviting the user to add a workspace
+// when none exists.
 import {hypercube} from '../app/window.ts';
 import {Button} from '../components/ui/button';
 import {ChatPane} from '../agent/chat-pane.tsx';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {EditorTabs} from '../editor/editor-tabs.tsx';
-import {MainTabBar} from '../editor/main-tab-bar.tsx';
 import {useStore} from '../store.ts';
 import {Icon} from '../shared/icon.tsx';
 import {addWorkspace} from './session-actions.ts';
-import {AllPullRequests} from '../github/all-pull-requests.tsx';
-import {homeShown, shownSession} from './selection.ts';
+import {shownSession} from './selection.ts';
 
 export function SessionView() {
   const [state, store] = useStore();
   if (state.editor) return <EditorArea />;
   const shown = shownSession(state);
   if (shown) return <ChatPane key={shown.id} session={shown} />;
-  if (state.workspaces.length > 0 && state.accounts.length > 0 && homeShown(state)) return <>
-    <MainTabBar icon="git-pull-request" title="Pull Requests" />
-    <AllPullRequests />
-  </>;
   return <>
     <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
     {state.workspaces.length === 0 && <section aria-label="No workspaces" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

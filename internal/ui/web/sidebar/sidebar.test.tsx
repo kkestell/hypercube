@@ -396,23 +396,3 @@ test('a workspace with nothing that needs the account shows no count', () => {
   expect(find(root, '[data-workspace="w"]').textContent).not.toMatch(/need/);
   expect(findAll(root, '[data-workspace="w"] [role=img]')).toHaveLength(0);
 });
-
-test('the Pull Requests button shows the home view and counts what needs the user', () => {
-  const {store, root} = withGitHub([needsYou]);
-  const button = findAll(root, 'button').find(b => b.textContent?.startsWith('Pull Requests'))!;
-  expect(button.textContent).toBe('Pull Requests1');
-  expect(button.getAttribute('aria-pressed')).toBe('false');
-  act(() => store.update(state => selectWorkspace(state, 'w')));
-  click(button);
-  expect(store.get().selected).toBeNull();
-  expect(button.getAttribute('aria-pressed')).toBe('true');
-});
-
-test('the Pull Requests button is absent without workspaces or accounts', () => {
-  for (const state of [testState({workspaces: [], accounts: [{login: 'me', pullRequests: [], updated: 1}]}),
-    testState({workspaces: [testWorkspace({id: 'w'})], accounts: []})]) {
-    const root = mount(createStore(state), <Sidebar />);
-    expect(findAll(root, 'button').some(b => b.textContent?.startsWith('Pull Requests'))).toBe(false);
-    unmountAll();
-  }
-});

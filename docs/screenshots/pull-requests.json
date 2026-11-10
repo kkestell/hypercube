@@ -10,15 +10,14 @@
     "selected": null,
     "workbench": {
       "sidebar": true,
-      "rightPanel": false,
-      "rightTab": "files",
+      "rightPanel": true,
+      "rightTab": "pullRequests",
       "wrap": false,
       "fixedWidth": true,
       "sizes": {
         "sidebar": 290,
-        "rightPanel": 320,
-        "panel": 240,
-        "editor": 690
+        "rightPanel": 440,
+        "panel": 240
       },
       "sidebarTab": "sessions",
       "collapsedWorkspaces": {},

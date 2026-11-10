@@ -9,11 +9,13 @@ import {DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem
 import {focusedElement} from './focus.ts';
 import {Icon, type IconName} from './icon.tsx';
 
-// ContextMenuItem is one choice of a context menu.
+// ContextMenuItem is one choice of a context menu. A disabled item shows but
+// cannot be chosen.
 export interface ContextMenuItem {
   label: string;
   icon: IconName;
   destructive?: boolean;
+  disabled?: boolean;
   run: () => void;
 }
 
@@ -33,7 +35,7 @@ function Items({open, items, onClose, invoker, selected}: ItemsProps) {
     }}>
     {items.filter(group => group.length).map((group, i) => <Fragment key={group[0].label}>
       {i > 0 && <DropdownMenuSeparator />}
-      {group.map(item => <DropdownMenuItem key={item.label} variant={item.destructive ? 'destructive' : 'default'}
+      {group.map(item => <DropdownMenuItem key={item.label} variant={item.destructive ? 'destructive' : 'default'} disabled={item.disabled}
         onSelect={() => { selected.current = true; flushSync(onClose); invoker?.focus(); item.run(); }}>
         <Icon name={item.icon} />{item.label}
       </DropdownMenuItem>)}
