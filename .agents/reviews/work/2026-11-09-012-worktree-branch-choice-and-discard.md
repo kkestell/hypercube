@@ -118,3 +118,38 @@ resolves in the checkout otherwise"). It is accurate.
   from reading the code and docs.
 - **Limitation:** the dialog was tested only in happy-dom; no real-browser
   run or screenshot exists.
+
+## Round 2
+
+- Author: same reviewer as round 1 (Claude Code, Opus 5.5
+  `claude-opus-5-5`, native conversation
+  ed3d61a0-59b4-4de1-b69d-012c194ba728)
+- Work log: `.agents/work/2026-11-09-012-worktree-branch-choice-and-discard.md`
+  (Repair 1, commit `5997f12`)
+- Code base: `5d44211ddb094d39580a2f08b6158a7c228fd19f` (unchanged)
+- Code head: `10894555e725a880c0616f1e05e0ca341c4bb663`. The previously
+  reviewed head `2e1e005` is an ancestor. In `2e1e005..1089455`, the only
+  code or doc changes are in `docs/lifecycle.md` and
+  `internal/ui/web/agent/new-branch-dialog.tsx`. Everything else is workflow
+  records. The checkout HEAD (`5997f12`) adds only the work log, and the
+  working tree is clean.
+
+### Verdict
+
+`accept`. Both round 1 findings are resolved, and the repair adds no new
+findings. Round 1's assessment of the rest of the change still applies,
+because none of that code changed.
+
+### Resolution
+
+| Finding | Status | Evidence at `1089455` |
+| --- | --- | --- |
+| 1. The unarchive refusal fact was duplicated in `docs/lifecycle.md` | Resolved | The two added lines are removed. The paragraph is back to its base text and still links to `storage.md#session-cleanup`, where the Unarchive row states the refusal. |
+| 2. `DialogContent` had no description and no opt-out | Resolved | `new-branch-dialog.tsx:46` is now `<DialogContent aria-describedby={undefined}>`, the same as `settings-models.tsx` and `settings-dialog.tsx`. |
+
+### Verification
+
+- **Reused (work log, Repair 1):** `bunx tsc -p .` clean and `bun test agent`
+  59 pass at `1089455`. This covers the one-attribute change. Round 1's
+  reused `make check` still applies to all other code.
+- **Run:** none. I inspected the two-file diff directly.
