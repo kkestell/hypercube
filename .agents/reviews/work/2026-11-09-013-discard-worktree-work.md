@@ -126,3 +126,45 @@ and two doc passages break the documentation rules.
   - `git rebase --quit` followed by the switch succeeds after a stopped
     rebase.
 - **Limitation:** the menu and confirmation were tested only in happy-dom.
+
+## Round 2
+
+- Author: same reviewer as round 1 (Claude Code, Opus 5.5
+  `claude-opus-5-5`, native conversation
+  ed3d61a0-59b4-4de1-b69d-012c194ba728)
+- Work log: `.agents/work/2026-11-09-013-discard-worktree-work.md` (Repair 1,
+  commit `442f273`)
+- Code base: `90476495aaff42a549a4b7b5d7099b7a5b3c23be` (unchanged)
+- Code head: `8b34d7e41acf75fc1d254eca914d575dd19271d7`. The previously
+  reviewed head `abec2f7` is an ancestor. In `abec2f7..8b34d7e`, the only
+  code or doc changes are in `internal/workspace/workspace.go`,
+  `internal/workspace/discard_test.go`, `docs/lifecycle.md`, and
+  `docs/usage.md`. Everything else is workflow records. The checkout HEAD's
+  `internal/` tree is identical to `8b34d7e`, and the working tree is clean.
+
+### Verdict
+
+`accept`. All three round 1 findings are resolved, and the repair adds no new
+findings.
+
+### Resolution
+
+| Finding | Status | Evidence at `8b34d7e` |
+| --- | --- | --- |
+| 1. Discard failed during a merge or rebase | Resolved | Before the switch, `Discard` now runs `git reset --quiet --hard`, then `git rebase --quit` when `--git-path rebase-merge` or `rebase-apply` exists. This is the sequence I verified in round 1. Relative `--git-path` output is joined to `dir`. The doc comment states that an operation in progress is abandoned. `TestDiscardAbandonsAnOperationInProgress` creates a real conflict for both `merge` and `rebase`, requires that the operation actually conflicted, then checks `HEAD == base`, empty porcelain status, no "in progress" or "rebase" in `git status`, and `Removable` passing. |
+| 2. `lifecycle.md` Discard text joined to the Archive paragraph and repeating storage's list | Resolved | Discard is now its own one-sentence paragraph ("throws away a worktree session family's work and keeps its sessions active"). "These actions can also remove managed worktrees" again covers only Archive and End child. |
+| 3. `usage.md` repeated the effect list and put the destructive effect after the command | Resolved | The paragraph now starts with what is permanently deleted, then gives the step and the follow-up, and links to `storage.md#session-cleanup` for the exact list. The `storage.md` row stays the one detailed source. |
+
+The rest of round 1's assessment still applies: the runtime, browser, and
+`removal.go` code did not change.
+
+### Verification
+
+- **Run:** `go test ./internal/workspace -run Discard -count=1` at the
+  checkout. Its `internal/` tree is identical to `8b34d7e`. Result: `ok`.
+  I ran it because it is cheap and directly exercises the repaired
+  destructive path.
+- **Reused (work log, Repair 1):** `go test -race ./internal/workspace
+  ./internal/session` pass at `8b34d7e`. Round 1's reused `make check` still
+  covers the unchanged packages and browser code. No other package depends
+  on the change except through `Discard`'s unchanged signature.
