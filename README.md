@@ -15,6 +15,8 @@ They can keep working after you close the app.
 
 ## Start here
 
+Browse the [documentation index](docs/index.md) for all user and developer docs.
+
 1. [Install Hypercube](docs/installation.md).
 2. Follow [Your first session](docs/getting-started.md) to explore a project
    without changing files.
