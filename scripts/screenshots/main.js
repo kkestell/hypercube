@@ -166,7 +166,8 @@ async function shootWaiting(scene, base, name) {
 // items and an end, children have no children, item IDs are unique within a
 // session, no prompt contains another, since the plugin finds a turn by
 // the prompt its input contains, a parked session ends idle, has no view,
-// and is not selected, and a terminal belongs to a selected session.
+// and is not selected, and a terminal, session menu, or new session follows
+// a selected session.
 function validate(scene) {
   if (scene.waiting) return;
   const prompts = [];
@@ -192,6 +193,9 @@ function validate(scene) {
   if (w === undefined && !scene.github) throw new Error('the Pull Requests view needs github');
   if (!scene.github && scene.workspaces.some(w => w.pullRequests)) throw new Error('pull requests need github');
   if (s !== undefined && scene.workspaces[w].sessions[s].parked) throw new Error('the selected session cannot be parked');
+  if (scene.newSession && s === undefined) throw new Error('a new session needs a selected session');
+  if (scene.newBranch && !scene.newSession) throw new Error('a new branch needs a new session');
+  if (scene.sessionMenu && s === undefined) throw new Error('a session menu needs a selected session');
   for (const [i, a] of prompts.entries()) {
     if (prompts.some((b, j) => i !== j && b.includes(a))) throw new Error(`prompt "${a}" is part of another prompt`);
   }
@@ -469,11 +473,14 @@ function place(scene, window) {
   // must not reach the page.
   window.contents.on('before-input-event', event => event.preventDefault());
   const {width, height} = scene.size;
-  win.setSize(width, height);
-  win.center();
+  // The window opens centered on a Retina display, so images are twice the
+  // scene size.
+  const display = screen.getAllDisplays().find(d => d.scaleFactor === 2);
+  if (!display) throw new Error('the window needs a Retina display, so images are twice the scene size');
+  const area = display.workArea;
+  win.setBounds({x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), width, height});
   const [shownWidth, shownHeight] = win.getSize();
   if (shownWidth !== width || shownHeight !== height) throw new Error(`the window is ${shownWidth}×${shownHeight}, not ${width}×${height}; use a larger display`);
-  if (screen.getDisplayMatching(win.getBounds()).scaleFactor !== 2) throw new Error('the window must be on a Retina display, so images are twice the scene size');
   // A covered window stops painting, so it stays in front while the page
   // renders and is captured.
   window.show();
@@ -612,6 +619,34 @@ async function capture(scene, ids, workspaces, backend, window, name) {
       // The dialog focuses its first section, whose ring would mark it chosen.
       await contents.executeJavaScript(`document.activeElement.blur()`);
     }
+    if (scene.newSession) {
+      await contents.executeJavaScript(`document.querySelector('[data-workspace="${workspaces[w]}"] button[aria-label="New Session"]').click()`);
+      await pageCondition(contents, `document.querySelector('button[aria-label="Location"]')`);
+    }
+    if (scene.newBranch) {
+      // Radix opens a menu on pointerdown and chooses an item on click.
+      await contents.executeJavaScript(`document.querySelector('button[aria-label="Location"]').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, button: 0}))`);
+      await pageCondition(contents, `document.querySelector('[role=menuitemradio]')`);
+      await contents.executeJavaScript(`[...document.querySelectorAll('[role=menuitemradio]')].find(item => item.textContent.startsWith('New worktree on branch')).click()`);
+      // The source button is enabled once the workspace's branches load.
+      await pageCondition(contents, `document.querySelector('#new-branch-source:not(:disabled)')`);
+      await contents.executeJavaScript(`(() => {
+        const input = document.querySelector('#new-branch-name');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(scene.newBranch)});
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+      })()`);
+      await pageCondition(contents, `document.querySelector('#new-branch-name').value === ${JSON.stringify(scene.newBranch)}`);
+    }
+    if (scene.sessionMenu) {
+      await contents.executeJavaScript(`(() => {
+        const row = document.querySelector('[data-session="${selected}"]');
+        const {left, bottom} = row.getBoundingClientRect();
+        row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: left + 24, clientY: bottom}));
+      })()`);
+      await pageCondition(contents, `document.querySelector('.context-menu [role=menuitem]')`);
+      await contents.executeJavaScript(`[...document.querySelectorAll('.context-menu [role=menuitem]')].find(item => item.textContent === ${JSON.stringify(scene.sessionMenu)}).click()`);
+      await pageCondition(contents, `!document.querySelector('.context-menu')`);
+    }
     if (scene.openSearch) {
       await contents.executeJavaScript(`document.querySelector('button[aria-label="Search sessions"]').click()`);
       await pageCondition(contents, `document.querySelector('[cmdk-input]')`);
@@ -647,13 +682,16 @@ async function capture(scene, ids, workspaces, backend, window, name) {
     await checkError();
   };
 
+  const address = `${backend.origin}/${selected ? '#' + encodeURIComponent(selected) : ''}`;
   requests.completed = [];
-  await contents.loadURL(`${backend.origin}/${selected ? '#' + encodeURIComponent(selected) : ''}`);
+  await contents.loadURL(address);
   await shot(scene, win, contents, name, 'light', settled);
 
   const config = await (await fetch(backend.origin + '/config')).json();
   await backend.post('config', {}, {...config, theme: 'dark'});
-  // Loading the same address would only follow its hash, so reload.
+  // Loading the same address would only follow its hash, so reload. A new
+  // session clears the hash, so the scene's selection is put back first.
+  await contents.executeJavaScript(`history.replaceState(null, '', ${JSON.stringify(address)})`);
   requests.completed = [];
   const reloaded = new Promise(resolve => contents.once('did-finish-load', resolve));
   contents.reload();

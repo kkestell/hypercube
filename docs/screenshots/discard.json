@@ -1,0 +1,67 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Add an RSS feed for blog posts",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "feed.go"}, "output": "File created successfully at: feed.go", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "Bash", "input": {"command": "git add feed.go && git commit -m \"Add an RSS feed\"", "description": "Commit the feed"}, "output": "[branch] Add an RSS feed", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "README.md"}, "output": "The file README.md has been updated.", "done": true},
+                {"id": "t1", "kind": "text", "text": "`harbor build` now writes `public/feed.xml` with the ten newest posts. I committed **feed.go** and started documenting the feed in the README.", "done": true}
+              ],
+              "git": [
+                {"file": "feed.go", "content": "package main\n\n// writeFeed writes public/feed.xml with the ten newest posts.\nfunc writeFeed(s *Site) error {\n\treturn nil\n}\n"},
+                {"args": ["add", "feed.go"]},
+                {"args": ["commit", "-q", "-m", "Add an RSS feed"]},
+                {"file": "README.md", "content": "# harbor\n\nA small static site generator.\n\n## Feed\n\n`harbor build` writes `public/feed.xml`.\n"}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Explain how harbor picks a template for each page",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -n template build.go"}, "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))", "done": true},
+                {"id": "t1", "kind": "text", "text": "Every page renders with `page.html` unless its front matter sets `template:`.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Clarify how notebooks sync between devices",
+              "end": "idle",
+              "items": [
+                {"id": "t1", "kind": "text", "text": "The sync guide now explains when changes appear on a second device.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 0],
+  "workbench": {"rightTab": "git"},
+  "sessionMenu": "Discard All Changes"
+}

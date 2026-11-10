@@ -1,0 +1,59 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Add an RSS feed for blog posts",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "feed.go"}, "output": "File created successfully at: feed.go", "done": true},
+                {"id": "t1", "kind": "text", "text": "`harbor build` now writes `public/feed.xml` with the ten newest posts.", "done": true}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Explain how harbor picks a template for each page",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -n template build.go"}, "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))", "done": true},
+                {"id": "t1", "kind": "text", "text": "Every page renders with `page.html` unless its front matter sets `template:`.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Clarify how notebooks sync between devices",
+              "end": "idle",
+              "items": [
+                {"id": "t1", "kind": "text", "text": "The sync guide now explains when changes appear on a second device.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 1],
+  "newSession": true,
+  "newBranch": "fix-login-timeout"
+}

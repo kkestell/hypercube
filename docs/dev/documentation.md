@@ -100,6 +100,11 @@ Each scene declares:
 - `openModelPicker: true` opens the composer's model picker before capture.
   `openSettings` opens Settings at the named section, and `openSearch` opens
   session search with the given query.
+- `newSession: true` opens a new, unsent session in the selected session's
+  workspace. `newBranch` then opens the composer's **Create a branch** dialog
+  from its location control and types the given branch name.
+- `sessionMenu` chooses the named item from the selected session's sidebar
+  menu, such as `Discard All Changes` to show its confirmation.
 - `terminal` opens the selected session's terminal panel and runs the given
   command there. The shell is zsh with a prompt naming only its directory.
 - `waiting: true` captures the waiting page offering **Set Up Background
