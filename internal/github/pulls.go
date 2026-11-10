@@ -13,9 +13,11 @@ import (
 // involve the account: ones it wrote, was asked to review, reviewed, commented
 // on, or was mentioned in. requested reads the ones whose review was requested
 // from the account or one of its teams, which involved can crowd out, and
-// direct lists the ones requested from the account itself. It reads the first
-// 20 review threads of each; remainingThreads reads the rest.
-const pullRequestsQuery = threadFragment + `
+// direct lists the ones requested from the account itself. It leaves out each
+// pull request's conversation, which costs most of a full read, and reads only
+// whether each of its first 100 review threads is resolved; readConversations
+// reads the conversations.
+const pullRequestsQuery = `
 fragment pr on PullRequest{
   id number title url updatedAt isDraft isCrossRepository headRefName headRefOid
   repository{nameWithOwner}
@@ -23,8 +25,7 @@ fragment pr on PullRequest{
   reviewRequests{totalCount}
   latestOpinionatedReviews(first:10){nodes{author{login} state commit{oid}}}
   reviews(last:1,author:$login,states:[APPROVED,CHANGES_REQUESTED,COMMENTED,DISMISSED]){nodes{submittedAt commit{oid}}}
-  reviewThreads(first:20){pageInfo{hasNextPage endCursor} nodes{...thread}}
-  comments(last:20){nodes{author{__typename login} createdAt}}
+  resolved:reviewThreads(first:100){nodes{isResolved}}
   commits(last:1){nodes{commit{committedDate}}}}
 query($login:String!,$involved:String!,$requested:String!,$direct:String!){
   involved:search(query:$involved,type:ISSUE_ADVANCED,first:50){nodes{...pr}}
@@ -36,6 +37,13 @@ query($login:String!,$involved:String!,$requested:String!,$direct:String!){
 const threadFragment = `fragment thread on PullRequestReviewThread{isResolved
   first:comments(first:1){nodes{author{__typename login} createdAt}}
   last:comments(last:1){nodes{author{__typename login} createdAt}}}`
+
+// conversationFragment reads a pull request's first 20 review threads and
+// its last 20 comments; remainingThreads reads the other threads.
+const conversationFragment = threadFragment + `
+fragment conversation on PullRequest{
+  reviewThreads(first:20){pageInfo{hasNextPage endCursor} nodes{...thread}}
+  comments(last:20){nodes{author{__typename login} createdAt}}}`
 
 // comment is a comment or review comment and who wrote it.
 type comment struct {
@@ -97,7 +105,20 @@ type reviewThreads struct {
 	} `json:"nodes"`
 }
 
-// pullRequestNode is a pull request as pullRequestsQuery reads it.
+// conversation is a pull request's review threads and its last 20 comments.
+type conversation struct {
+	ReviewThreads reviewThreads `json:"reviewThreads"`
+	Comments      comments      `json:"comments"`
+}
+
+// heard is a pull request's conversation and the stamp it was read at.
+type heard struct {
+	stamp string
+	conversation
+}
+
+// pullRequestNode is a pull request as pullRequestsQuery reads it, with the
+// conversation that readConversations adds.
 type pullRequestNode struct {
 	ID         string    `json:"id"`
 	Number     int       `json:"number"`
@@ -133,21 +154,43 @@ type pullRequestNode struct {
 			} `json:"commit"`
 		} `json:"nodes"`
 	} `json:"reviews"`
-	ReviewThreads reviewThreads `json:"reviewThreads"`
-	Comments      comments      `json:"comments"`
-	Commits       struct {
+	Resolved struct {
+		Nodes []struct {
+			IsResolved bool `json:"isResolved"`
+		} `json:"nodes"`
+	} `json:"resolved"`
+	Commits struct {
 		Nodes []struct {
 			Commit struct {
 				CommittedDate time.Time `json:"committedDate"`
 			} `json:"commit"`
 		} `json:"nodes"`
 	} `json:"commits"`
+	conversation
+}
+
+// stamp changes whenever the pull request's conversation may have: a comment
+// or review moves updatedAt, and resolving a review thread changes the
+// resolution of its first 100 threads.
+func (n pullRequestNode) stamp() string {
+	var b strings.Builder
+	b.WriteString(n.UpdatedAt.Format(time.RFC3339Nano))
+	for _, t := range n.Resolved.Nodes {
+		if t.IsResolved {
+			b.WriteByte('r')
+		} else {
+			b.WriteByte('u')
+		}
+	}
+	return b.String()
 }
 
 // accountPullRequests lists the open pull requests, in every repository, that
 // involve the account, never nil, most recently updated first with any further
-// review requests after them.
-func (w *Watcher) accountPullRequests(ctx context.Context, token, login string) ([]PullRequest, error) {
+// review requests after them. It reuses each conversation, from conversations
+// or the last pass's, whose stamp is unchanged, reads the rest, and adds every
+// one to conversations.
+func (w *Watcher) accountPullRequests(ctx context.Context, token, login string, conversations map[string]heard) ([]PullRequest, error) {
 	var data struct {
 		Involved struct {
 			Nodes []pullRequestNode `json:"nodes"`
@@ -189,8 +232,23 @@ func (w *Watcher) accountPullRequests(ctx context.Context, token, login string) 
 		seen[n.URL] = true
 		nodes = append(nodes, n)
 	}
-	if err := w.remainingThreads(ctx, token, nodes); err != nil {
+	var stale []int
+	for i := range nodes {
+		h, ok := conversations[nodes[i].ID]
+		if !ok {
+			h, ok = w.conversations[nodes[i].ID]
+		}
+		if ok && h.stamp == nodes[i].stamp() {
+			nodes[i].conversation = h.conversation
+		} else {
+			stale = append(stale, i)
+		}
+	}
+	if err := w.readConversations(ctx, token, nodes, stale); err != nil {
 		return nil, err
+	}
+	for _, n := range nodes {
+		conversations[n.ID] = heard{n.stamp(), n.conversation}
 	}
 	prs := []PullRequest{}
 	var failing []PullRequest // the account's pull requests with failing checks
@@ -211,6 +269,35 @@ func (w *Watcher) accountPullRequests(ctx context.Context, token, login string) 
 		}
 	}
 	return prs, nil
+}
+
+// readConversations reads the conversations of the nodes at the indexes in one
+// query, with a field per pull request, and then any review threads past the
+// first page.
+func (w *Watcher) readConversations(ctx context.Context, token string, nodes []pullRequestNode, indexes []int) error {
+	if len(indexes) == 0 {
+		return nil
+	}
+	var params, fields strings.Builder
+	variables := map[string]any{}
+	for k, i := range indexes {
+		fmt.Fprintf(&params, "$i%d:ID!,", k)
+		fmt.Fprintf(&fields, "p%d:node(id:$i%d){...on PullRequest{...conversation}}\n", k, k)
+		variables[fmt.Sprintf("i%d", k)] = nodes[i].ID
+	}
+	query := conversationFragment + "\nquery(" + strings.TrimSuffix(params.String(), ",") + "){\n" + fields.String() + "}"
+	var data map[string]*conversation
+	if err := w.query(ctx, token, query, variables, &data); err != nil {
+		return err
+	}
+	for k, i := range indexes {
+		c := data[fmt.Sprintf("p%d", k)]
+		if c == nil {
+			return fmt.Errorf("reading the conversation of %s: no pull request", nodes[i].URL)
+		}
+		nodes[i].conversation = *c
+	}
+	return w.remainingThreads(ctx, token, nodes)
 }
 
 // remainingThreads reads the review threads after the first page of each

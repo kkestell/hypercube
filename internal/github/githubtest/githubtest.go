@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -56,15 +57,17 @@ esac
 type API struct {
 	URL string
 
-	mu          sync.Mutex
-	permissions map[string]string
-	failing     bool
-	revoked     map[string]bool
-	requests    int
-	pulls       string
-	failedURLs  []string
-	threadPages map[threadPage]any
-	threadReads []string
+	mu                sync.Mutex
+	permissions       map[string]string
+	failing           bool
+	revoked           map[string]bool
+	requests          int
+	pulls             string
+	conversations     map[string]any // by pull request node ID
+	conversationReads []string
+	failedURLs        []string
+	threadPages       map[threadPage]any
+	threadReads       []string
 }
 
 // threadPage names the review threads of a pull request after a cursor.
@@ -106,22 +109,90 @@ func (a *API) Fail(failing bool) {
 // SetPullRequests sets what every token reads: the nodes of the pull requests
 // that involve the token's account and of the ones whose review was requested
 // from it or its team, each shaped like GitHub's pull request fields, and the
-// URLs of the ones requested from the account itself.
+// URLs of the ones requested from the account itself. A node's reviewThreads
+// and comments answer the conversation query, and the search answers the
+// resolution of its review threads in their place. A pull request node without
+// an ID takes its URL as its ID.
 func (a *API) SetPullRequests(involved, requested []map[string]any, direct ...string) {
 	var urls []map[string]string
 	for _, u := range direct {
 		urls = append(urls, map[string]string{"url": u})
 	}
+	conversations := map[string]any{}
+	searched := func(nodes []map[string]any) []map[string]any {
+		var out []map[string]any
+		for _, n := range nodes {
+			n = maps.Clone(n)
+			if url, ok := n["url"]; ok {
+				if _, ok := n["id"]; !ok {
+					n["id"] = url
+				}
+				conversations[fmt.Sprint(n["id"])] = map[string]any{"reviewThreads": n["reviewThreads"], "comments": n["comments"]}
+				n["resolved"] = resolution(n["reviewThreads"])
+				delete(n, "reviewThreads")
+				delete(n, "comments")
+			}
+			out = append(out, n)
+		}
+		return out
+	}
 	data, err := json.Marshal(map[string]any{"data": map[string]any{
-		"involved":  map[string]any{"nodes": involved},
-		"requested": map[string]any{"nodes": requested},
+		"involved":  map[string]any{"nodes": searched(involved)},
+		"requested": map[string]any{"nodes": searched(requested)},
 		"direct":    map[string]any{"nodes": urls}}})
 	if err != nil {
 		panic(err)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.pulls = string(data)
+	a.pulls, a.conversations = string(data), conversations
+}
+
+// resolution is the resolution of each review thread in a reviewThreads
+// connection, shaped like the search's resolved field.
+func resolution(threads any) map[string]any {
+	data, err := json.Marshal(threads)
+	if err != nil {
+		panic(err)
+	}
+	var connection struct {
+		Nodes []struct {
+			IsResolved bool `json:"isResolved"`
+		} `json:"nodes"`
+	}
+	_ = json.Unmarshal(data, &connection) // null when the node has no threads
+	nodes := []map[string]bool{}
+	for _, t := range connection.Nodes {
+		nodes = append(nodes, map[string]bool{"isResolved": t.IsResolved})
+	}
+	return map[string]any{"nodes": nodes}
+}
+
+// ConversationReads lists the node IDs of the pull requests whose
+// conversations the server has been asked for, in order.
+func (a *API) ConversationReads() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.conversationReads)
+}
+
+// conversationFields finds the pull request fields of a conversation query.
+var conversationFields = regexp.MustCompile(`(p\d+):node\(id:\$(i\d+)\)\{\.\.\.on PullRequest\{\.\.\.conversation\}\}`)
+
+// conversationsAnswer answers a conversation query from the pull requests set
+// for each ID variable.
+func (a *API) conversationsAnswer(query string, variables map[string]string) string {
+	data := map[string]any{}
+	for _, m := range conversationFields.FindAllStringSubmatch(query, -1) {
+		id := variables[m[2]]
+		a.conversationReads = append(a.conversationReads, id)
+		data[m[1]] = a.conversations[id] // nil for an unknown pull request
+	}
+	out, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
 }
 
 // SetRequiredFailures sets the pull requests, by URL such as
@@ -223,8 +294,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &request)
 	required := strings.Contains(request.Query, "isRequired")
 	pulls := strings.Contains(request.Query, "involved:search")
-	threads := !pulls && strings.Contains(request.Query, "reviewThreads")
-	if !pulls && !required && !threads {
+	conversations := strings.Contains(request.Query, "...conversation}")
+	threads := !pulls && !conversations && strings.Contains(request.Query, "reviewThreads")
+	if !pulls && !required && !conversations && !threads {
 		a.requests++
 	}
 	if a.failing {
@@ -242,6 +314,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if pulls {
 		_, _ = w.Write([]byte(a.pulls))
+		return
+	}
+	if conversations {
+		_, _ = w.Write([]byte(a.conversationsAnswer(request.Query, request.Variables)))
 		return
 	}
 	if threads {

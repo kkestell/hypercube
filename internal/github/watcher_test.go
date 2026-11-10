@@ -710,3 +710,45 @@ func TestReviewThreadsAfterTheFirstPage(t *testing.T) {
 		t.Fatalf("permission queries = %d", n)
 	}
 }
+
+func TestConversationIsReadOnlyWhenItMayHaveChanged(t *testing.T) {
+	t.Parallel()
+	s := newStand(t, "alice")
+	set := func(updated int, resolved bool) {
+		n := repoNode("o/r", 1)
+		n["id"], n["author"], n["updatedAt"] = "PR_1", map[string]string{"login": "alice"}, at(updated)
+		n["reviewThreads"] = map[string]any{"nodes": []any{thread(resolved, said(person("bob"), 1), said(person("bob"), updated))}}
+		s.api.SetPullRequests([]map[string]any{n}, nil)
+	}
+	// pass makes a pass and returns the pull request's unanswered count and
+	// how many times the server has read its conversation.
+	pass := func() (int, int) {
+		t.Helper()
+		before := s.accountOf(s.w.Accounts(), "alice").Updated
+		s.w.Refresh()
+		s.untilAccounts("a pass", func(as []Account) bool { return s.accountOf(as, "alice").Updated > before })
+		return s.accountOf(s.w.Accounts(), "alice").PullRequests[0].Unanswered, len(s.api.ConversationReads())
+	}
+	set(2, false)
+	s.workspace("w", remote, []string{"config", "credential.githubAccount", "alice"})
+	s.run()
+	// Each step's Refresh then starts one pass and no other is running.
+	s.untilAccounts("the first pass", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
+	if reads := s.api.ConversationReads(); !slices.Equal(reads, []string{"PR_1"}) {
+		t.Fatalf("first pass conversation reads = %v", reads)
+	}
+	for _, step := range []struct {
+		name              string
+		change            func()
+		unanswered, reads int
+	}{
+		{"unchanged", func() {}, 1, 1},
+		{"thread resolved", func() { set(2, true) }, 0, 2},
+		{"newer comment", func() { set(3, false) }, 1, 3},
+	} {
+		step.change()
+		if unanswered, reads := pass(); unanswered != step.unanswered || reads != step.reads {
+			t.Fatalf("%s: unanswered = %d, conversation reads = %d; want %d, %d", step.name, unanswered, reads, step.unanswered, step.reads)
+		}
+	}
+}

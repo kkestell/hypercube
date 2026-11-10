@@ -92,8 +92,9 @@ type Watcher struct {
 	tokens   map[string]string  // by workspace ID
 	changed  chan struct{}
 	refresh  chan struct{}
-	// detected belongs to Run's goroutine.
-	detected map[string]detection
+	// detected and conversations belong to Run's goroutine.
+	detected      map[string]detection
+	conversations map[string]heard // by pull request ID, as the last pass read them
 }
 
 // detection is the accounts that could push to a workspace's repository.
@@ -237,7 +238,7 @@ func (w *Watcher) pass(ctx context.Context) {
 		passTokens[login] = t
 		return t, nil
 	}
-	accounts := map[string]Account{}
+	accounts, conversations := map[string]Account{}, map[string]heard{}
 	for _, login := range logins {
 		account := oldAccounts[login] // a failed read keeps what the last pass knew
 		account.Login, account.Error = login, ""
@@ -247,7 +248,7 @@ func (w *Watcher) pass(ctx context.Context) {
 		t, err := token(login)
 		if err == nil {
 			var prs []PullRequest
-			if prs, err = w.accountPullRequests(ctx, t, login); err == nil {
+			if prs, err = w.accountPullRequests(ctx, t, login, conversations); err == nil {
 				account.PullRequests, account.Updated = prs, time.Now().UnixMilli()
 			}
 		}
@@ -262,6 +263,7 @@ func (w *Watcher) pass(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	w.conversations = conversations
 	detected := map[string]detection{}
 	for _, ws := range workspaces {
 		if ws.NoGit {
