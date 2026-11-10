@@ -15,7 +15,9 @@
 An active top-level worktree session's menu gains **Discard All Changes**.
 After confirmation, Hypercube stops the family's agents and returns the
 session's worktree, and each active child's managed worktree, to the commit
-the session started from (`Base`). Uncommitted tracked changes, untracked
+the session started from (`Base`): each worktree checks out its session's
+branch, moved to `Base`, even if the agent had switched to another branch
+(that branch is kept). Uncommitted tracked changes, untracked
 files and folders (including nested repositories), and the branches' commits
 since `Base` are gone. Ignored files stay. The family stays active; its
 agents park and wake when next used. **Archive Session** and **Delete
@@ -48,12 +50,21 @@ archive action.
   child at `Base` has nothing outside its parent's `HEAD`. Resetting to "the
   last kept commit" instead would need a per-tree search and leaves merged
   history that the user asked to throw away.
-- **What is deleted:** `git reset --hard` plus `git clean -ffd` (the second
+- **Reset the session's branch, not whatever `HEAD` is on:** `git switch
+  --discard-changes --force-create <branch> <Base>` checks out the session's
+  branch at `Base` whatever the worktree had checked out, so `Removable`
+  (which checks both the branch and `HEAD`) passes. Another branch the agent
+  made is left alone; it is not the session's to delete.
+- **Only a worktree root:** `Discard` refuses unless `isWorktree(dir)`, with
+  `<dir> is not a worktree`. A plain directory under `.hypercube/` would
+  otherwise make Git find the enclosing checkout, rewind the user's branch,
+  and delete their uncommitted files. This also covers a missing folder.
+- **What is deleted:** the switch above plus `git clean -ffd` (the second
   `-f` removes untracked nested repositories, which `status` reports and
   `Removable` counts). Ignored files are left: they never block removal, and
   they include `.worktreeinclude` copies such as `.env` and dependency
   folders the session still needs.
-- **Submodules:** `--recurse-submodules` on the reset returns submodule
+- **Submodules:** `--recurse-submodules` on the switch returns submodule
   working trees to the recorded commits, and `git submodule foreach --quiet
   --recursive git clean -ffdq` removes their untracked files, so the
   superproject reports no changes. Commits on a submodule's local branches
@@ -70,8 +81,7 @@ archive action.
 - **Failure:** stop at the first tree that fails and return
   `"<name>: <error>"` (title for the top-level session, `Name` for a child,
   as `checkWorktrees` names them). Trees already reset stay reset; running
-  the action again finishes the rest. A missing worktree folder fails with
-  Git's error.
+  the action again finishes the rest.
 - **Claim message:** `errDeleting` now also guards discard, so change its
   text (`internal/session/runtime.go`) to "another change to the session is
   in progress". Callers compare with `errors.Is`; no test matches the text.
@@ -81,15 +91,17 @@ archive action.
 1. `internal/workspace/workspace.go`, beside `Removable`:
 
    ```go
-   // Discard returns the worktree in dir to commit: its branch moves there,
-   // and its uncommitted changes and untracked files, including those of its
-   // submodules, are deleted. Ignored files stay.
-   func Discard(dir, commit string) error
+   // Discard checks out branch in the worktree dir, moved to commit, and
+   // deletes the worktree's uncommitted changes and untracked files,
+   // including those of its submodules. Ignored files stay. It refuses a dir
+   // that is not the top level of a worktree.
+   func Discard(dir, branch, commit string) error
    ```
 
-   Runs in `dir`: `git reset --quiet --hard --recurse-submodules
-   --end-of-options <commit>` (accepted by Git 2.50), `git clean -ffdq`, and,
-   when `.gitmodules` exists, the submodule clean.
+   Refuses unless `isWorktree(dir)`. Then runs in `dir`: `git switch --quiet
+   --discard-changes --recurse-submodules --force-create <branch> <commit>`
+   (checked with Git 2.50, from the branch itself and from another branch),
+   `git clean -ffdq`, and, when `.gitmodules` exists, the submodule clean.
 
 2. New `internal/session/discard.go`:
 
@@ -104,9 +116,9 @@ archive action.
    session is archived"), and `Base == ""` ("only a worktree session's
    changes can be discarded"); `waitChildCreations`, re-read children; stop
    launches with `l.root == id`; for each `familyWorktrees` tree,
-   `workspace.Discard(tree.session.Dir, s.Base)`; then
-   `r.refreshMerges(s.Workspace)`. The root-missing case of `removeFamily`
-   does not apply: a missing checkout fails in Git.
+   `workspace.Discard(tree.session.Dir, tree.session.Branch, s.Base)`; then
+   `r.refreshMerges(s.Workspace)`. A missing checkout or worktree fails
+   `isWorktree`.
 
 3. `internal/ui/actions.go`: `case "discard": err = s.rt.Discard(id)`.
 
@@ -131,12 +143,19 @@ Go:
 
 - `internal/workspace`: a worktree at `base` with one commit, a modified
   tracked file, an untracked file, an untracked nested repository, and an
-  ignored file. After `Discard(dir, base)`: branch tip and `HEAD` equal
+  ignored file. After `Discard(dir, branch, base)`: branch tip and `HEAD` equal
   `base`, `git status --porcelain` is empty, the ignored file remains, and
   `Removable(root, dir, branch, base)` passes. A worktree with an initialized
   submodule whose pointer changed and that has an untracked file: after
   `Discard`, the superproject's status is empty (follow the existing
   submodule test setup in `workspace_test.go`).
+- `internal/workspace`: commit in the worktree, switch it to another branch,
+  commit again; `Discard(dir, branch, base)` leaves the session branch and
+  `HEAD` at `base` with the session branch checked out, the other branch at
+  its commit, and `Removable` passing.
+- `internal/workspace`: a plain directory under `.hypercube/` in a checkout
+  that has a new commit and an uncommitted file; `Discard` on it errors, and
+  the checkout's branch tip and the uncommitted file are unchanged.
 - `internal/session` (fixture): a worktree session with a worktree child;
   commit in both and leave an untracked file in each; `Archive` refuses.
   `Discard` succeeds; both worktrees are at the parent's `Base` and clean;
