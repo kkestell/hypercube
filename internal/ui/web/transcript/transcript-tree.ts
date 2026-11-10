@@ -39,6 +39,7 @@ const hypercubeTools = new Map<string, [name: string, field?: string]>([
   ['create_session', ['Create session', 'title']],
   ['end_session', ['End session', 'name']],
   ['list_sessions', ['List sessions']],
+  ['list_models', ['List models', 'harness']],
   ['read_session', ['Read session', 'to']],
   ['set_title', ['Set title', 'title']],
   ['open_file', ['Open file', 'path']],

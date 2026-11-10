@@ -50,6 +50,7 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle(tool({server: 'hypercube', tool: 'create_session', input: {name: 'w1', title: 'Fix the parser', profile: 'claude', message: 'the brief'}}))).toEqual(['Create session', 'Fix the parser']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'create_session', input: {initiation: 'offer', title: 'Fix the parser'}}))).toEqual(['Create session', 'Fix the parser']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'list_sessions', input: {}}))).toEqual(['List sessions', '']);
+  expect(toolTitle(tool({server: 'hypercube', tool: 'list_models', input: {harness: 'claude'}}))).toEqual(['List models', 'claude']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'read_session', input: {to: 'w1', cursor: 4}}))).toEqual(['Read session', 'w1']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'set_title', input: {title: 'Fix tool rendering'}}))).toEqual(['Set title', 'Fix tool rendering']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'open_file', input: {path: 'main.go', lines: [{start: 10}]}}))).toEqual(['Open file', 'main.go']);

@@ -179,6 +179,23 @@ func TestTools(t *testing.T) {
 	}
 }
 
+// TestTranscriptLabels checks that every registered tool has a transcript
+// label. send_message is drawn as a message instead.
+func TestTranscriptLabels(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "ui", "web", "transcript", "transcript-tree.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, rt := family(t, false, t.TempDir(), "")
+	server := httptest.NewServer(Handler(db, rt))
+	defer server.Close()
+	for name := range tools(t, connect(t, server.URL, "session-1")) {
+		if name != "send_message" && !strings.Contains(string(src), "['"+name+"', [") {
+			t.Errorf("%s has no label in transcript-tree.ts", name)
+		}
+	}
+}
+
 func TestProtocol(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), "")
 	server := httptest.NewServer(Handler(db, rt))
