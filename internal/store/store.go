@@ -588,6 +588,22 @@ func (t *Tx) LastText(session string) (string, int64, error) {
 	return text, seq, err
 }
 
+// LastAction returns the latest top-level item before the position that is
+// not text, reasoning, or a state marker, or false if there is none.
+func (t *Tx) LastAction(session string, before int64) (Entry, bool, error) {
+	e := Entry{}
+	var data string
+	err := t.tx.QueryRow(`SELECT seq, item, data FROM transcript
+  WHERE session = ? AND seq < ? AND json_extract(data, '$.parent') IS NULL
+  AND json_extract(data, '$.kind') NOT IN ('text', 'reasoning', 'state')
+  ORDER BY seq DESC LIMIT 1`, session, before).Scan(&e.Seq, &e.Item, &data)
+	e.Data = []byte(data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return e, false, nil
+	}
+	return e, err == nil, err
+}
+
 // LastSeq returns the largest saved or reserved transcript position, or zero.
 func (t *Tx) LastSeq(session string) (int64, error) {
 	var seq int64

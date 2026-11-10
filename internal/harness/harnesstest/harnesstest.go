@@ -28,6 +28,8 @@
 //	!child     start a child process in the plugin's group
 //	!crash     reply, then exit
 //	!env NAME  a quick turn whose final text is the plugin's $NAME
+//	!told ID   a turn whose last action is a hypercube send_message call to ID
+//	           before its final text
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
 // or the model "invalid" fails, and a start without an effort reports the
@@ -302,6 +304,11 @@ func (p *standIn) input(cmd harness.Command) {
 		p.reply(cmd.ID, "")
 		p.state(harness.Working)
 		p.state(harness.Idle, text(p.turn, os.Getenv(strings.TrimPrefix(cmd.Text, "!env ")), true))
+	case strings.HasPrefix(cmd.Text, "!told "):
+		p.reply(cmd.ID, "")
+		input, _ := json.Marshal(map[string]string{"to": strings.TrimPrefix(cmd.Text, "!told "), "text": "the outcome"})
+		p.state(harness.Working, harness.Item{ID: "send", Kind: harness.KindTool, Server: "hypercube", Tool: "send_message", Input: input, Output: "sent", Done: true})
+		p.event(harness.Event{State: harness.Idle, Final: []string{p.turn}, Items: []harness.Item{text(p.turn, "the outcome", true)}})
 	case strings.HasPrefix(cmd.Text, "!report "):
 		var answer string
 		if err := json.Unmarshal([]byte(strings.TrimPrefix(cmd.Text, "!report ")), &answer); err != nil {

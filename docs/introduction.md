@@ -85,6 +85,8 @@ response, not its progress text. Longer replies include their full length;
 the parent can read a compact transcript of a child or any top-level session
 when it needs more context. This includes messages and tool names, but omits
 reasoning, tool inputs and outputs, and nested native subagent items.
+A turn whose last action before its final response is a message to the
+parent has no completion report, because the parent already has that message.
 
 Native subagents created inside a harness are different from Hypercube
 children. Their [display depends on the harness](harness-support.md#native-subagent-display);

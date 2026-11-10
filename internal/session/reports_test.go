@@ -1,9 +1,12 @@
 package session
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/kkestell/hypercube/internal/harness"
 )
 
 func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
@@ -96,6 +99,26 @@ func TestParentWorkDelaysReports(t *testing.T) {
 	}
 	f.input(parent.ID, "!finish")
 	f.until("parent receives the report after finishing", func() bool { return len(f.inputs(parent.ID)) == 4 && len(f.queued(parent.ID)) == 0 })
+}
+
+// A turn that ends by messaging the parent already gave the parent its
+// outcome, so only the child's next turn is reported.
+func TestTurnEndingWithMessageToParentHasNoReport(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	child := f.child(parent, "child", "")
+	f.input(parent.ID, "!work")
+	f.until("parent working", func() bool { return !f.idle(parent.ID) })
+	f.input(child.ID, "!told "+parent.ID)
+	f.until("child finished the told turn", func() bool {
+		items := f.transcript(child.ID)
+		return slices.ContainsFunc(items, func(it harness.Item) bool { return it.Text == "the outcome" }) && f.idle(child.ID)
+	})
+	f.input(child.ID, "!answer")
+	f.until("report queued", func() bool { return len(f.queued(parent.ID)) > 0 && f.idle(child.ID) })
+	if got := f.queued(parent.ID); len(got) != 1 || !strings.Contains(got[0].Text, "the answer") {
+		t.Fatalf("queued %+v", got)
+	}
 }
 
 func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {

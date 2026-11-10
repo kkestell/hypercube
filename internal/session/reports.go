@@ -11,9 +11,12 @@ import (
 )
 
 // queueReport uses only the final response the harness identified, never its
-// progress text or a native subagent's output. It shares the event checkpoint.
+// progress text or a native subagent's output. A turn whose last action
+// before its final response was a message to the parent has already given the
+// parent its outcome, so it has no report. It shares the event checkpoint.
 func (r *Runtime) queueReport(tx *write, child store.Session, final []string, prefix string) error {
 	var texts []string
+	var first int64
 	for _, id := range final {
 		e, found, err := tx.Entry(child.ID, prefix+id)
 		if err != nil {
@@ -28,17 +31,43 @@ func (r *Runtime) queueReport(tx *write, child store.Session, final []string, pr
 		}
 		if item.Kind == harness.KindText && item.Parent == "" && item.Text != "" {
 			texts = append(texts, item.Text)
+			if first == 0 || e.Seq < first {
+				first = e.Seq
+			}
 		}
 	}
 	text := strings.Join(texts, "\n\n")
 	if text == "" {
 		return nil
 	}
+	if told, err := toldParent(tx, child, first); told || err != nil {
+		return err
+	}
 	if chars := []rune(text); len(chars) > 400 {
 		text = fmt.Sprintf("%s\n(first 400 of %d characters) Read the rest with read_session on %s.", string(chars[:400]), len(chars), child.Name)
 	}
 	text = fmt.Sprintf("%s finished a turn:\n%s", child.Name, text)
 	return tx.Queue(store.Message{From: child.ID, To: child.Parent, Text: text, Report: true})
+}
+
+// toldParent reports whether the child's last action before the position was
+// a message it sent its parent.
+func toldParent(tx *write, child store.Session, before int64) (bool, error) {
+	e, found, err := tx.LastAction(child.ID, before)
+	if err != nil || !found {
+		return false, err
+	}
+	var item harness.Item
+	if err := json.Unmarshal(e.Data, &item); err != nil {
+		return false, err
+	}
+	if item.Kind != harness.KindTool || item.Server != "hypercube" || item.Tool != "send_message" || item.Failed {
+		return false, nil
+	}
+	var input struct {
+		To string `json:"to"`
+	}
+	return json.Unmarshal(item.Input, &input) == nil && input.To == child.Parent, nil
 }
 
 // reportsReady reports whether the parent can take its children's reports,
