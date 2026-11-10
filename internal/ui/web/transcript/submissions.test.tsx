@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
+import {element, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {AgentPane} from '../agent/agent-pane.tsx';
 import {draftOf, typed, unsentKey} from '../agent/drafts.ts';
@@ -12,6 +12,9 @@ import {Transcript} from './transcript.tsx';
 import {displayedTranscript, receivedTranscript} from './transcripts.ts';
 
 afterEach(() => { mock.restore(); unmountAll(); });
+
+// prompts are the transcript rows that read text.
+const prompts = (root: HTMLElement, text: string) => [...find(root, '[aria-label="Transcript"]').children].filter(row => row.textContent === text);
 
 const image = {mime_type: 'image/png', data: 'iVBORw0KGgo='};
 const session = testSession({id: 's'});
@@ -36,8 +39,8 @@ for (const fresh of [false, true]) {
     let sending: Promise<void>;
     act(() => { sending = sendPrompt(store, shown); });
     expect(root.querySelector('textarea')!.value).toBe('');
-    expect(find(root, '.message-item-user').textContent).toContain('Inspect this');
-    expect(find(root, '.message-item-user img').getAttribute('src')).toBe('data:image/png;base64,' + image.data);
+    expect(prompts(root, 'Inspect this')).toHaveLength(1);
+    expect(element(prompts(root, 'Inspect this')[0], 'img', HTMLImageElement).getAttribute('src')).toBe('data:image/png;base64,' + image.data);
     expect(find(root, '[role=status]').textContent).toBe('Sending…');
     act(() => store.update(state => typed(state, key, 'Next draft')));
     await act(async () => { first.resolve(new Response('busy', {status: 409})); await sending!; });
@@ -49,7 +52,7 @@ for (const fresh of [false, true]) {
     });
     expect(requests).toHaveLength(2);
     expect(requests[1]).toMatchObject({text: 'Inspect this', images: [image]});
-    expect(findAll(root, '.message-item-user')).toHaveLength(1);
+    expect(prompts(root, 'Inspect this')).toHaveLength(1);
     expect(root.querySelector('[role=alert]')).toBeNull();
     // A definitive second refusal keeps the original message retryable.
     await act(async () => { retry.resolve(new Response('still busy', {status: 409})); });
@@ -72,7 +75,7 @@ for (const reset of [false, true]) {
     };
     let sendingFirst: Promise<void>, sendingSecond: Promise<void>;
     act(() => { sendingFirst = send(); sendingSecond = send(); });
-    expect(findAll(root, '.message-item-user')).toHaveLength(2);
+    expect(prompts(root, 'same')).toHaveLength(2);
     const [one, two] = submissionsOf(store.get(), 's');
     // One HTTP response precedes the transcript, and the other follows it.
     await act(async () => { second.resolve(new Response('')); await sendingSecond!; });
@@ -81,7 +84,7 @@ for (const reset of [false, true]) {
       {id: two.id, seq: 2, kind: 'user', text: 'same'},
     ]})));
     await act(async () => { first.resolve(new Response('')); await sendingFirst!; });
-    expect(findAll(root, '.message-item-user')).toHaveLength(2);
+    expect(prompts(root, 'same')).toHaveLength(2);
     expect(submissionsOf(store.get(), 's')).toHaveLength(0);
     expect(root.querySelector('[role=status]')).toBeNull();
   });
@@ -124,7 +127,7 @@ test('the first prompt follows its end and lets the user scroll back before a tr
   store.update(state => typed(state, shown.id, 'A long first prompt.\n'.repeat(100)));
   const sending = sendPrompt(store, shown);
   const root = mount(store, <AgentPane session={shown} active />);
-  const view = find(root, '.transcript');
+  const view = find(root, '[aria-label="Transcript"]').parentElement!;
   // Happy DOM has no layout: model a viewport with a long first message.
   let top = 0;
   Object.defineProperties(view, {

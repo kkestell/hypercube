@@ -46,7 +46,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
       {list === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
         <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => openSettings(s, 'Agents')); }}>Open Settings</Button>
       </div> : <>
-        <Command loop className="[&_[data-slot=command-input-wrapper]]:border-b-0">
+        <Command loop>
           <CommandInput ref={input} placeholder="Search models" aria-label="Search models" />
           <CommandList className="max-h-64">
             <CommandEmpty>No models match.</CommandEmpty>
@@ -85,7 +85,7 @@ function Effort({entry, value, onChange}: {entry?: ModelEntry; value: Settings |
 // Ticks sit where the slider thumb's centre lands for each step; the thumb stays inside the track, so its centre is offset by 8px at the left end and -8px at the right.
 function Ticks({efforts}: {efforts: string[]}) {
   const last = Math.max(efforts.length - 1, 1);
-  return <div className="relative -mt-1 h-9 text-[10px] text-muted-foreground" aria-hidden>
+  return <div className="relative -mt-1 h-9 text-xs text-muted-foreground" aria-hidden>
     {efforts.map((effort, i) => <span key={effort} className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-1"
       style={{left: `calc(${(i / last) * 100}% + ${8 - (i / last) * 16}px)`}}>
       <span className="h-1.5 w-px bg-muted-foreground" />{effortLabel(effort)}

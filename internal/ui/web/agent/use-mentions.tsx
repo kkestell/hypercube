@@ -1,6 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject} from 'react';
-import {Command, CommandItem, CommandList} from '../components/ui/command';
 import {mentionFiles} from '../api.ts';
+import {Command, CommandItem, CommandList} from '../components/ui/command';
+import {useRequest} from '../shared/use-request.ts';
 import {isUnsent} from './drafts.ts';
 import {insertMention, mentionAt, mentionChoices, prepareFiles, type MentionFile} from './mention.ts';
 
@@ -30,6 +31,8 @@ export interface Mentions {
   keydown: (e: KeyboardEvent<HTMLTextAreaElement>) => boolean;
 }
 
+const noFiles: MentionFile[] = [];
+
 export function useMentions(
   field: RefObject<HTMLTextAreaElement | null>,
   text: string,
@@ -39,36 +42,30 @@ export function useMentions(
 ): Mentions {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const [selected, setSelected] = useState(0);
-  const [files, setFiles] = useState<MentionFile[]>([]);
-  const [error, setError] = useState('');
+  // The highlighted choice, kept for the mention and query it was picked in.
+  const [selected, setSelected] = useState({key: '', index: 0});
   const caret = useRef<number | null>(null);
   const [activeOption, setActiveOption] = useState<HTMLElement | null>(null), [list, setList] = useState<HTMLElement | null>(null);
   const candidate = selection && mentionAt(selection.text, selection.start, selection.end);
   const token = candidate && `${candidate.start}:${selection.text}`;
   const mention = selection?.text === text && token !== dismissed ? candidate : null;
   const key = mention ? `${mention.start}:${mention.query}` : '';
-  const choices = useMemo(() => mention ? mentionChoices(files, mention.query) : [], [files, mention?.query]);
-  const active = Math.min(selected, Math.max(0, choices.length - 1));
   const open = !!mention;
+  const params = isUnsent(session) ? (workspace ? {workspace} : null) : {session};
+  const request = useRequest(open && params ? async signal => prepareFiles(await mentionFiles(params, signal)) : null, [open, session, workspace]);
+  // Each opening loads the files again, and the last list stays while it
+  // loads, so a choice typed quickly is still there to pick.
+  const [files, setFiles] = useState(noFiles);
+  const loaded = params ? request.data ?? files : noFiles;
+  if (loaded !== files) setFiles(loaded);
+  const choices = useMemo(() => mention ? mentionChoices(files, mention.query) : [], [files, mention?.query]);
+  const active = selected.key === key ? Math.min(selected.index, Math.max(0, choices.length - 1)) : 0;
 
-  useLayoutEffect(() => {
-    const params = isUnsent(session) ? (workspace ? {workspace} : null) : {session};
-    if (!params) { setFiles([]); setError(''); return; }
-    if (!open) return;
-    const controller = new AbortController();
-    setError('');
-    mentionFiles(params, controller.signal)
-      .then(paths => { if (!controller.signal.aborted) setFiles(prepareFiles(paths)); })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError('Could not list files: ' + (err instanceof Error ? err.message : String(err))); });
-    return () => controller.abort();
-  }, [open, session, workspace]);
   useLayoutEffect(() => {
     if (caret.current === null) return;
     field.current?.setSelectionRange(caret.current, caret.current);
     caret.current = null;
   });
-  useLayoutEffect(() => { setSelected(0); }, [key]);
   useEffect(() => { activeOption?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active], activeOption]);
 
   const sync = (target: HTMLTextAreaElement) => {
@@ -101,7 +98,7 @@ export function useMentions(
     if (!choices.length) return false;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelected((active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
+      setSelected({key, index: (active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length});
       return true;
     }
     if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(choices[active]); return true; }
@@ -109,7 +106,7 @@ export function useMentions(
   };
   return {
     choices, active, optionRef: setActiveOption, listRef: setList,
-    optionId: activeOption?.id, listId: list?.id, error: open ? error : '',
+    optionId: activeOption?.id, listId: list?.id, error: request.error && 'Could not list files: ' + request.error,
     sync, close, dismiss, blur, choose, keydown,
   };
 }
@@ -117,7 +114,7 @@ export function useMentions(
 export function MentionList({mentions}: {mentions: Mentions}) {
   const {choices, active, optionRef, listRef, error, choose} = mentions;
   if (!choices.length && !error) return null;
-  return <Command shouldFilter={false} value={choices[active] ?? ''} className="composer-mentions">
+  return <Command shouldFilter={false} value={choices[active] ?? ''}>
     <CommandList ref={listRef} aria-label="Files">
       {error && <CommandItem disabled>{error}</CommandItem>}
       {choices.map((path, i) => <CommandItem key={path} value={path} ref={i === active ? optionRef : undefined}

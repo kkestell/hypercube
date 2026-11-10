@@ -53,7 +53,7 @@ function element(t: Token, options: Options): ReactNode {
     case 'paragraph': return options.flatten ? children(t.tokens) : <p>{children(t.tokens)}</p>;
     case 'heading': return options.flatten ? children(t.tokens) : createElement('h' + t.depth, null, children(t.tokens));
     case 'code':
-      return options.flatten ? t.text : <div className="markdown-code-block group relative [--copy-bg:var(--muted)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
+      return options.flatten ? t.text : <div className="group relative [--copy-bg:var(--muted)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children(t.tokens)}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {
@@ -80,7 +80,7 @@ function element(t: Token, options: Options): ReactNode {
     case 'del': return <del>{children(t.tokens)}</del>;
     case 'codespan': return <code>{t.text}</code>;
     case 'br': return <br />;
-    case 'link': return link(decodeHTMLStrict(t.href), children(t.tokens));
+    case 'link': return options.flatten ? children(t.tokens) : link(decodeHTMLStrict(t.href), children(t.tokens));
     case 'image': {
       const text = decodeHTMLStrict(t.text), href = decodeHTMLStrict(t.href);
       if (options.flatten) return text || null;
@@ -110,15 +110,15 @@ interface MarkdownProps extends Pick<Options, 'imageSource' | 'renderLink'> {
 
 export function Markdown({text, style, muted, imageSource, renderLink}: MarkdownProps) {
   return (
-    <div className={`markdown markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+    <div className={`markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
       {tokens(lexer(text), {preview: style === 'preview', imageSource, renderLink})}
     </div>
   );
 }
 
 // MarkdownText is Markdown as inline text for a compact preview: headings,
-// lists, quotes, code blocks, and images flatten to their text, while inline
-// marks, inline code, and links remain.
+// lists, quotes, code blocks, images, and links flatten to their text, while
+// inline marks and inline code remain. A preview can sit inside a button.
 export function MarkdownText({text}: {text: string}) {
-  return <span className="markdown markdown-inline">{flatTokens(lexer(text))}</span>;
+  return <span>{flatTokens(lexer(text))}</span>;
 }

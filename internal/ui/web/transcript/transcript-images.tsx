@@ -3,5 +3,5 @@
 // sent.
 export function TranscriptImages({images = []}: {images?: string[]}) {
   if (!images.length) return null;
-  return <div className="transcript-images flex flex-wrap gap-2">{images.map((src, i) => <img key={i} className="transcript-images-image max-h-64 max-w-full object-contain" src={src} alt="Image" />)}</div>;
+  return <div className="flex flex-wrap gap-2">{images.map((src, i) => <img key={i} className="max-h-64 max-w-full object-contain" src={src} alt="Image" />)}</div>;
 }

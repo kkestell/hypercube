@@ -2,27 +2,25 @@
 // "Worked for" toggle with a chevron after it, a rule beneath, and the
 // activity, when open, below the rule. Closed, the turn's response follows the
 // rule.
-import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {slide} from '../shared/motion.ts';
 import {Chevron} from '../shared/icon.tsx';
+import {useExpanded} from './disclosure.tsx';
 import {formatDuration} from './duration.ts';
-import {TranscriptRow, type RowControls} from './transcript-item.tsx';
+import {TranscriptRow} from './transcript-item.tsx';
 import type {ActivityRow} from './transcript-tree.ts';
 
-export function ActivityItem({row, session, expanded, setOpen}: RowControls & {row: ActivityRow}) {
-  const open = !!expanded[row.key];
+export function ActivityItem({row}: {row: ActivityRow}) {
+  const [open, setOpen] = useExpanded(row.key);
   const label = row.start && row.until >= row.start ? 'Worked for ' + formatDuration(row.until - row.start) : 'Worked';
   return (
-    <Collapsible className="activity-item" open={open} onOpenChange={open => setOpen(row.key, open)}>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-auto gap-2 px-0 py-1 font-normal has-[>svg]:px-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground dark:hover:bg-transparent">
-          {label}<Chevron open={open} />
-        </Button>
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 rounded-md py-1 text-muted-foreground">
+        {label}<Chevron open={open} />
       </CollapsibleTrigger>
       <div className="mt-1 border-t" />
-      <CollapsibleContent className={`activity-item-rows flex flex-col gap-3 pt-4 ${slide}`}>
-        {open && row.rows.map(inner => <TranscriptRow key={inner.item.id} row={inner} session={session} expanded={expanded} setOpen={setOpen} />)}
+      <CollapsibleContent className={`flex flex-col gap-3 pt-4 ${slide}`}>
+        {row.rows.map(inner => <TranscriptRow key={inner.item.id} row={inner} />)}
       </CollapsibleContent>
     </Collapsible>
   );

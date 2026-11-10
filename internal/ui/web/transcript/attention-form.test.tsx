@@ -7,6 +7,20 @@ import {createStore} from '../store.ts';
 import {AttentionForm, QuestionsForm} from './attention-form.tsx';
 import type {AttentionItem} from './types.ts';
 
+// button is the button whose text is text.
+const button = (root: ParentNode, text: string) => {
+  const found = findAll(root, 'button').find(b => b.textContent === text);
+  if (!found) throw new Error(`No button reading ${text}`);
+  return found;
+};
+// labelled is the control that the label reading text names.
+const labelled = (root: ParentNode, text: string) => {
+  const label = findAll(root, 'label').find(l => l.textContent === text);
+  const control = label && document.getElementById(label.getAttribute('for') ?? '');
+  if (!control) throw new Error(`No control labelled ${text}`);
+  return control;
+};
+
 afterEach(() => {
   mock.restore();
   unmountAll();
@@ -20,7 +34,7 @@ test('multiple choices wait for submit, preserve punctuation, and can retry a re
   const store = createStore(testState());
   const root = mount(store, <AttentionForm session="s" item={question} />);
   const choices = () => findAll(root, '[role="checkbox"]');
-  const submit = () => find(root, '.attention-form-submit');
+  const submit = () => button(root, 'Submit');
   expect(submit().hasAttribute('disabled')).toBe(true);
   expect(choices()).toHaveLength(4);
   expect(choices()[0].getAttribute('aria-describedby')).toBeTruthy();
@@ -67,20 +81,20 @@ test('questions asked together show one at a time and submit together once all a
     {id: 'b', kind: 'attention', text: 'Which size?', choices: ['Small', 'Large'], free: true},
   ];
   const root = mount(store, <QuestionsForm session="s" items={items} />);
-  const question = () => find(root, '.attention-item-question').textContent;
+  const question = () => find(root, 'p').textContent;
   expect(question()).toBe('Which color?');
-  expect(find(root, '.questions-form-progress').textContent).toBe('Question 1 of 2');
-  expect(find(root, '.questions-form-next').hasAttribute('disabled')).toBe(true);
-  expect(root.querySelector('.attention-form-submit')).toBeNull();
-  act(() => find(root, '[data-choice="Blue"]').click());
-  act(() => find(root, '.questions-form-next').click());
+  expect(root.textContent).toContain('Question 1 of 2');
+  expect(button(root, 'Next').hasAttribute('disabled')).toBe(true);
+  expect(findAll(root, 'button').some(b => b.textContent === 'Submit')).toBe(false);
+  act(() => labelled(root, 'Blue').click());
+  act(() => button(root, 'Next').click());
   expect(question()).toBe('Which size?');
-  expect(find(root, '.attention-form-submit').hasAttribute('disabled')).toBe(true);
-  act(() => find(root, '.questions-form-back').click());
-  expect(find(root, '[data-choice="Blue"]').getAttribute('aria-checked')).toBe('true');
-  act(() => find(root, '.questions-form-next').click());
-  act(() => find(root, '[data-choice="Large"]').click());
-  await act(async () => find(root, '.attention-form-submit').click());
+  expect(button(root, 'Submit').hasAttribute('disabled')).toBe(true);
+  act(() => button(root, 'Back').click());
+  expect(labelled(root, 'Blue').getAttribute('aria-checked')).toBe('true');
+  act(() => button(root, 'Next').click());
+  act(() => labelled(root, 'Large').click());
+  await act(async () => button(root, 'Submit').click());
   const answers = fetches.mock.calls.map(([url]) => new URL(String(url), 'http://x/').searchParams);
   expect(answers.map(params => [params.get('request'), params.get('choice')])).toEqual([['a', 'Blue'], ['b', 'Large']]);
   expect(draftOf(store.get(), 's/a').choices).toBeUndefined();

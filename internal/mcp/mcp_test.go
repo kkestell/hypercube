@@ -186,7 +186,7 @@ func TestTools(t *testing.T) {
 // TestTranscriptLabels checks that every registered tool has a transcript
 // label. send_message is drawn as a message instead.
 func TestTranscriptLabels(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "ui", "web", "transcript", "transcript-tree.ts"))
+	src, err := os.ReadFile(filepath.Join("..", "ui", "web", "transcript", "tool-items.tsx"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestTranscriptLabels(t *testing.T) {
 	defer server.Close()
 	for name := range tools(t, connect(t, server.URL, "session-1")) {
 		if name != "send_message" && !strings.Contains(string(src), "['"+name+"', [") {
-			t.Errorf("%s has no label in transcript-tree.ts", name)
+			t.Errorf("%s has no label in tool-items.tsx", name)
 		}
 	}
 }
