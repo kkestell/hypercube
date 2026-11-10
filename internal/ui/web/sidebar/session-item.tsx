@@ -1,7 +1,7 @@
-// A session's tree row. A parent shows a chevron after its title on hover or
-// keyboard focus. Before the title, a fixed slot shows the session's state as a
-// dot, hollow for a child. The row's right edge shows the open pull request icon
-// and the worktree branch icon.
+// A session's tree row. A parent shows a chevron over the end of its title on
+// hover or keyboard focus. Before the title, a fixed slot shows the session's
+// state as a dot, hollow for a child. The row's right edge shows the open pull
+// request icon and the worktree branch icon.
 // A click chooses the session; a click on a parent's chevron, or a double-click
 // on the parent, collapses or expands its children.
 import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
@@ -52,10 +52,10 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
       <span className={`session-item-status inline-flex size-4 shrink-0 items-center justify-center ${dim}`}>{status}</span>
-      <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree || session.pullRequest ? '' : `${toEdge} ${hasChildren ? chevronInset : ''}`}`}>
+      <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree || session.pullRequest ? '' : toEdge}`}>
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
-          : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} onToggle={toggle} />}
+          : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} padded={!session.worktree && !session.pullRequest} onToggle={toggle} />}
       </span>
       {session.id !== renaming && session.pullRequest && <PullRequestIcon pr={session.pullRequest} className={`session-item-pull-request shrink-0 ${dim}`} />}
       {session.id !== renaming && session.worktree && <BranchIcon className={`session-item-branch shrink-0 ${dim}`} merge={session.merge} />}
@@ -67,45 +67,61 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
 // ending --fade-end before its right edge.
 const fade = '[mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--fade-end)_-_var(--fade-width,1.5rem)),transparent_calc(100%_-_var(--fade-end)))] [--fade-end:0px]';
 // With no icon after it, a title runs through the row's padding to its edge
-// and fades out over a shorter 1rem. While a parent's chevron shows, the
-// title stays inside the padding, so the chevron does too.
+// and fades out over a shorter 1rem.
 const toEdge = '-mr-2 [--fade-width:1rem]';
-const chevronInset = 'group-hover/session:mr-0 group-focus-visible/session:mr-0';
-// While a parent's chevron shows, the title's padding makes room for it, and
-// the fade ends before it.
-const chevronRoom = 'group-hover/session:pr-5 group-focus-visible/session:pr-5';
+// While a chevron shows over the title's end, the fade ends before it, and
+// before the row's padding when the title runs through it. A title that fits
+// fades only then.
 const fadeBeforeChevron = 'group-hover/session:[--fade-end:1.25rem] group-focus-visible/session:[--fade-end:1.25rem]';
+const fadeBeforePaddedChevron = 'group-hover/session:[--fade-end:1.75rem] group-focus-visible/session:[--fade-end:1.75rem]';
+const fadeOnlyBeforeChevron = '[--fade-width:0px] group-hover/session:[--fade-width:1rem] group-focus-visible/session:[--fade-width:1rem]';
 
 interface TitleProps {
   title: string;
   small: boolean;
   chevron: ReactNode;
+  // padded is set when the title runs through the row's 0.5rem padding, which
+  // the chevron stays inside.
+  padded: boolean;
   onToggle: (e: MouseEvent) => void;
 }
 
-// Title shows a session title and, for a parent, the chevron at its end. It
-// watches whether the title overflows, so only a title that does not fit
-// fades.
-function Title({title, small, chevron, onToggle}: TitleProps) {
+// Title shows a session title and, for a parent, the chevron: just after a
+// title with room for it, and otherwise over the title's end. It measures the
+// title against the room the row gives it, so only a title that does not fit,
+// or that the shown chevron covers, fades.
+function Title({title, small, chevron, padded, onToggle}: TitleProps) {
+  const room = useRef<HTMLSpanElement>(null);
   const ref = useRef<HTMLSpanElement>(null);
   const [overflows, setOverflows] = useState(false);
+  const [chevronFits, setChevronFits] = useState(true);
 
   useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const measure = () => setOverflows(element.scrollWidth > element.clientWidth);
+    const box = room.current, element = ref.current;
+    if (!box || !element) return;
+    const measure = () => {
+      setOverflows(element.scrollWidth > element.clientWidth);
+      // The chevron is 1rem wide and stands 0.25rem after the title.
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      setChevronFits(element.scrollWidth + (padded ? 1.75 : 1.25) * rem <= box.clientWidth);
+    };
     measure();
     const observer = new ResizeObserver(measure);
+    observer.observe(box);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [title]);
+  }, [title, padded]);
+
+  const covered = !!chevron && !chevronFits;
 
   return (
-    <span className="relative flex min-w-0 items-center">
-      <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left ${small ? 'text-xs' : ''} ${chevron ? chevronRoom : ''} ${overflows ? fade : ''} ${overflows && chevron ? fadeBeforeChevron : ''}`}>{title}</span>
-      {chevron && <span className="session-item-twistie invisible absolute right-0 top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-visible/session:visible" onClick={onToggle}>
-        {chevron}
-      </span>}
+    <span ref={room} className="flex min-w-0 flex-1 items-center">
+      <span className="relative flex min-w-0 items-center">
+        <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left ${small ? 'text-xs' : ''} ${overflows || covered ? fade : ''} ${covered ? padded ? fadeBeforePaddedChevron : fadeBeforeChevron : ''} ${covered && !overflows ? fadeOnlyBeforeChevron : ''}`}>{title}</span>
+        {chevron && <span className={`session-item-twistie invisible absolute top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-visible/session:visible ${chevronFits ? 'left-full ml-1' : padded ? 'right-2' : 'right-0'}`} onClick={onToggle}>
+          {chevron}
+        </span>}
+      </span>
     </span>
   );
 }
