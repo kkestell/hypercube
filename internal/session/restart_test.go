@@ -328,8 +328,8 @@ func TestQuickExitCountSurvivesRestarts(t *testing.T) {
 func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 	t.Parallel()
 	f := newPlainFixture(t)
+	f.rt.requestTimeout = 500 * time.Millisecond
 	s := f.session()
-	f.rt.requestTimeout = 100 * time.Millisecond
 	f.queue("user", s.ID, "!hold", "later")
 	noted := func() int {
 		n := 0

@@ -14,17 +14,34 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// pauseStatus holds the first Git status in dir through its fsmonitor hook.
+// pauseStatus holds the first index-refreshing command (including status) in
+// dir. The shared repository config runs the hook in other worktrees too,
+// but only dir pauses. The hook is removed at release.
 func (f *fixture) pauseStatus(dir string) (wait, release func()) {
 	f.t.Helper()
-	return f.pauseGit(dir, "status")
+	return f.gitBarrier(dir, "core.fsmonitor", "fsmonitor", `
+if [ "$PWD" = "$HYPERCUBE_TEST_GIT_DIR" ]; then pause; fi
+# A failed fsmonitor hook asks Git to scan every file normally.
+exit 1
+`)
 }
 
-// pauseGit holds status or checkout through a repository-local hook. The
-// barrier outlives the runtime, and cleanup releases it even after failure.
-func (f *fixture) pauseGit(dir, command string) (wait, release func()) {
+// pauseWorktreeAdd holds branch creation by worktree add, even if checkout
+// later fails. The hook also sees other reference updates, but only pauses a
+// prepared branch creation. Install it after creating the parent's worktree.
+func (f *fixture) pauseWorktreeAdd() (wait, release func()) {
+	f.t.Helper()
+	return f.gitBarrier(f.root, "core.hooksPath", "reference-transaction", `
+if [ "$1" = prepared ] && grep -Eq '^0+ [0-9a-f]+ refs/heads/'; then pause; fi
+`)
+}
+
+// gitBarrier owns the hook's pipes and removes its configuration at release.
+// Cleanup releases the barrier even after test failure.
+func (f *fixture) gitBarrier(dir, key, hook, body string) (wait, release func()) {
 	t := f.t
 	t.Helper()
 	barrier, err := os.MkdirTemp(f.dir, "git")
@@ -44,29 +61,22 @@ func (f *fixture) pauseGit(dir, command string) (wait, release func()) {
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 	script := fmt.Sprintf("#!/bin/sh\nHYPERCUBE_TEST_GIT_DIR=%s\nHYPERCUBE_TEST_GIT_BARRIER=%s\n", quote(dir), quote(barrier))
-	path := filepath.Join(barrier, "fsmonitor")
-	condition := `[ "$PWD" = "$HYPERCUBE_TEST_GIT_DIR" ]`
-	if command == "checkout" {
-		path = filepath.Join(barrier, "post-checkout")
-		condition = `[ "$1" = 0000000000000000000000000000000000000000 ]`
-	}
-	script += "if " + condition + ` && mkdir "$HYPERCUBE_TEST_GIT_BARRIER/claimed" 2>/dev/null; then
+	path := filepath.Join(barrier, hook)
+	script += `pause() {
+ if mkdir "$HYPERCUBE_TEST_GIT_BARRIER/claimed" 2>/dev/null; then
  printf 'ready\n' > "$HYPERCUBE_TEST_GIT_BARRIER/reached"
  read response < "$HYPERCUBE_TEST_GIT_BARRIER/release"
-fi
-`
-	if command == "status" {
-		// A failed fsmonitor hook asks Git to scan every file normally.
-		script += "exit 1\n"
-	}
+ fi
+}
+` + body
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if command == "status" {
-		f.git(dir, "config", "core.fsmonitor", path)
-	} else {
-		f.git(dir, "config", "core.hooksPath", barrier)
+	value := path
+	if key == "core.hooksPath" {
+		value = barrier
 	}
+	f.git(dir, "config", key, value)
 	reached := make(chan error, 1)
 	go func() {
 		var b [6]byte
@@ -76,10 +86,6 @@ fi
 	var once sync.Once
 	release = func() {
 		once.Do(func() {
-			key := "core.fsmonitor"
-			if command == "checkout" {
-				key = "core.hooksPath"
-			}
 			// Only the held command needs the hook. Leaving it installed
 			// would spawn a shell for every later index read and status.
 			out, err := exec.Command("git", "-C", dir, "config", "--unset", key).CombinedOutput()
@@ -106,7 +112,7 @@ fi
 				t.Fatal(err)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatalf("Git %s did not reach the barrier", command)
+			t.Fatalf("Git %s did not reach the barrier", hook)
 		}
 	}, release
 }
@@ -155,7 +161,7 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 	for _, tc := range []struct {
 		archive bool
 		outcome string
-	}{{false, "success"}, {true, "missing-plugin"}} {
+	}{{false, "success"}, {true, "missing-plugin"}, {false, "setup-failure"}} {
 		archive, outcome := tc.archive, tc.outcome
 		t.Run(map[bool]string{false: "delete", true: "archive"}[archive]+"/"+outcome, func(t *testing.T) {
 			t.Parallel()
@@ -165,7 +171,16 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 			if outcome == "missing-plugin" {
 				options.Settings = harness.Settings{Harness: "missing", Model: "m"}
 			}
-			wait, release := f.pauseGit(parent.Dir, "checkout")
+			occupied := workspace.WorktreeDir(f.root, parent.ID, options.Name)
+			if outcome == "setup-failure" {
+				if err := os.MkdirAll(occupied, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(occupied, "file"), []byte("occupied"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wait, release := f.pauseWorktreeAdd()
 			type creation struct {
 				child store.Session
 				err   error
@@ -221,7 +236,11 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 				t.Fatal("family removal did not finish")
 			}
 			for _, member := range []store.Session{parent, child} {
-				if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
+				if outcome == "setup-failure" && member.ID == child.ID {
+					if content, err := os.ReadFile(filepath.Join(occupied, "file")); err != nil || string(content) != "occupied" {
+						t.Errorf("occupied directory changed: %q, %v", content, err)
+					}
+				} else if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
 					t.Errorf("worktree %s survived: %v", member.Dir, err)
 				}
 				out, err := exec.Command("git", "-C", f.root, "branch", "--list", member.Branch).CombinedOutput()

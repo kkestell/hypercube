@@ -66,6 +66,27 @@ func TestAddWorktreeFailureLeavesNoBranch(t *testing.T) {
 	}
 }
 
+func TestAddWorktreeSetupFailureRollsBack(t *testing.T) {
+	t.Parallel()
+	root, _ := gitRepo(t)
+	if err := os.Mkdir(filepath.Join(root, ".worktreeinclude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := SessionDir(root, "s1")
+	if err := AddWorktree(root, dir, "feature/x", ""); err == nil {
+		t.Fatal("AddWorktree with an unreadable include file succeeded")
+	}
+	if exists(root, "feature/x") {
+		t.Error("setup failure left its branch")
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("setup failure left its directory: %v", err)
+	}
+	if out, err := git(root, "worktree", "list", "--porcelain"); err != nil || strings.Contains(out, dir) {
+		t.Errorf("setup failure left a registered worktree: %s", out)
+	}
+}
+
 func TestBranches(t *testing.T) {
 	t.Parallel()
 	root, run := gitRepo(t)

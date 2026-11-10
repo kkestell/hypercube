@@ -123,11 +123,29 @@ func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
 	if other.Effort != "low" || f.storedSession(other.ID).Effort != "low" {
 		t.Fatalf("started %+v", other)
 	}
+	cfg, err := f.config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Models = []config.ModelEntry{{Harness: "test", Model: "m", Title: "Model", Efforts: []string{"low", "high"}, DefaultEffort: "high"}}
+	if err := f.config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	configured, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "configured", Title: "Title", Dir: ".", Settings: harness.Settings{Model: "m"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starts := f.log(configured.ID, "start"); len(starts) != 1 || starts[0].Model != "m" || starts[0].Effort != "high" {
+		t.Fatalf("configured default %+v", starts)
+	}
+	if configured.Effort != "high" || f.storedSession(configured.ID).Effort != "high" {
+		t.Fatalf("configured child %+v", configured)
+	}
 	// The harness rejects a model in its start, and the child is removed.
 	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "invalid", Title: "Title", Dir: ".", Settings: harness.Settings{Model: "invalid"}}); err == nil || !strings.Contains(err.Error(), "not offered") {
 		t.Fatal(err)
 	}
-	if len(f.family(parent.ID)) != 3 {
+	if len(f.family(parent.ID)) != 4 {
 		t.Fatalf("family %+v", f.family(parent.ID))
 	}
 }

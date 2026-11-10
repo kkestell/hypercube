@@ -82,7 +82,7 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 func TestWorkspaceDeletionRefusesUntilEveryCreationFinishes(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	wait, release := f.pauseGit(f.root, "checkout")
+	wait, release := f.pauseWorktreeAdd()
 	var s store.Session
 	created := make(chan error, 1)
 	done := make(chan struct{})
