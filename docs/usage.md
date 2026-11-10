@@ -136,12 +136,12 @@ See [session lifecycle](lifecycle.md) if you need to know what restarts.
 3. Find it later through Search or the sidebar's **Archived** tab. Choose
    **Unarchive** to make it active again.
 
-To drop a worktree session's work instead of keeping it, choose **Discard All
-Changes** in the session's menu and confirm. The agents stop, and the session's
-worktree and its children's worktrees return to the commit the session started
-from; uncommitted and untracked files and later commits are deleted, and ignored
-files stay. The session stays active, so **Archive Session** and **Delete
-Session** then pass their Git checks.
+**Discard All Changes** permanently deletes the uncommitted files and the
+commits that a worktree session and its children made since the session
+started. To use it, choose it in the session's menu and confirm. The session
+stays active, so **Archive Session** and **Delete Session** then pass their Git
+checks. See [cleanup behavior](storage.md#session-cleanup) for exactly what is
+deleted and what stays.
 
 **Delete Session** removes the family's saved conversations. It is not a
 substitute for Archive Session. Managed worktrees and branches are removed only

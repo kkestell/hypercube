@@ -415,9 +415,30 @@ func Removable(root, dir, branch, base string) error {
 // the worktree's uncommitted changes and untracked files, including those of
 // its submodules. Ignored files stay. It refuses a dir that is not the top
 // level of a worktree, because Git would act on the checkout that encloses it.
+// A merge, cherry-pick, revert, or rebase in progress is abandoned.
 func Discard(dir, branch, commit string) error {
 	if !isWorktree(dir) {
 		return fmt.Errorf("%s is not a worktree", dir)
+	}
+	// Git refuses to switch branches mid-operation. The reset clears merge,
+	// cherry-pick, and revert state; a rebase's state is left for rebase --quit.
+	if _, err := git(dir, "reset", "--quiet", "--hard"); err != nil {
+		return err
+	}
+	for _, name := range []string{"rebase-merge", "rebase-apply"} {
+		path, err := git(dir, "rev-parse", "--git-path", name)
+		if err != nil {
+			return err
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, path)
+		}
+		if _, err := os.Stat(path); err == nil {
+			if _, err := git(dir, "rebase", "--quit"); err != nil {
+				return err
+			}
+			break
+		}
 	}
 	if _, err := git(dir, "switch", "--quiet", "--discard-changes", "--recurse-submodules", "--force-create", branch, commit); err != nil {
 		return err

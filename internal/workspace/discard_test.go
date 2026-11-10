@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -137,5 +139,53 @@ func TestDiscardRefusesAFolderThatIsNotAWorktree(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(root, "draft")); err != nil || string(data) != "uncommitted" {
 		t.Errorf("the checkout's uncommitted file = %q, %v", data, err)
+	}
+}
+
+// An agent stopped in the middle of a conflicted merge or rebase leaves Git's
+// operation state in the worktree.
+func TestDiscardAbandonsAnOperationInProgress(t *testing.T) {
+	for _, operation := range []string{"merge", "rebase"} {
+		t.Run(operation, func(t *testing.T) {
+			root, run := gitRepo(t)
+			base, err := Head(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
+			if err := AddWorktree(root, dir, branch, ""); err != nil {
+				t.Fatal(err)
+			}
+			run(root, "branch", "side")
+			side := SessionDir(root, "side")
+			run(root, "worktree", "add", "-q", side, "side")
+			write(t, filepath.Join(side, "file"), "side")
+			run(side, "add", "file")
+			run(side, "commit", "-q", "-m", "side")
+			write(t, filepath.Join(dir, "file"), "session")
+			run(dir, "add", "file")
+			run(dir, "commit", "-q", "-m", "session")
+
+			cmd := exec.Command("git", "-c", "user.name=t", "-c", "user.email=t@t", operation, "side")
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err == nil {
+				t.Fatalf("git %s did not conflict: %s", operation, out)
+			}
+			if err := Discard(dir, branch, base); err != nil {
+				t.Fatal(err)
+			}
+			if head, err := Head(dir); err != nil || head != base {
+				t.Errorf("HEAD = %s, %v; want %s", head, err, base)
+			}
+			if status, err := git(dir, "status", "--porcelain"); err != nil || status != "" {
+				t.Errorf("status = %q, %v", status, err)
+			}
+			if state, err := git(dir, "status"); err != nil || strings.Contains(state, "in progress") || strings.Contains(state, "rebase") {
+				t.Errorf("an operation remains: %q, %v", state, err)
+			}
+			if err := Removable(root, dir, branch, base); err != nil {
+				t.Errorf("Removable after Discard = %v", err)
+			}
+		})
 	}
 }
