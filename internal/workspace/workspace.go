@@ -411,6 +411,28 @@ func Removable(root, dir, branch, base string) error {
 	return nil
 }
 
+// Discard checks out branch in the worktree dir, moved to commit, and deletes
+// the worktree's uncommitted changes and untracked files, including those of
+// its submodules. Ignored files stay. It refuses a dir that is not the top
+// level of a worktree, because Git would act on the checkout that encloses it.
+func Discard(dir, branch, commit string) error {
+	if !isWorktree(dir) {
+		return fmt.Errorf("%s is not a worktree", dir)
+	}
+	if _, err := git(dir, "switch", "--quiet", "--discard-changes", "--recurse-submodules", "--force-create", branch, commit); err != nil {
+		return err
+	}
+	// The second -f removes untracked nested repositories.
+	if _, err := git(dir, "clean", "-ffdq"); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err == nil {
+		_, err = git(dir, "submodule", "foreach", "--quiet", "--recursive", "git clean -ffdq")
+		return err
+	}
+	return nil
+}
+
 // keptRefs names the refs whose commits Removable keeps for base.
 func keptRefs(base string) string {
 	if base == "" {

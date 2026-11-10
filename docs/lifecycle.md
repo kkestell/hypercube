@@ -43,6 +43,10 @@ retries it.
 **Restart Agent** replaces a session's agent process and loads its installed
 plugin, keeping the saved conversation. It interrupts any current turn.
 
+**Discard All Changes** stops a worktree session's agents and returns its
+worktree and its children's worktrees to the commit the session started from,
+deleting their uncommitted and untracked files and later commits. The family
+stays active.
 **Archive Session** finishes a family's active use while preserving readable
 chats.
 **End child** permanently ends that child. These actions can also remove

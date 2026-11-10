@@ -155,6 +155,36 @@ test('an active family hides its ended children until its menu shows them, and m
 });
 
 
+test('Discard All Changes is offered for an active top-level worktree session, asks first, and posts only when confirmed', () => {
+  const {root, posted} = setup([
+    session('w', {worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 0, committed: false, uncommitted: 0}, children: [session('c', {parent: 'w', worktree: true})]}),
+    session('plain'),
+    session('old', {worktree: true, ended: true}),
+  ]);
+  contextMenu(row(root, 'w'));
+  expect(menuLabels()).toEqual(['Rename', 'Restart Agent', 'Discard All Changes', 'Archive Session', 'Delete Session']);
+  key(document.activeElement as HTMLElement, 'Escape');
+  for (const id of ['plain', 'c']) {
+    contextMenu(row(root, id));
+    expect(menuLabels()).not.toContain('Discard All Changes');
+    key(document.activeElement as HTMLElement, 'Escape');
+  }
+  click(find(root, '[role=tab][data-state=inactive]'));
+  contextMenu(row(root, 'old'));
+  expect(menuLabels()).not.toContain('Discard All Changes');
+  key(document.activeElement as HTMLElement, 'Escape');
+  click(find(root, '[role=tab][data-state=inactive]'));
+
+  choose(root, '[data-session="w"]', 'Discard All Changes');
+  expect(dialogReference('aria-labelledby')).toBe("Are you sure you want to discard all changes in 'Session w'?");
+  expect(dialogReference('aria-describedby')).toContain('branch feature');
+  act(() => dialogButton('Cancel').click());
+  expect(posted()).toEqual([]);
+  choose(root, '[data-session="w"]', 'Discard All Changes');
+  act(() => dialogButton('Discard All Changes').click());
+  expect(posted()).toEqual([{action: 'discard', id: 'w'}]);
+});
+
 test.each([
   ['darwin', ['Open in VS Code', 'Reveal in Finder', 'Open in Terminal']],
   ['linux', ['Open in VS Code', 'Show in Files']],

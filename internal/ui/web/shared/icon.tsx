@@ -2,7 +2,7 @@
 import {ArrowDown, BookMarked, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
   Clock, CloudUpload, Copy, Folder, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequest, GitPullRequestArrow, GitPullRequestDraft,
   Globe, Info, Laptop, MessageSquare, Paperclip, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
-  Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, User, WrapText, X, type LucideProps} from 'lucide-react';
+  Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, Undo2, TriangleAlert, User, WrapText, X, type LucideProps} from 'lucide-react';
 
 const icons = {
   'arrow-down': ArrowDown, 'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'arrow-up': ArrowUp,
@@ -14,7 +14,7 @@ const icons = {
   search: Search, settings: Settings, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,
   'open-preview': Eye, 'go-to-file': FileCode,
-  differs: ArrowLeftRight, play: Play, edit: Pencil, archive: Archive, trash: Trash2, code: Code, folder: Folder, 'folder-open': FolderOpen, terminal: SquareTerminal,
+  differs: ArrowLeftRight, play: Play, edit: Pencil, archive: Archive, discard: Undo2, trash: Trash2, code: Code, folder: Folder, 'folder-open': FolderOpen, terminal: SquareTerminal,
 };
 
 export type IconName = keyof typeof icons;

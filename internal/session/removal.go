@@ -297,15 +297,20 @@ func familyWorktrees(root string, s store.Session, children []store.Session) []m
 	return trees
 }
 
+// treeName names a managed worktree's session in an error: a child by its
+// name, a top-level session by its title.
+func treeName(s store.Session) string {
+	if s.Parent != "" {
+		return s.Name
+	}
+	return s.Title
+}
+
 func checkWorktrees(trees []managedWorktree) error {
 	var problems []string
 	for _, tree := range trees {
 		if err := workspace.Removable(tree.root, tree.session.Dir, tree.session.Branch, tree.session.Base); err != nil {
-			name := tree.session.Title
-			if tree.session.Parent != "" {
-				name = tree.session.Name
-			}
-			problems = append(problems, fmt.Sprintf("%s: %v", name, err))
+			problems = append(problems, fmt.Sprintf("%s: %v", treeName(tree.session), err))
 		}
 	}
 	if len(problems) > 0 {

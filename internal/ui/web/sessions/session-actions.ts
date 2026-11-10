@@ -41,6 +41,16 @@ const deleteDetail = (session: Session) => {
 export const deleteSession = (store: Store, session: Session) => confirmDelete(store, session.title, deleteDetail(session),
   () => post(store, 'session', {action: 'delete', id: session.id}));
 
+export const discardSession = (store: Store, session: Session) => {
+  const branch = session.merge ? ` and the commits on branch ${session.merge.branch}` : '';
+  askToConfirm(store, {
+    message: `Are you sure you want to discard all changes in '${session.title}'?`,
+    detail: `Its agents stop, and its worktree and its children's worktrees return to the commit it started from. Their uncommitted and untracked files${branch} are deleted. Ignored files stay.`,
+    primary: 'Discard All Changes',
+    accept: () => post(store, 'session', {action: 'discard', id: session.id}),
+  });
+};
+
 export const deleteWorkspace = (store: Store, workspace: Workspace) => confirmDelete(store, workspace.name,
   "Its sessions and children are deleted with their chats and all their managed worktrees and branches, after Git checks.",
   () => post(store, 'workspace', {action: 'delete', id: workspace.id}));

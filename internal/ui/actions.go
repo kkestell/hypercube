@@ -130,6 +130,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	case "delete":
 		err = s.rt.Delete(id)
+	case "discard":
+		err = s.rt.Discard(id)
 	case "archive":
 		err = s.rt.Archive(id)
 	case "unarchive":

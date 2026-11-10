@@ -183,7 +183,9 @@ would keep them.
 **Fix:**
 
 1. Open the named session and inspect its changes in the Git panel.
-2. Commit the files you want to keep, or discard them.
+2. Commit the files you want to keep, or discard them. To drop all of a
+   worktree session's work, including its children's, choose **Discard All
+   Changes** in the session's menu.
 3. Merge or push the commits you want to keep, as that section describes; see
    [Merge and finish a child's work](teamwork.md#merge-and-finish-a-childs-work).
 4. Choose the action again. For how a refusal affects **Delete Workspace**,

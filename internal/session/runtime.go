@@ -34,7 +34,7 @@ const (
 var (
 	errStopped           = errors.New("the agent was stopped")
 	errClosing           = errors.New("hypercube is shutting down")
-	errDeleting          = errors.New("the session is being deleted")
+	errDeleting          = errors.New("another change to the session is in progress")
 	errEnded             = errors.New("the session has ended")
 	errWorkspaceDeleting = errors.New("the workspace is being deleted")
 	errWorkspaceCreating = errors.New("a session is being created in the workspace; retry when creation finishes")
