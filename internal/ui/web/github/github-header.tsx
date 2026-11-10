@@ -7,6 +7,7 @@ import {WorkingContext} from '../agent/working-context.tsx';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
 import type {Workspace} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
+import {Message} from '../shared/message.tsx';
 import {useStore, type Store} from '../store.ts';
 import type {GitHubStatus} from './types.ts';
 import {commits, failureText, trackingText} from './wording.ts';
@@ -49,12 +50,6 @@ export function WorkspaceContext({workspace}: {workspace: Workspace}) {
     : <WorkingContext />;
 }
 
-// GitHubError says why the workspace's GitHub data could not be updated.
-export function GitHubError({workspace}: {workspace: Workspace}) {
-  const status = workspace.github;
-  if (!status?.error) return null;
-  return <p className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground">
-    <Icon name="warning" className="text-destructive" />
-    <span>{failureText('Could not update from GitHub', status.error, status.updated)}</span>
-  </p>;
+export function GitHubError({failure, subject = 'Could not update from GitHub'}: {failure?: {error?: string; updated: number}; subject?: string}) {
+  return failure?.error ? <Message error className="mb-4">{failureText(subject, failure.error, failure.updated)}</Message> : null;
 }

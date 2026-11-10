@@ -1,9 +1,11 @@
 // The sentences and icon looks that describe a branch's tracking and a pull
 // request.
 import type {IconName} from '../shared/icon.tsx';
+import {tones} from '../shared/tones.ts';
 import type {GitHubStatus, PullRequest} from './types.ts';
 
 export const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
+export const checkingGitHub = 'Checking GitHub.';
 
 export function trackingText({branch, upstream, ahead, behind}: GitHubStatus): string {
   if (!branch) return 'No branch is checked out.';
@@ -42,10 +44,10 @@ export function pullRequestFacts(pr: PullRequest): string[] {
 // pullRequestLook chooses the icon and color that say what a pull request
 // needs: draft, failing checks, changes, or nothing (approved).
 export function pullRequestLook(pr: PullRequest): {icon: IconName; color: string} {
-  const muted = {icon: 'git-pull-request' as const, color: 'text-muted-foreground'};
-  if (pr.draft) return {icon: 'git-pull-request-draft', color: 'text-muted-foreground'};
-  if (failing(pr)) return {...muted, color: 'text-destructive'};
-  if (pr.review === 'CHANGES_REQUESTED') return {...muted, color: 'text-amber-600 dark:text-amber-500'};
-  if (pr.review === 'APPROVED' && (pr.checks === 'SUCCESS' || !pr.checks)) return {...muted, color: 'text-green-600 dark:text-green-500'};
+  const muted = {icon: 'git-pull-request' as const, color: tones.muted};
+  if (pr.draft) return {icon: 'git-pull-request-draft', color: tones.muted};
+  if (failing(pr)) return {...muted, color: tones.error};
+  if (pr.review === 'CHANGES_REQUESTED') return {...muted, color: tones.warning};
+  if (pr.review === 'APPROVED' && (pr.checks === 'SUCCESS' || !pr.checks)) return {...muted, color: tones.success};
   return muted;
 }

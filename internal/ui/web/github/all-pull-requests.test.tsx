@@ -1,4 +1,5 @@
 import {afterEach, expect, test} from 'bun:test';
+import {act} from 'react';
 import {clickControl, find, findAll, mount, unmountAll} from '../../test-render.tsx';
 import {testPullRequest, testState, testWorkspace} from '../../test-state.ts';
 import {createStore} from '../store.ts';
@@ -82,4 +83,21 @@ test('a failed account warns, with its older data when it has some', () => {
 
 test('before any account has been read it says GitHub is being checked', () => {
   expect(view([account('a', [], {updated: 0})]).textContent).toContain('Checking GitHub.');
+});
+
+test('closing Clone returns focus to its opener and allows opening it again', async () => {
+  const root = view([account('a', [pr({repo: 'o/r'})])]);
+  const opener = find(root, '[aria-label="Clone o/r"]');
+  act(() => opener.focus());
+  clickControl(opener);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Clone o/r');
+  const cancel = findAll(document, 'button').find(button => button.textContent === 'Cancel')!;
+  await act(async () => {
+    clickControl(cancel);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.activeElement).toBe(opener);
+  clickControl(opener);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Clone o/r');
 });

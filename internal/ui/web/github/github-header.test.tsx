@@ -79,10 +79,13 @@ test('a session row shows its open pull request', () => {
   stubFetch(() => new Response(''));
   const pullRequest = testPullRequest({number: 12, draft: true});
   const store = createStore(testState({workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [
-    testSession({id: 'a', pullRequest}), testSession({id: 'b'}),
+    testSession({id: 'a', title: 'With pull request', pullRequest}), testSession({id: 'b', title: 'Without pull request'}),
   ]})]}));
   const root = mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
-  const images = (id: string) => findAll(root, `[data-session="${id}"] [role=img]`).map(image => image.getAttribute('aria-label')).filter(name => name?.startsWith('Pull request'));
-  expect(images('a')).toEqual(['Pull request #12: Add it. Draft.']);
-  expect(images('b')).toEqual([]);
+  const images = (title: string) => {
+    const row = findAll(root, '[role="treeitem"]').find(row => row.textContent?.includes(title))!;
+    return findAll(row, '[role="img"]').map(image => image.getAttribute('aria-label')).filter(name => name?.startsWith('Pull request'));
+  };
+  expect(images('With pull request')).toEqual(['Pull request #12: Add it. Draft.']);
+  expect(images('Without pull request')).toEqual([]);
 });

@@ -19,7 +19,7 @@ export function WorkspaceDashboard() {
     <MainTabBar icon="files" title={workspace.name} />
     <WorkspaceContext workspace={workspace} />
     <div className="min-h-0 flex-1 overflow-auto p-6">
-      <GitHubError workspace={workspace} />
+      <GitHubError failure={workspace.github} />
       <div className="grid gap-10 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
         <PullRequests workspace={workspace} />
         <section>

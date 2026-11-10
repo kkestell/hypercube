@@ -11,10 +11,13 @@ const github = {repo: 'o/a', url: '', account: '', branch: '', ahead: 0, behind:
 const setup = () => {
   const store = createStore(testState({workspaces: [testWorkspace({id: 'w', path: '/work/a', github})]}));
   let closed = 0;
-  mount(store, <CloneDialog pr={testPullRequest({repo: 'o/b'})} account="alice" onClose={() => { closed++; }} />);
+  mount(store, <CloneDialog open pr={testPullRequest({repo: 'o/b'})} account="alice" onClose={() => { closed++; }} />);
   return {store, closed: () => closed};
 };
-const folder = () => document.querySelector<HTMLInputElement>('#clone-folder')!;
+const folder = () => {
+  const label = [...document.querySelectorAll('label')].find(label => label.textContent === 'Folder')!;
+  return document.getElementById(label.htmlFor) as HTMLInputElement;
+};
 const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.includes(label))!;
 const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
