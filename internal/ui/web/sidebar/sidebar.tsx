@@ -76,7 +76,7 @@ export function Sidebar() {
   const needYou = yourMoves(state.accounts).length;
   const home = homeShown(state);
   const tree = <>
-    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky top-0 z-10 bg-sidebar pb-2">
+    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky -top-1 z-10 -mt-1 bg-sidebar pt-1 pb-2">
       <Button variant={home ? 'secondary' : 'ghost'} size="sm" className={`h-8 w-full justify-start gap-2 px-2 font-normal ${home ? 'hover:bg-secondary' : ''}`} aria-pressed={home} onClick={() => store.update(s => showHome(stopRenaming(s)))}>
         <Icon name="git-pull-request" className="text-muted-foreground" />
         <span className="flex-1 text-left">Pull Requests</span>
