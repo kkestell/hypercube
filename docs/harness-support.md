@@ -12,9 +12,10 @@ not rewrite your global or project settings or change `HOME`.
 | OpenCode | `opencode`, version 2.x | A `provider/model` and one of its offered variants. |
 | Pi | `pi`, version 1.4 or later | A full `provider/id` and an offered thinking level. |
 
-Hypercube discovers installed harnesses at startup. The selector lists models
-configured in **Settings › Agents › Models**. The table above gives the form
-of each harness's model ID and effort. Invalid selections are rejected at start
+Hypercube discovers installed harnesses at startup, and again when the model
+editor in **Settings › Agents › Models** lists harnesses. The selector lists
+models configured there. The table above gives the form of each harness's
+model ID and effort. Invalid selections are rejected at start
 or model change, before the first prompt.
 
 A model with efforts needs one; a model without efforts takes none. OpenCode and
@@ -59,7 +60,8 @@ depends on the harness:
 - Extension dialogs appear as choices, Yes/No, or a text field.
 - A timed-out dialog closes; extension errors appear in chat.
 
-Saved choices can be reviewed and removed in **Settings**.
+Saved choices can be reviewed and removed in **Settings › Permissions ›
+Always Allowed Tools**.
 
 ## Questions
 

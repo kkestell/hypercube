@@ -26,10 +26,11 @@ You need an installed, authenticated coding tool. See
 
 Choose the task you want to complete:
 
-- [Manage sessions](docs/usage.md) — start, steer, resume, and archive work.
+- [Manage sessions](docs/usage.md) — add workspaces; start, steer, resume, and archive work.
 - [Work with a team](docs/teamwork.md) — delegate, review, and merge changes.
 - [Review files and changes](docs/review-changes.md) — inspect output beside chat.
 - [Upgrade Hypercube](docs/upgrades.md).
+- [Troubleshoot Hypercube](docs/troubleshooting.md) — fix setup, start, and cleanup errors.
 
 ## Reference
 

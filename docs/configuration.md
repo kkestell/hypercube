@@ -1,8 +1,11 @@
 # Configuration reference
 
-Open **Settings** with **Command+,** on macOS or **Ctrl+,** on Linux.
+Open **Settings** with **Command+,** on macOS or **Ctrl+,** on Linux, or with
+the gear button at the top of the sidebar. It opens to **General**.
 **Save changes** validates and writes preferences; closing without saving
 discards edits. No configuration file is needed to use the defaults.
+Settings has five sections: **General**, **Agents**, **Review**,
+**Notifications**, and **Permissions**. Each part below names where its settings are.
 
 The file is `~/.config/hypercube/config.json`, or
 `$XDG_CONFIG_HOME/hypercube/config.json` when that variable is set.
@@ -13,11 +16,13 @@ shows every field.
 
 ## Session defaults
 
+Set these in **Settings › General › New sessions**: **Default model** and
+**Default location**.
+
 | Field | Meaning | Default |
 | --- | --- | --- |
 | `default_selection` | Object with `harness`, `model`, and `effort`; used for a workspace with no sessions. Otherwise, the newest session supplies the initial selection. | Not set |
 | `default_worktree` | Start new Git sessions in a worktree. The composer can override this for each session. | `false` |
-| `child_model_guidance` | Instructions to agents about when children should use a different harness, model, or effort. It does not restrict available choices. | Empty text |
 
 A model with effort levels needs an `effort`; a model without them takes none.
 Model and effort values are the harness's native IDs; the plugin rejects
@@ -43,6 +48,15 @@ Editing or deleting an entry does not change existing session settings or saved
 defaults. Agents can still discover and choose models that are not in this
 list.
 
+## Child sessions
+
+Set **Guidance for choosing child models** in **Settings › Agents › Child
+sessions**.
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `child_model_guidance` | Instructions to agents about when children should use a different harness, model, or effort. It does not restrict available choices. | Empty text |
+
 ## Pull request reviews
 
 **Settings › Review** chooses the model and prompt that
@@ -59,6 +73,9 @@ error.
 
 ## Appearance
 
+Set **Theme** and **Terminal text size** in **Settings › General ›
+Appearance**.
+
 | Field | Values | Default |
 | --- | --- | --- |
 | `theme` | `system`, `light`, `dark` | `system` |
@@ -66,17 +83,30 @@ error.
 
 ## Notifications
 
-All four fields in the `notifications` object default to `true`.
+Set these in **Settings › Notifications**. All four fields in the
+`notifications` object default to `true`.
 
-| Field | Effect |
-| --- | --- |
-| `requests` | Show question and approval alerts as cards and desktop notifications. |
-| `replies` | Show new-reply alerts as cards and desktop notifications. |
-| `desktop` | Deliver desktop notifications while the app is open but its window is not focused. |
-| `sound` | Play a sound with desktop notifications. |
+| Field | Setting | Effect |
+| --- | --- | --- |
+| `requests` | **An agent needs my attention** | Show question and approval alerts as cards and desktop notifications. |
+| `replies` | **An agent has a new reply** | Show new-reply alerts as cards and desktop notifications. |
+| `desktop` | **Show desktop notifications** | Deliver desktop notifications while the app is open but its window is not focused. |
+| `sound` | **Play a sound** | Play a sound with desktop notifications. Available while desktop notifications are on. |
 
 Notification delivery and dismissal are described in the
 [interface reference](interface.md#notifications).
+
+## Permissions
+
+**Settings › Permissions › Always Allowed Tools** lists the tools you chose to
+always allow from an approval, with each choice's harness and whether it
+applies to one session or all sessions. **Remove** deletes a choice, so the
+harness asks again when it needs approval. Removal applies immediately,
+without **Save changes**.
+
+Saved choices are kept in the [database](storage.md#hypercube-files), not in
+`config.json`. [Permission behavior](harness-support.md#permissions) varies by
+harness.
 
 ## `.worktreeinclude`
 

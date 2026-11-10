@@ -3,6 +3,25 @@
 A session is one agent's conversation and working directory. For a guided
 first use, follow [Your first session](getting-started.md).
 
+## Add a workspace
+
+A workspace is a project folder; the sidebar lists its sessions under its
+name.
+
+1. Choose **Add Workspace**, the folder button at the top of the sidebar.
+2. Select the project folder.
+
+Hypercube opens a new session in the workspace, ready for its first prompt.
+For a folder inside a Git checkout, the workspace is the checkout's top-level
+folder. Choosing a folder that is already a workspace opens that workspace.
+
+Click a workspace's name to open its dashboard, or use its chevron to collapse
+it; see [sidebar states](interface.md#sidebar-states).
+
+Hover over a workspace's name for **New Session** and **More Actions**. More
+Actions, or right-clicking the name, opens the workspace's menu, including
+**Delete Workspace**.
+
 ## Start a session
 
 1. Choose **Add Workspace** for a new project folder, or **New Session** in an
@@ -18,7 +37,8 @@ first use, follow [Your first session](getting-started.md).
 
 New sessions initially use the workspace's newest session settings, or your
 [configured default](configuration.md#session-defaults) if there are no sessions.
-The initial location choice comes from Settings.
+The initial location choice comes from **Settings › General › Default
+location**.
 
 Unsent sessions remain as **New Session** rows once you type or attach
 something. Their text, settings, and location choice survive switching
@@ -70,8 +90,8 @@ Afterward, the answer remains in the child's history.
 
 Read approvals before allowing them. Some offer **Always allow in this
 session** or **Always allow in all sessions**. Review or remove saved choices
-in **Settings**. [Permission behavior](harness-support.md#permissions) varies
-by harness.
+in **Settings › Permissions › Always Allowed Tools**.
+[Permission behavior](harness-support.md#permissions) varies by harness.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/attention-dark.png">
@@ -96,13 +116,32 @@ See [session lifecycle](lifecycle.md) if you need to know what restarts.
 
 1. Commit any work you want to keep from managed worktrees, and merge or push
    it.
-2. Choose **Archive** in the session's menu to keep searchable, read-only
-   conversations while removing the family from the active list.
+2. Choose **Archive Session** in the session's menu to keep searchable,
+   read-only conversations while removing the family from the active list.
 3. Find it later through Search or the sidebar's **Archived** tab. Choose
    **Unarchive** to make it active again.
 
-**Delete** removes the family's saved conversations. It is not a substitute
-for Archive. Managed worktrees and branches are removed only after Git checks
-for uncommitted files and for commits that are neither merged nor pushed; the
-original project directory is not deleted. See the
+**Delete Session** removes the family's saved conversations. It is not a
+substitute for Archive Session. Managed worktrees and branches are removed only
+after Git checks for uncommitted files and for commits that are neither merged
+nor pushed; the original project directory is not deleted. See the
 [cleanup reference](storage.md#session-cleanup) before removing a team.
+
+## Delete a workspace
+
+**Delete Workspace** permanently deletes every session in the workspace,
+active and archived, with their children and conversations. It stops their
+agents and the workspace's terminal shells, and removes their managed
+worktrees and branches after Git checks. The project folder and its files are
+kept.
+
+1. Commit any work you want to keep from the workspace's managed worktrees,
+   and merge or push it.
+2. Right-click the workspace's name, or choose **More Actions** beside it, and
+   choose **Delete Workspace**.
+3. Choose **Delete** to confirm.
+
+Sessions are deleted one family at a time. If a worktree fails the Git checks,
+deletion stops at that session: families deleted before it stay deleted, and
+the workspace remains with the rest. See
+[Archive or delete is refused](troubleshooting.md#archive-or-delete-is-refused).
