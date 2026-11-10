@@ -24,11 +24,13 @@ export function MarkdownLink({href, children}: {href: string; children: ReactNod
   return <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a>;
 }
 
-// Options are how a token renders: flatten draws plain text, preview omits
-// the copy buttons, imageSource gives the address an image may load from,
-// and renderLink lets file previews open local files.
+// Options are how a token renders: flatten draws plain text, linkText draws
+// links as their text, preview omits the copy buttons, imageSource gives the
+// address an image may load from, and renderLink lets file previews open
+// local files.
 interface Options {
   flatten?: boolean;
+  linkText?: boolean;
   preview?: boolean;
   imageSource?: (href: string) => string | null | undefined;
   renderLink?: (href: string, children: ReactNode) => ReactNode;
@@ -54,10 +56,10 @@ function element(t: Token, options: Options): ReactNode {
     case 'heading': return options.flatten ? children(t.tokens) : createElement('h' + t.depth, null, children(t.tokens));
     case 'code':
       return options.flatten ? t.text : <div className="group relative [--copy-bg:var(--muted)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
-    case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children(t.tokens)}</blockquote>;
+    case 'blockquote': return options.flatten ? flatTokens(t.tokens, options) : <blockquote>{children(t.tokens)}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {
-      if (options.flatten) return joined(t.items.map((item: Tokens.ListItem) => flatTokens(item.tokens)), '\n');
+      if (options.flatten) return joined(t.items.map((item: Tokens.ListItem) => flatTokens(item.tokens, options)), '\n');
       const items = t.items.map((item: Tokens.ListItem, i: number) => <li key={i}>{tokens(item.tokens, options)}</li>);
       return t.ordered ? <ol start={t.start === '' || t.start === 1 ? undefined : t.start}>{items}</ol> : <ul>{items}</ul>;
     }
@@ -80,7 +82,7 @@ function element(t: Token, options: Options): ReactNode {
     case 'del': return <del>{children(t.tokens)}</del>;
     case 'codespan': return <code>{t.text}</code>;
     case 'br': return <br />;
-    case 'link': return options.flatten ? children(t.tokens) : link(decodeHTMLStrict(t.href), children(t.tokens));
+    case 'link': return options.linkText ? children(t.tokens) : link(decodeHTMLStrict(t.href), children(t.tokens));
     case 'image': {
       const text = decodeHTMLStrict(t.text), href = decodeHTMLStrict(t.href);
       if (options.flatten) return text || null;
@@ -95,8 +97,8 @@ function element(t: Token, options: Options): ReactNode {
 }
 
 // flatTokens renders block tokens as plain text, keeping inline marks.
-function flatTokens(list: Token[] = []): ReactNode[] {
-  return joined(list.map(token => element(token, {flatten: true})).filter(node => node != null).map((node, i) => <Fragment key={i}>{node}</Fragment>), '\n');
+function flatTokens(list: Token[] = [], options: Options): ReactNode[] {
+  return joined(list.map(token => element(token, options)).filter(node => node != null).map((node, i) => <Fragment key={i}>{node}</Fragment>), '\n');
 }
 
 // style is 'chat' or 'preview'. Text is content in the foreground color, or
@@ -117,8 +119,9 @@ export function Markdown({text, style, muted, imageSource, renderLink}: Markdown
 }
 
 // MarkdownText is Markdown as inline text for a compact preview: headings,
-// lists, quotes, code blocks, images, and links flatten to their text, while
-// inline marks and inline code remain. A preview can sit inside a button.
-export function MarkdownText({text}: {text: string}) {
-  return <span>{flatTokens(lexer(text))}</span>;
+// lists, quotes, code blocks, and images flatten to their text, while inline
+// marks, inline code, and links remain. A preview inside a button sets
+// linkText, which draws links as their text.
+export function MarkdownText({text, linkText = false}: {text: string; linkText?: boolean}) {
+  return <span>{flatTokens(lexer(text), {flatten: true, linkText})}</span>;
 }

@@ -27,7 +27,7 @@ export function PullRequests({workspace}: {workspace: Workspace}) {
   const accounts = [{login: status.account, pullRequests: status.pullRequests, updated: status.updated}];
   return <section aria-label="Pull requests">
     <h2 className="group/heading mb-3 text-lg font-semibold">
-      <a href={`${status.url}/pulls`} target="_blank" rel="noopener noreferrer" aria-label="All open pull requests on GitHub" title="All open pull requests on GitHub" className="flex items-center gap-2 hover:underline">
+      <a href={`${status.url}/pulls`} target="_blank" rel="noopener noreferrer" title="All open pull requests on GitHub" className="flex items-center gap-2 hover:underline">
         Pull Requests
         <span className="invisible text-muted-foreground opacity-0 transition-[opacity,visibility] group-hover/heading:visible group-hover/heading:opacity-100 group-focus-within/heading:visible group-focus-within/heading:opacity-100"><Icon name="link-external" /></span>
       </a>

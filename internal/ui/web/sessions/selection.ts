@@ -163,7 +163,10 @@ export function openUnsent(state: State, workspace?: string | null): State {
   const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
   const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, settings: draftDefaults(next, workspace), worktree: null, branch: null, sending: false};
-  return attach({...next, unsent, unsentDrafts, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
+  // Quick Open lists the files of a session or workspace, which an unsent
+  // session does not show.
+  const dialog = next.dialog === 'quickOpen' ? null : next.dialog;
+  return attach({...next, unsent, unsentDrafts, dialog, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
 }
 
 // unsentSettingsChosen sets the unsent session's settings.

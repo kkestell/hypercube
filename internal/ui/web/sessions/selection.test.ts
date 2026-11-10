@@ -152,3 +152,11 @@ test("a draft's settings are set once and then follow neither new sessions nor a
   state = openUnsent(selectSession(state, 'n'), 'w');
   expect(state.unsent?.settings).toEqual(opus);
 });
+
+test('a new session closes Quick Open, which does not return with the saved session', () => {
+  const state = receivedWorkspaces(testState({selected: 'a', dialog: 'quickOpen'}), [testWorkspace({id: 'w', sessions: [testSession({id: 'a'})]})]);
+  const unsent = openUnsent(state, 'w');
+  expect(unsent.dialog).toBeNull();
+  expect(selectSession(unsent, 'a').dialog).toBeNull();
+  expect(openUnsent({...state, dialog: 'settings'}, 'w').dialog).toBe('settings');
+});

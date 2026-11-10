@@ -57,7 +57,7 @@ export function MessageItem({item}: {item: UserItem | ToolItem}) {
   return (
     <Disclosure id={item.id}
       summary={<span className="flex min-w-0 max-w-1/2 shrink-0 items-center gap-2"><span className="truncate">{heading}</span>{status}</span>}
-      preview={<span className="min-w-0 flex-1 truncate text-muted-foreground"><MarkdownText text={text.split(/\r?\n/, 1)[0]} /></span>}>
+      preview={<span className="min-w-0 flex-1 truncate text-muted-foreground"><MarkdownText text={text.split(/\r?\n/, 1)[0]} linkText /></span>}>
       <div className="space-y-2 pb-1 pr-3">
         <Markdown text={text} style="chat" muted />
         {details}

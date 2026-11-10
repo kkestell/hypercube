@@ -5,7 +5,7 @@
 // would land outside their targets: a tab dragged anywhere but a pane could
 // type its ID into a text box, and a file outside an agent pane would open in
 // the browser. A pane or an agent pane takes a drop by preventing its default.
-import {useEffect, useLayoutEffect, useMemo, useState} from 'react';
+import {useEffect, useLayoutEffect, useState} from 'react';
 import {post} from '../api.ts';
 import {QuickOpen} from '../files/quick-open.tsx';
 import {NotificationStack} from '../notifications/notification-stack.tsx';
@@ -14,8 +14,7 @@ import {SessionView} from '../sessions/session-view.tsx';
 import {ConfirmDialog} from '../shared/confirm-dialog.tsx';
 import {Split} from '../shared/split.tsx';
 import {Sidebar} from '../sidebar/sidebar.tsx';
-import type {State} from '../state.ts';
-import {StoreContext, type Store} from '../store.ts';
+import {StoreProvider, type Store} from '../store.ts';
 import {TerminalPanel} from '../terminal/terminal-panel.tsx';
 import {RightPanel} from './right-panel.tsx';
 import {binding} from './keys.ts';
@@ -80,7 +79,6 @@ export function App({store}: {store: Store}) {
   useEffect(() => {
     hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: keysOf(s).map(binding)}))});
   }, []);
-  const context = useMemo<[State, Store]>(() => [state, store], [state]);
 
   const title = pageTitle(state);
   useEffect(() => {
@@ -96,7 +94,7 @@ export function App({store}: {store: Store}) {
   const {sidebar, rightPanel, sizes} = state.workbench;
   const panel = state.editor?.panel ?? false;
   return (
-    <StoreContext.Provider value={context}>
+    <StoreProvider state={state} store={store}>
       <div className="flex h-full flex-col" style={titleBarVars(state.titleBar)}>
         <div className="min-h-0 flex-1">
           <Split fixed="start" size={sizes.sidebar} onResize={size => store.update(s => resizeRegion(s, 'sidebar', size))} onCollapse={() => store.update(s => hideRegion(s, 'sidebar'))} minStart="280px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
@@ -116,6 +114,6 @@ export function App({store}: {store: Store}) {
         <SettingsDialog />
         <ShortcutsDialog />
       </div>
-    </StoreContext.Provider>
+    </StoreProvider>
   );
 }

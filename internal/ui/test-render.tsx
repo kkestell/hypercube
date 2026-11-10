@@ -3,7 +3,7 @@ import {mock, spyOn, type Mock} from 'bun:test';
 import {act, useLayoutEffect, useState, type ReactNode} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {flushSync} from 'react-dom';
-import {StoreContext, type Store} from './web/store.ts';
+import {StoreProvider, type Store} from './web/store.ts';
 
 const roots = new Map<Element, Root>();
 
@@ -23,7 +23,7 @@ export function render(element: ReactNode | null, container: Element) {
 function Provider({store, children}: {store: Store; children: ReactNode}) {
   const [state, setState] = useState(store.get());
   useLayoutEffect(() => store.subscribe(setState), [store]);
-  return <StoreContext.Provider value={[state, store]}>{children}</StoreContext.Provider>;
+  return <StoreProvider state={state} store={store}>{children}</StoreProvider>;
 }
 
 export function mount(store: Store, element: ReactNode): HTMLDivElement {

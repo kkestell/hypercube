@@ -3,14 +3,14 @@
 import type {ReactNode} from 'react';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {Chevron} from '../shared/icon.tsx';
-import {useStore} from '../store.ts';
+import {useStoreValue} from '../store.ts';
 import {setExpanded} from './transcripts.ts';
 
 // useExpanded is whether the user opened the row keyed id, and a function to
-// open or close it.
+// open or close it. The row redraws only when that changes.
 export function useExpanded(id: string) {
-  const [state, store] = useStore();
-  return [!!state.session?.expanded[id], (open: boolean) => store.update(s => setExpanded(s, id, open))] as const;
+  const [open, store] = useStoreValue(state => !!state.session?.expanded[id]);
+  return [open, (open: boolean) => store.update(s => setExpanded(s, id, open))] as const;
 }
 
 interface DisclosureProps {

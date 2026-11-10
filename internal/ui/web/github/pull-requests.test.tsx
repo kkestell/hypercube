@@ -34,7 +34,8 @@ test('rows are grouped as on the pull requests page, say why, and link GitHub', 
     pr({number: 9, title: 'Mine', review: 'REVIEW_REQUIRED', merge: 'BLOCKED'}),
   ]}));
   const link = find(list(root, 'Reviews to do'), 'a');
-  expect(link.getAttribute('aria-label')).toBe('Open #8 on GitHub');
+  expect(link.textContent).toBe('#8 Theirs');
+  expect(link.getAttribute('title')).toBe('Open on GitHub');
   expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/8');
   expect(link.getAttribute('target')).toBe('_blank');
   expect(list(root, 'Reviews to do').textContent).toBe('#8 TheirsFrom bob.Review');
@@ -59,7 +60,8 @@ test('empty states say what is happening', () => {
 
 test('every dashboard links to all open pull requests', () => {
   const {root} = dashboard(github({pullRequests: [pr({merge: 'CLEAN'}), pr({number: 8, author: 'bob'})]}));
-  const link = find(root, '[aria-label="All open pull requests on GitHub"]');
+  const link = find(find(root, 'h2'), 'a');
+  expect(link.textContent).toBe('Pull Requests');
   expect(link.getAttribute('href')).toBe('https://github.com/o/r/pulls');
 });
 

@@ -6,7 +6,7 @@ import {DiffView} from '../changes/diff-view.tsx';
 import {openTab} from '../editor/tab-layout.ts';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {emptyEditor} from '../sessions/selection.ts';
-import {createStore, StoreContext} from '../store.ts';
+import {createStore, StoreProvider} from '../store.ts';
 import {FileView} from './file-view.tsx';
 import {setSource} from './files.ts';
 
@@ -76,7 +76,7 @@ test('Markdown file previews render images relative to the file and session', ()
   const store = createStore(testState({editor: session}));
   const root = document.createElement('div');
   try {
-    render(<StoreContext.Provider value={[store.get(), store]}><FileView id="file" path={path} /></StoreContext.Provider>, root);
+    render(<StoreProvider state={store.get()} store={store}><FileView id="file" path={path} /></StoreProvider>, root);
     const images = [...root.querySelectorAll('img')];
     expect(images.map(image => image.alt)).toEqual(['Local', 'Parent', 'Root', 'SVG', 'Remote']);
     const sources = images.map(image => new URL(image.getAttribute('src') ?? '', 'http://localhost:4280'));
@@ -106,7 +106,7 @@ test.each([
   session.files.open[path] = {...unread, preview: {mime, url}};
   const store = createStore(testState({editor: session}));
   const root = document.createElement('div');
-  render(<StoreContext.Provider value={[store.get(), store]}><FileView id={'file:' + path} path={path} /></StoreContext.Provider>, root);
+  render(<StoreProvider state={store.get()} store={store}><FileView id={'file:' + path} path={path} /></StoreProvider>, root);
   const viewer = root.querySelector(tag);
   expect(viewer?.getAttribute(attribute)).toBe(url);
   if (tag === 'iframe') expect(viewer?.getAttribute('sandbox')).toBe('');
@@ -235,7 +235,7 @@ test.each(['file', 'diff'])('%s highlights without focus and keeps unprocessed t
       : <DiffView id="diff:a.go" path="a.go" active={active} />;
     const root = document.createElement('div');
     document.body.append(root);
-    render(<StoreContext.Provider value={[store.get(), store]}>{view(false)}</StoreContext.Provider>, root);
+    render(<StoreProvider state={store.get()} store={store}>{view(false)}</StoreProvider>, root);
     const source = () => [...root.querySelectorAll('code')].map(line => line.textContent);
     expect(source()).toEqual(['one', 'two', 'three']);
     expect(workers).toHaveLength(1);
@@ -244,7 +244,7 @@ test.each(['file', 'diff'])('%s highlights without focus and keeps unprocessed t
     expect(source()).toEqual(['one', 'two', 'three']);
     expect(root.querySelector('code span')?.getAttribute('style')).toBe('color:red');
     for (const active of [true, false]) {
-      render(<StoreContext.Provider value={[store.get(), store]}>{view(active)}</StoreContext.Provider>, root);
+      render(<StoreProvider state={store.get()} store={store}>{view(active)}</StoreProvider>, root);
       expect(workers).toHaveLength(1);
       expect(root.querySelector('code span')?.textContent).toBe('one');
     }

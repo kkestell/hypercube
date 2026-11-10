@@ -106,3 +106,12 @@ test('Markdown from a model never becomes HTML', async () => {
   expect(root.textContent).toContain('click');
   expect(root.innerHTML).not.toContain('javascript');
 });
+
+test('Markdown text keeps links, and draws them as text when it sits inside a button', () => {
+  const root = document.createElement('div');
+  render(<MarkdownText text="See [the docs](https://example.com/)." />, root);
+  expect(root.querySelector('a')?.getAttribute('href')).toBe('https://example.com/');
+  render(<MarkdownText text="See [the docs](https://example.com/)." linkText />, root);
+  expect(root.querySelector('a')).toBeNull();
+  expect(root.textContent).toBe('See the docs.');
+});

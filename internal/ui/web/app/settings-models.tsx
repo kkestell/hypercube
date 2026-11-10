@@ -17,12 +17,11 @@ const blank: ModelEntry = {harness: '', model: '', title: '', efforts: [], defau
 
 export function SettingsModels({models, onChange}: {models: ModelEntry[]; onChange: (models: ModelEntry[]) => void}) {
   // index is the edited entry's position in models, or null for a new entry.
-  // The last edit stays drawn while its dialog closes; opened counts the
-  // openings, so each starts from its entry.
-  const [editing, setEditing] = useState<{index: number | null; entry: ModelEntry; opened: number}>({index: null, entry: blank, opened: 0});
+  // The last edit stays drawn while its dialog closes.
+  const [editing, setEditing] = useState<{index: number | null; entry: ModelEntry}>({index: null, entry: blank});
   const [open, setOpen] = useState(false);
   const edit = (index: number | null, entry: ModelEntry) => {
-    setEditing(editing => ({index, entry, opened: editing.opened + 1}));
+    setEditing({index, entry});
     setOpen(true);
   };
   return <section className="grid gap-4">
@@ -39,20 +38,36 @@ export function SettingsModels({models, onChange}: {models: ModelEntry[]; onChan
       </div>)}
       {!models.length && <Message className="p-3">No models.</Message>}
     </div>
-    <EntryDialog key={editing.opened} open={open} entry={editing.entry} adding={editing.index === null}
+    <EntryDialog open={open} entry={editing.entry} adding={editing.index === null}
       others={models.filter((_, i) => i !== editing.index)} close={() => setOpen(false)}
       save={entry => { onChange(editing.index === null ? [...models, entry] : models.with(editing.index, entry)); setOpen(false); }} />
   </section>;
 }
 
-// EntryDialog edits one entry and checks it against the others in the list
-// before handing it to save. Closing returns the focus to the button that
+interface EntryProps {
+  entry: ModelEntry;
+  adding: boolean;
+  others: ModelEntry[];
+  save: (entry: ModelEntry) => void;
+  close: () => void;
+}
+
+// EntryDialog edits one entry. Closing returns the focus to the button that
 // opened it.
-function EntryDialog({open, entry, adding, others, save, close}: {
-  open: boolean; entry: ModelEntry; adding: boolean; others: ModelEntry[]; save: (entry: ModelEntry) => void; close: () => void;
-}) {
+function EntryDialog({open, ...props}: EntryProps & {open: boolean}) {
   const focus = useDialogFocus(open);
-  const harnesses = useRequest(open ? fetchHarnesses : null, [open]);
+  return <Dialog open={open} onOpenChange={next => { if (!next) props.close(); }}>
+    <DialogContent {...focus} aria-describedby={undefined}>
+      <EntryForm {...props} />
+    </DialogContent>
+  </Dialog>;
+}
+
+// EntryForm mounts with the dialog's content, so each opening starts from its
+// entry. It checks the entry against the others in the list before handing it
+// to save.
+function EntryForm({entry, adding, others, save, close}: EntryProps) {
+  const harnesses = useRequest(fetchHarnesses, []);
   const [harness, setHarness] = useState(entry.harness);
   const [model, setModel] = useState(entry.model);
   const [title, setTitle] = useState(entry.title);
@@ -77,23 +92,21 @@ function EntryDialog({open, entry, adding, others, save, close}: {
     if (found) setProblem(found);
     else save({harness, model: id, title: name, efforts, default_effort: defaultEffort});
   };
-  return <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
-    <DialogContent {...focus} aria-describedby={undefined}>
-      <DialogHeader><DialogTitle>{adding ? 'Add Model' : 'Edit Model'}</DialogTitle></DialogHeader>
-      <form className="grid gap-4" onSubmit={event => { event.preventDefault(); submit(); }}>
-        <div className="grid gap-2"><Label htmlFor="model-harness">Harness</Label>
-          <Select value={harness} onValueChange={setHarness}><SelectTrigger id="model-harness" className="w-full"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
-            <SelectContent>{choices.map(h => <SelectItem key={h.id} value={h.id}>{harnessIcon(h.id)}{h.name || displayName(h.id)}</SelectItem>)}</SelectContent></Select></div>
-        <div className="grid gap-2"><Label htmlFor="model-id">Model ID</Label><Input id="model-id" required value={model} onChange={e => setModel(e.target.value)} /></div>
-        <div className="grid gap-2"><Label htmlFor="model-title">Title</Label><Input id="model-title" required placeholder="Claude Opus" value={title} onChange={e => setTitle(e.target.value)} /></div>
-        <div className="grid gap-2"><Label htmlFor="model-efforts">Effort levels</Label><Input id="model-efforts" placeholder="low, medium, high" value={levels} onChange={e => setLevels(e.target.value)} />
-          <p className="text-xs text-muted-foreground">Separate levels with commas, lowest first.</p></div>
-        {efforts.length > 1 && <div className="grid gap-2"><Label htmlFor="model-default-effort">Default effort</Label>
-          <Select value={defaultEffort} onValueChange={setChosenDefault}><SelectTrigger id="model-default-effort" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>{[...new Set(efforts)].map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>}
-        {error && <Message error>{error}</Message>}
-        <DialogFooter><Button type="button" variant="outline" onClick={close}>Cancel</Button><Button type="submit">Save</Button></DialogFooter>
-      </form>
-    </DialogContent>
-  </Dialog>;
+  return <>
+    <DialogHeader><DialogTitle>{adding ? 'Add Model' : 'Edit Model'}</DialogTitle></DialogHeader>
+    <form className="grid gap-4" onSubmit={event => { event.preventDefault(); submit(); }}>
+      <div className="grid gap-2"><Label htmlFor="model-harness">Harness</Label>
+        <Select value={harness} onValueChange={setHarness}><SelectTrigger id="model-harness" className="w-full"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
+          <SelectContent>{choices.map(h => <SelectItem key={h.id} value={h.id}>{harnessIcon(h.id)}{h.name || displayName(h.id)}</SelectItem>)}</SelectContent></Select></div>
+      <div className="grid gap-2"><Label htmlFor="model-id">Model ID</Label><Input id="model-id" required value={model} onChange={e => setModel(e.target.value)} /></div>
+      <div className="grid gap-2"><Label htmlFor="model-title">Title</Label><Input id="model-title" required placeholder="Claude Opus" value={title} onChange={e => setTitle(e.target.value)} /></div>
+      <div className="grid gap-2"><Label htmlFor="model-efforts">Effort levels</Label><Input id="model-efforts" placeholder="low, medium, high" value={levels} onChange={e => setLevels(e.target.value)} />
+        <p className="text-xs text-muted-foreground">Separate levels with commas, lowest first.</p></div>
+      {efforts.length > 1 && <div className="grid gap-2"><Label htmlFor="model-default-effort">Default effort</Label>
+        <Select value={defaultEffort} onValueChange={setChosenDefault}><SelectTrigger id="model-default-effort" className="w-full"><SelectValue /></SelectTrigger>
+          <SelectContent>{[...new Set(efforts)].map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>}
+      {error && <Message error>{error}</Message>}
+      <DialogFooter><Button type="button" variant="outline" onClick={close}>Cancel</Button><Button type="submit">Save</Button></DialogFooter>
+    </form>
+  </>;
 }

@@ -23,18 +23,32 @@ interface CloneDialogProps {
   onClose: () => void;
 }
 
-export function CloneDialog({open, pr, account, onClose}: CloneDialogProps) {
+// The dialog stays mounted so it can animate closed; its form starts afresh
+// each time it opens.
+export function CloneDialog({open, ...props}: CloneDialogProps) {
+  const focus = useDialogFocus(open);
+  return <Dialog open={open} onOpenChange={next => { if (!next) props.onClose(); }}>
+    <DialogContent {...focus}>
+      <CloneForm open={open} {...props} />
+    </DialogContent>
+  </Dialog>;
+}
+
+// CloneForm mounts with the dialog's content. Closing cancels a clone at once,
+// before the dialog finishes animating closed.
+function CloneForm({open, pr, account, onClose}: CloneDialogProps) {
   const [state, store] = useStore();
   const [folder, setFolder] = useState(() => suggestedFolder(state.workspaces, pr.repo));
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState('');
   const running = useRef<AbortController | null>(null);
   const name = pr.repo.split('/')[1];
-  const focus = useDialogFocus(open);
 
+  useEffect(() => {
+    if (!open) running.current?.abort();
+  }, [open]);
   useEffect(() => () => running.current?.abort(), []);
-
-  const close = () => { running.current?.abort(); setCloning(false); onClose(); };
+  const cancel = () => { running.current?.abort(); onClose(); };
 
   const choose = async () => {
     const chosen = await hypercube()?.chooseFolder();
@@ -59,28 +73,24 @@ export function CloneDialog({open, pr, account, onClose}: CloneDialogProps) {
     onClose();
   }
 
-  return <Dialog open={open} onOpenChange={open => { if (!open) close(); }}>
-    <DialogContent {...focus}>
-      <form onSubmit={clone} className="grid gap-4">
-        <DialogHeader>
-          <DialogTitle>Clone {pr.repo}</DialogTitle>
-          <DialogDescription>Clones with {account} and adds a workspace.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-2">
-          <Label htmlFor="clone-folder">Folder</Label>
-          <div className="flex gap-2">
-            <Input id="clone-folder" value={folder} disabled={cloning} onChange={event => setFolder(event.target.value)} />
-            {hypercube() && <Button type="button" variant="secondary" disabled={cloning} onClick={choose}>Choose…</Button>}
-          </div>
-          {error && <Message error>{error}</Message>}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={close}>Cancel</Button>
-          <Button type="submit" disabled={cloning || !folder.trim()}>
-            {cloning ? <><BusyDot title="Cloning" />Cloning…</> : 'Clone'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
-  </Dialog>;
+  return <form onSubmit={clone} className="grid gap-4">
+    <DialogHeader>
+      <DialogTitle>Clone {pr.repo}</DialogTitle>
+      <DialogDescription>Clones with {account} and adds a workspace.</DialogDescription>
+    </DialogHeader>
+    <div className="grid gap-2">
+      <Label htmlFor="clone-folder">Folder</Label>
+      <div className="flex gap-2">
+        <Input id="clone-folder" value={folder} disabled={cloning} onChange={event => setFolder(event.target.value)} />
+        {hypercube() && <Button type="button" variant="secondary" disabled={cloning} onClick={choose}>Choose…</Button>}
+      </div>
+      {error && <Message error>{error}</Message>}
+    </div>
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>
+      <Button type="submit" disabled={cloning || !folder.trim()}>
+        {cloning ? <><BusyDot title="Cloning" />Cloning…</> : 'Clone'}
+      </Button>
+    </DialogFooter>
+  </form>;
 }

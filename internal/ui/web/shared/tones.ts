@@ -10,5 +10,3 @@ export const tones = {
   success: 'text-green-600 dark:text-green-500',
   muted: 'text-muted-foreground',
 } as const;
-
-export type Tone = keyof typeof tones;
