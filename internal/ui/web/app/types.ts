@@ -6,6 +6,7 @@ import type {ModelEntry, Settings} from '../agent/types.ts';
 // should use other settings than theirs; default_worktree starts new sessions
 // in Git workspaces in a worktree; review_selection, when set, starts pull
 // request reviews with its settings, and review_prompt is their first prompt;
+// utility_selection, when set, names new sessions after their first message;
 // models lists the model picker's entries.
 export interface Config {
   default_selection?: Settings;
@@ -13,6 +14,7 @@ export interface Config {
   default_worktree: boolean;
   review_selection?: Settings;
   review_prompt: string;
+  utility_selection?: Settings;
   theme: Theme;
   terminal_font_size: number;
   notifications: Notifications;

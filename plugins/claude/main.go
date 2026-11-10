@@ -22,7 +22,7 @@ import (
 const startTimeout = 60 * time.Second
 
 func main() {
-	plugin.Plugin{Product: "Claude Code", Executable: "claude", Serve: serve, Models: models}.Main()
+	plugin.Plugin{Product: "Claude Code", Executable: "claude", Serve: serve, Models: models, Generate: generate}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {

@@ -84,5 +84,8 @@ implementation details are in [architecture](architecture.md).
 - **proposal**: A saved suggestion for work initiated by an agent, including
   the child's brief and settings, which starts only when the user chooses
   **Start** and does not block the parent's turn.
+- **utility model**: The harness, model, and effort chosen in Settings for
+  short background prompts, such as naming sessions. A utility prompt runs
+  without tools and saves no native conversation.
 - **panel terminal**: A session's on-demand interactive shell, owned by a
   holder and separate from the agent's tools.

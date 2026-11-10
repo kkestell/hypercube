@@ -81,6 +81,9 @@ type Session struct {
 	// milliseconds. It is zero before that and for activity before it was
 	// recorded.
 	LastActive int64
+	// Renamed is set when the user chose the title, which a utility model
+	// then leaves alone.
+	Renamed bool
 }
 
 // Message is a queued message. From is empty for Hypercube's own messages.
@@ -138,7 +141,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
   base TEXT NOT NULL DEFAULT '', tip TEXT NOT NULL DEFAULT '',
-  archived INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0, renamed INTEGER NOT NULL DEFAULT 0,
   last_active INTEGER NOT NULL DEFAULT 0, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,6 +206,9 @@ func Open() (*DB, error) {
 			return err
 		}
 		if err := tx.addColumn("archived", `INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+		if err := tx.addColumn("renamed", `INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
 		return tx.replaceInertLastActive()
@@ -349,12 +355,12 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending, renamed)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Ended,
 		s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Tip, s.Fork, s.InputPending)
+		s.Usage.Cost, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Tip, s.Fork, s.InputPending, s.Renamed)
 }
 
 // Touch records session activity at the given time, in Unix milliseconds.
@@ -367,22 +373,22 @@ func (t *Tx) Touch(session string, at int64) error {
 func (t *Tx) SaveSession(s Session) error {
 	return t.exec(`UPDATE sessions SET title = ?, ended = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ?, base = ?, tip = ?, archived = ? WHERE id = ?`,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ?, base = ?, tip = ?, archived = ?, renamed = ? WHERE id = ?`,
 		s.Title, s.Ended, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.Base, s.Tip, s.Archived, s.ID)
+		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.Base, s.Tip, s.Archived, s.Renamed, s.ID)
 }
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, ended,
  unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending, archived, last_active`
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, tip, fork, input_pending, archived, last_active, renamed`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Ended,
 		&s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Tip, &s.Fork, &s.InputPending, &s.Archived, &s.LastActive)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Tip, &s.Fork, &s.InputPending, &s.Archived, &s.LastActive, &s.Renamed)
 	return s, err
 }
 

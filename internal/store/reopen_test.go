@@ -240,6 +240,12 @@ INSERT INTO sessions (id, workspace, title, ended, harness, model, effort, dir, 
 	if got := read(); got != want {
 		t.Fatalf("session with a tip = %+v, want %+v", got, want)
 	}
+	// An old row reads as not renamed; the flag is saved.
+	want.Renamed = true
+	tx(t, db, func(tx *Tx) error { return tx.SaveSession(want) })
+	if got := read(); got != want {
+		t.Fatalf("renamed session = %+v, want %+v", got, want)
+	}
 }
 
 func TestOpenKeepsModelEntriesWhenConfigIsInvalid(t *testing.T) {

@@ -96,6 +96,19 @@ func Models(ctx context.Context, dir, harnessID string, req harness.ModelsReques
 	return c, nil
 }
 
+// Generate sends one prompt to the harness's plugin in dir and returns the
+// model's text.
+func Generate(ctx context.Context, dir, harnessID string, req harness.GenerateRequest) (string, error) {
+	var g harness.Generation
+	if err := run(ctx, dir, harnessID, "generate", req, &g); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(g.Text) == "" {
+		return "", fmt.Errorf("harness %s: empty answer", harnessID)
+	}
+	return g.Text, nil
+}
+
 // cancelGrace is how long a cancelled plugin has to clean up what it started,
 // such as a temporary native session, before its process group is killed.
 var cancelGrace = 15 * time.Second

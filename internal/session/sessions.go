@@ -140,6 +140,7 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 	if worktree != nil {
 		r.refreshMerges(workspaceID)
 	}
+	r.nameSession(s.ID, text)
 	return s, r.input(s.ID, submission, text, images...)
 }
 
@@ -196,7 +197,7 @@ func (r *Runtime) Rename(id, title string) error {
 	if err != nil {
 		return err
 	}
-	return r.update(id, func(s *store.Session) { s.Title = title })
+	return r.update(id, func(s *store.Session) { s.Title, s.Renamed = title, true })
 }
 
 // Seen clears the session's unseen reply.
@@ -253,9 +254,11 @@ func (r *Runtime) Quit() {
 	r.closing = true
 	r.stopIdleLocked()
 	lives := r.selectLaunches(func(*live) bool { return true })
+	r.cancelUtilityCallsLocked()
 	r.mu.Unlock()
 	r.Terminals.Close()
 	r.stopLaunches(lives)
+	r.utilityCalls.Wait()
 }
 
 // Detach finishes writes and releases readers, leaving each holder running.
@@ -268,6 +271,7 @@ func (r *Runtime) Detach() {
 	for _, l := range r.live {
 		lives = append(lives, l)
 	}
+	r.cancelUtilityCallsLocked()
 	r.mu.Unlock()
 	for _, l := range lives {
 		// Closing releases a sender blocked on plugin input. It must not
@@ -282,4 +286,5 @@ func (r *Runtime) Detach() {
 	for _, l := range lives {
 		<-l.done
 	}
+	r.utilityCalls.Wait()
 }

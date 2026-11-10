@@ -422,31 +422,6 @@ func TestReadSession(t *testing.T) {
 	}
 }
 
-// set_title changes the caller's display title and nothing else.
-func TestSetTitle(t *testing.T) {
-	db, rt := family(t, false, t.TempDir(), t.TempDir())
-	parent := connect(t, serve(t, db, rt).URL, "session-1")
-	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": "  Fix the parser "}); failed {
-		t.Fatal(text)
-	}
-	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": " "}); !failed {
-		t.Errorf("set_title accepted a blank title: %q", text)
-	}
-	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": strings.Repeat("a", 49)}); !failed {
-		t.Errorf("set_title accepted a 49-character title: %q", text)
-	}
-	change(t, db, func(tx *store.Tx) error {
-		s, err := tx.Session("session-1")
-		if s.Title != "Fix the parser" {
-			t.Errorf("title = %q", s.Title)
-		}
-		return err
-	})
-	if tools(t, connect(t, serve(t, db, rt).URL, "b"))["set_title"] != nil {
-		t.Error("a child can set its title")
-	}
-}
-
 // end_session refuses in a parked session and leaves the child.
 func TestEndSessionParkedSession(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
@@ -485,7 +460,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 8 || parentTools["open_file"] == nil || childTools["list_models"] != nil || childTools["open_file"] == nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 7 || parentTools["open_file"] == nil || childTools["list_models"] != nil || childTools["open_file"] == nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {

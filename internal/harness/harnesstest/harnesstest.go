@@ -36,6 +36,11 @@
 // effort "low". With HYPERCUBE_TEST_CRASH set the plugin exits shortly after
 // starting.
 //
+// Its `generate` command logs Entry{Kind: "generate"} with the model, effort,
+// and prompt to generate.log, and answers UtilityTitle. A prompt that contains
+// "!utility-fail" fails with a reason on stderr; one that contains
+// "!utility-hold" blocks until killed.
+//
 // Its `describe` and `models` commands answer with Catalog's fixed models.
 // With HYPERCUBE_TEST_MODELS_HOLD set, `models` waits until it is killed.
 package harnesstest
@@ -169,10 +174,38 @@ func Run() {
 			os.Exit(1)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(c)
+	case "generate":
+		generate()
 	default:
 		serve(os.Stdin, os.Stdout)
 	}
 	os.Exit(0)
+}
+
+// UtilityTitle is the text the stand-in's `generate` answers.
+const UtilityTitle = "Utility title"
+
+// generate answers one utility prompt.
+func generate() {
+	var req harness.GenerateRequest
+	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
+		os.Exit(exitBadCommand)
+	}
+	b, _ := json.Marshal(Entry{Kind: "generate", Model: req.Model, Effort: req.Effort, Text: req.Prompt})
+	f, err := os.OpenFile(filepath.Join(os.Getenv("HYPERCUBE_TEST_LOGS"), "generate.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		os.Exit(exitLogFailed)
+	}
+	_, _ = f.Write(append(b, '\n'))
+	_ = f.Close()
+	switch {
+	case strings.Contains(req.Prompt, "!utility-fail"):
+		fmt.Fprintln(os.Stderr, "the utility model is unavailable")
+		os.Exit(1)
+	case strings.Contains(req.Prompt, "!utility-hold"):
+		select {}
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(harness.Generation{Text: UtilityTitle})
 }
 
 // Catalog is the stand-in's answer to `models`: the models "m", whose efforts

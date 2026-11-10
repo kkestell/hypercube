@@ -20,10 +20,6 @@ type sendMessageArgs struct {
 	Text string `json:"text"`
 }
 
-type setTitleArgs struct {
-	Title string `json:"title"`
-}
-
 // result wraps a tool's text; an error becomes an error result the model sees.
 func result[In any](run func(context.Context, In) (string, error)) mcp.ToolHandlerFor[In, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
@@ -64,15 +60,6 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		return server
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "read_session", Description: readSessionDescription}, result(func(_ context.Context, a readSessionArgs) (string, error) { return readSession(db, rt, self, a) }))
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "set_title",
-		Description: "Set your session's title: a short display title for the user, 48 characters or fewer. It does not change how sessions are addressed.",
-	}, result(func(_ context.Context, a setTitleArgs) (string, error) {
-		if err := rt.Rename(self, a.Title); err != nil {
-			return "", err
-		}
-		return "Title set.", nil
-	}))
 	mcp.AddTool(server, &mcp.Tool{Name: "list_models", Description: listModelsDescription}, result(func(ctx context.Context, a listModelsArgs) (string, error) {
 		return listModels(ctx, rt, caller.Dir, a)
 	}))

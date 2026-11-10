@@ -29,6 +29,24 @@ Model and effort values are the harness's native IDs; the plugin rejects
 invalid ones at start or model change.
 See [harness requirements](harness-support.md#requirements).
 
+## Utility model
+
+**Settings › General › Utility model** chooses the model that names new
+sessions.
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `utility_selection` | Object with `harness`, `model`, and `effort`. **Clear** removes it. | Not set |
+
+After a session's first message, the utility model reads that message, or a
+child's brief, and replaces the session's title with a short one. A title you
+set with **Rename** stays. Without a utility model, or when naming fails, the
+title stays the start of the first message; failures appear in the service log
+(`~/.local/state/hypercube/ui.log`).
+
+Choose a Claude Code model. The call runs with no tools, MCP servers, project
+instructions, or saved conversation, in an empty temporary folder.
+
 ## Models
 
 Edit the model picker list in **Settings › Agents › Models**. Each entry needs

@@ -12,6 +12,11 @@
     "effort": "high"
   },
   "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+  "utility_selection": {
+    "harness": "claude",
+    "model": "haiku",
+    "effort": "low"
+  },
   "theme": "system",
   "terminal_font_size": 13,
   "notifications": {

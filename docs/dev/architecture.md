@@ -54,14 +54,17 @@ transcript items, and usage fields. Native mappings live in the
 [Pi](../../plugins/pi) plugins. Use Restart Agent to
 load a newly installed plugin.
 
-Two one-shot commands, defined in [discovery](../../internal/harness/discovery.go),
+Three one-shot commands, defined in [discovery](../../internal/harness/discovery.go),
 describe the harness. `describe` reports whether the native executable is
 installed; the app runs it for every plugin at startup, for the Settings model
 entry form, and for `list_models`, and gives the installed names to new sessions'
 instructions. `models` serves `list_models` only: it lists the models a harness
 offers in a directory and, for one model, its efforts, saving nothing. The
 browser lists model entries the user saves in `config.json` and never asks a
-plugin for models. The plugin, not the core, checks a session's model and
+plugin for models. `generate` sends one prompt to a model with no tools and no
+saved native conversation and returns its text; the backend uses it for the
+utility model, which names new sessions. Only the Claude Code plugin
+implements it. The plugin, not the core, checks a session's model and
 effort in its native start and configure, and its start and configure replies
 report the settings the harness accepted.
 

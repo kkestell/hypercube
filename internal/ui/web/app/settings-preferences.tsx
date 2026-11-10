@@ -58,6 +58,16 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
         <p className="text-sm text-muted-foreground">For Git workspaces. Existing checkout includes uncommitted changes; a new worktree starts from the current commit. Change it for each session below the message box.</p>
       </Field>
     </Group>
+    <Group title="Utility model">
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <ModelSelect value={draft.utility_selection ?? null} label="Utility model" entries={draft.models}
+            onChange={utility_selection => onChange({utility_selection})} />
+          {draft.utility_selection && <Button type="button" variant="ghost" size="sm" onClick={() => onChange({utility_selection: undefined})}>Clear</Button>}
+        </div>
+        <p className="text-sm text-muted-foreground">Names each new session after its first message. Without one, a session's title is the start of its first message. Titles you set with Rename stay.</p>
+      </div>
+    </Group>
   </div>;
 }
 

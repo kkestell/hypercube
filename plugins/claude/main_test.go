@@ -556,9 +556,11 @@ func fakeClaude(t *testing.T, env map[string]string) (args string) {
 	dir := t.TempDir()
 	script := `#!/bin/sh
 echo "$@" > "$FAKE_ARGS"
+pwd > "$FAKE_ARGS.dir"
 if [ -n "$FAKE_BEFORE" ]; then cat "$FAKE_BEFORE"; fi
 if [ -n "$FAKE_FAIL" ]; then echo "resume failed" >&2; exit 1; fi
 while IFS= read -r line; do
+  echo "$line" >> "$FAKE_ARGS.stdin"
   case "$line" in
     *'"initialize"'*)
       if [ -n "$FAKE_INIT" ]; then cat "$FAKE_INIT"; exit 0; fi

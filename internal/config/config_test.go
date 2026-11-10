@@ -16,7 +16,8 @@ func TestSave(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	cfg := Config{DefaultSelection: &harness.Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
 		DefaultWorktree: true, ReviewSelection: &harness.Settings{Harness: "opencode", Model: "provider/model"},
-		ReviewPrompt: "Review #{number} at {url}.", Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true},
+		UtilitySelection: &harness.Settings{Harness: "claude", Model: "haiku", Effort: "low"},
+		ReviewPrompt:     "Review #{number} at {url}.", Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true},
 		Models: []ModelEntry{
 			{Harness: "codex", Model: "sol", Title: "Sol", Efforts: []string{"low", "high"}, DefaultEffort: "high"},
 			{Harness: "opencode", Model: "provider/model", Title: "Model", Efforts: []string{}},
@@ -40,6 +41,7 @@ func TestSave(t *testing.T) {
 		{Theme: cfg.Theme, TerminalFontSize: 15, ReviewPrompt: prompt},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, DefaultSelection: &harness.Settings{Harness: "codex"}},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, ReviewSelection: &harness.Settings{Harness: "codex"}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, UtilitySelection: &harness.Settings{Harness: "claude"}},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: " \n "},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{cfg.Models[1], cfg.Models[1]}},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{{Harness: "codex", Model: "sol"}}},

@@ -102,6 +102,34 @@ test('the review model and prompt save with the config', async () => {
   expect(posts).toEqual([{...config, models: [sol], review_prompt: 'Review {url} carefully.', review_selection: {harness: 'opencode', model: 'sol', effort: 'low'}}]);
 });
 
+test('the utility model saves with the config and clears', async () => {
+  const posts: Config[] = [];
+  stubFetch((url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    return url === 'version' ? new Response('build') : Response.json({...config, models: [sol]});
+  });
+  await open();
+  clickControl(element(document, 'button[aria-label="Utility model"]', HTMLButtonElement));
+  await settle(); await settle();
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'Sol')!);
+  await settle(); await settle();
+  await click('Save changes');
+  expect(posts).toEqual([{...config, models: [sol], utility_selection: {harness: 'opencode', model: 'sol', effort: 'low'}}]);
+});
+
+test('Clear removes the utility model', async () => {
+  const posts: Config[] = [];
+  const set = {...config, models: [sol], utility_selection: {harness: 'opencode', model: 'sol', effort: 'low'}};
+  stubFetch((url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    return url === 'version' ? new Response('build') : Response.json(set);
+  });
+  await open();
+  await click('Clear');
+  await click('Save changes');
+  expect(posts).toEqual([{...config, models: [sol]}]);
+});
+
 test('cancel discards edits and reopening reloads the saved config', async () => {
   const fetches = stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
   await open();

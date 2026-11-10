@@ -46,10 +46,13 @@ func TestInstructions(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test m,", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", ChildSettings, "Installed harnesses: test, other.", "guidance for choosing child models:\nUse m for design.", "create_session", "end_session"} {
+		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test m,", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", ChildSettings, "Installed harnesses: test, other.", "guidance for choosing child models:\nUse m for design.", "create_session", "end_session"} {
 			if !strings.Contains(parentText, want) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}
+		}
+		if strings.Contains(parentText, "set_title") {
+			t.Error("a parent is told to call set_title:", parentText)
 		}
 		for _, want := range []string{"agent of child session builder", "created by Hypercube session p", `titled "Build"`, "send_message to p", "Your parent merges it"} {
 			if !strings.Contains(childText, want) {
@@ -171,5 +174,35 @@ func TestCheckTitle(t *testing.T) {
 	}
 	if got, err := CheckTitle(strings.Repeat("a", 48)); err != nil || got != strings.Repeat("a", 48) {
 		t.Errorf("CheckTitle(48) = %q, %v", got, err)
+	}
+}
+
+func TestGeneratedTitle(t *testing.T) {
+	for answer, want := range map[string]string{
+		"Fix the parser":                "Fix the parser",
+		"\"Fix the parser.\"":           "Fix the parser",
+		"`Fix the parser`":              "Fix the parser",
+		"**Fix the parser**":            "Fix the parser",
+		"\n  \n Fix  the parser\nExtra": "Fix the parser",
+		strings.Repeat("a", 60):         strings.Repeat("a", 47) + "…",
+	} {
+		if got, err := GeneratedTitle(answer); err != nil || got != want {
+			t.Errorf("GeneratedTitle(%q) = %q, %v; want %q", answer, got, err, want)
+		}
+	}
+	for _, answer := range []string{"", " \n\t", "\"\"", "."} {
+		if got, err := GeneratedTitle(answer); err == nil {
+			t.Errorf("GeneratedTitle(%q) = %q, want an error", answer, got)
+		}
+	}
+}
+
+func TestTitlePrompt(t *testing.T) {
+	if got := TitlePrompt("Fix the parser"); !strings.HasSuffix(got, "First message:\nFix the parser") || !strings.Contains(got, "48 characters") {
+		t.Errorf("prompt = %q", got)
+	}
+	long := TitlePrompt(strings.Repeat("é", 5000))
+	if n := strings.Count(long, "é"); n != maxTitlePrompt {
+		t.Errorf("prompt keeps %d characters of the message, want %d", n, maxTitlePrompt)
 	}
 }

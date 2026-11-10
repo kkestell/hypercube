@@ -4,6 +4,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +30,8 @@ const (
 	// starting, stays exited.
 	quickExit     = 10 * time.Second
 	maxQuickExits = 3
+	// utilityTimeout is how long a utility model call may take.
+	utilityTimeout = time.Minute
 )
 
 var (
@@ -70,6 +73,8 @@ type Runtime struct {
 	// startTimeout and requestTimeout bound replies, and idleTimeout parks
 	// sessions; tests shorten them.
 	startTimeout, requestTimeout, idleTimeout time.Duration
+	// utilityTimeout bounds one utility model call.
+	utilityTimeout time.Duration
 
 	mu    sync.Mutex
 	live  map[string]*live      // by session ID
@@ -101,6 +106,10 @@ type Runtime struct {
 	idle map[string]*idleTimer
 	// harnesses is the last scan of the installed harnesses.
 	harnesses []harness.Harness
+	// utilityCancels holds the cancel of each session's pending utility call,
+	// by session ID; utilityCalls counts those calls.
+	utilityCancels map[string]context.CancelFunc
+	utilityCalls   sync.WaitGroup
 	// refreshMu serializes refreshMerges.
 	refreshMu sync.Mutex
 	feed      feed
@@ -112,7 +121,8 @@ func New(db *store.DB, url string, programs Programs) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run"), Holder: programs.Holder}, db: db, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
 		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{}, submissions: map[string]string{}, childCreates: map[string]chan struct{}{},
-		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}
+		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout,
+		utilityTimeout: utilityTimeout, utilityCancels: map[string]context.CancelFunc{}}
 }
 
 func logf(format string, args ...any) {

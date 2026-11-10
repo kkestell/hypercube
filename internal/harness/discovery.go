@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// A plugin answers two one-shot discovery commands besides `serve`. Each
+// A plugin answers three one-shot commands besides `serve`. Each
 // writes one JSON value to stdout and exits; a failure exits nonzero with the
 // reason on stderr.
 //
@@ -17,6 +17,10 @@ import (
 // `models` reads a ModelsRequest from stdin and writes a Catalog: the models
 // the native harness offers in the request's directory. With a model, the
 // catalog also lists that model's efforts.
+//
+// `generate` reads a GenerateRequest from stdin, sends Prompt to the model
+// once, without tools, project instructions, or a saved native conversation,
+// and writes a Generation. A plugin that cannot fails with the reason.
 
 // Settings is a complete harness, model, and effort combination. An empty
 // Effort leaves the effort to the harness.
@@ -35,6 +39,18 @@ func (s Settings) Check() error {
 		return errors.New("missing model")
 	}
 	return nil
+}
+
+// GenerateRequest is the input of `generate`.
+type GenerateRequest struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort,omitempty"`
+	Prompt string `json:"prompt"`
+}
+
+// Generation is a plugin's answer to `generate`: the model's plain text.
+type Generation struct {
+	Text string `json:"text"`
 }
 
 // Description is a plugin's answer to `describe`. Installed reports whether

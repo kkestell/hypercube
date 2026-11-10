@@ -21,7 +21,8 @@ import (
 // DefaultWorktree starts new sessions in Git workspaces in a worktree.
 // ReviewSelection, when set, starts pull request reviews with that harness,
 // model, and effort; ReviewPrompt is their first prompt, with {number} and
-// {url} standing for the pull request's number and link. Models lists the model
+// {url} standing for the pull request's number and link. UtilitySelection, when
+// set, is the model that names new sessions after their first message. Models lists the model
 // picker's entries in the order they were added.
 type Config struct {
 	DefaultSelection *harness.Settings `json:"default_selection,omitempty"`
@@ -29,6 +30,7 @@ type Config struct {
 	DefaultWorktree  bool              `json:"default_worktree"`
 	ReviewSelection  *harness.Settings `json:"review_selection,omitempty"`
 	ReviewPrompt     string            `json:"review_prompt"`
+	UtilitySelection *harness.Settings `json:"utility_selection,omitempty"`
 	Theme            string            `json:"theme"`
 	TerminalFontSize int               `json:"terminal_font_size"`
 	Notifications    Notifications     `json:"notifications"`
@@ -158,6 +160,11 @@ func (c *Config) Validate() error {
 	if c.ReviewSelection != nil {
 		if err := c.ReviewSelection.Check(); err != nil {
 			return fmt.Errorf("review selection: %w", err)
+		}
+	}
+	if c.UtilitySelection != nil {
+		if err := c.UtilitySelection.Check(); err != nil {
+			return fmt.Errorf("utility selection: %w", err)
 		}
 	}
 	c.ReviewPrompt = strings.TrimSpace(c.ReviewPrompt)

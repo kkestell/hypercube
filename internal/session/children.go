@@ -127,6 +127,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 		}
 		return store.Session{}, discard(err)
 	}
+	r.nameSession(child.ID, options.Message)
 	// The start saved the settings the harness accepted.
 	err = r.db.Read(func(tx *store.Tx) error { var err error; child, err = tx.Session(child.ID); return err })
 	return child, err

@@ -127,3 +127,27 @@ func processExists(pid string) bool {
 	n, err := strconv.Atoi(pid)
 	return err == nil && syscall.Kill(n, 0) == nil
 }
+
+func TestGenerate(t *testing.T) {
+	dir := t.TempDir()
+	req := harness.GenerateRequest{Model: "m", Effort: "low", Prompt: "Title this"}
+	in := filepath.Join(t.TempDir(), "stdin")
+	plugin(t, dir, "fake", `cat > '`+in+`'
+echo '{"text":"A title"}'`, 0o755)
+	got, err := Generate(context.Background(), dir, "fake", req)
+	if err != nil || got != "A title" {
+		t.Fatalf("Generate = %q, %v", got, err)
+	}
+	sent, _ := os.ReadFile(in)
+	if want := `{"model":"m","effort":"low","prompt":"Title this"}`; strings.TrimSpace(string(sent)) != want {
+		t.Fatalf("request = %s, want %s", sent, want)
+	}
+	plugin(t, dir, "blank", "cat >/dev/null\necho '{\"text\":\"   \"}'", 0o755)
+	if _, err := Generate(context.Background(), dir, "blank", req); err == nil || !strings.Contains(err.Error(), "empty answer") {
+		t.Fatalf("blank answer: %v", err)
+	}
+	plugin(t, dir, "broken", "cat >/dev/null\necho 'out of credit' >&2\nexit 1", 0o755)
+	if _, err := Generate(context.Background(), dir, "broken", req); err == nil || !strings.Contains(err.Error(), "out of credit") {
+		t.Fatalf("failure: %v", err)
+	}
+}

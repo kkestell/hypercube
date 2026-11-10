@@ -121,7 +121,10 @@ Select an active session and send a prompt to continue its conversation.
   <img alt="Session search for "conflict" listing matching sessions from two workspaces with their matching text" src="images/search-light.png">
 </picture>
 
-Use **Rename** in a session's context menu, or **F2**, to change its title.
+A session's title comes from its first message, or from the
+[utility model](configuration.md#utility-model) when one is chosen. Use
+**Rename** in a session's context menu, or **F2**, to change it; a title you set
+stays.
 Right-click a row to open its menu.
 
 For a failed start, open the session or send a prompt to retry. To reload an
