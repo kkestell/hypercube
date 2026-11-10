@@ -1,6 +1,8 @@
 // The page's keyboard shortcuts: their bindings, which also supply the
 // desktop app's menus and the keyboard reference, and what each does.
+import {flushSync} from 'react-dom';
 import {focusComposerField} from '../agent/focus-composer.ts';
+import {showMain} from '../editor/editor.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {sidebarRows} from '../sidebar/sidebar-rows.ts';
@@ -116,7 +118,10 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'new':
       return () => store.update(s => openUnsent(s));
     case 'composer':
-      return focusComposerField;
+      return () => {
+        flushSync(() => store.update(showMain));
+        focusComposerField();
+      };
     case 'select': {
       const session = state.workspaces.flatMap(w => w.sessions.filter(s => !s.ended))[Number(key) - 1];
       return session && (() => chooseSession(store, session.id));

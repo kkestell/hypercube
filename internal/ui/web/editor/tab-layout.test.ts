@@ -1,10 +1,10 @@
 import {expect, test} from 'bun:test';
-import {closeTab, findPane, moveTab, openTab, panes, replaceTab} from './tab-layout.ts';
+import {closeTab, findPane, mainTabId, moveTab, openTab, panes, replaceTab, withMain} from './tab-layout.ts';
 import type {Edge, LayoutNode, TabId, TabLayout} from './types.ts';
 
 const empty: TabLayout = {root: null, preview: null, dragging: null, nextId: 1};
 const tabs = (layout: TabLayout) => panes(layout.root).map(pane => pane.tabs);
-const open = (...ids: TabId[]) => ids.reduce(openTab, empty);
+const open = (...ids: TabId[]) => ids.reduce((layout, id) => openTab(layout, id), empty);
 const rooted = (layout: TabLayout): LayoutNode => layout.root ?? expect.unreachable('the layout has no tabs');
 const pane = (layout: TabLayout, tab: TabId) => (findPane(layout.root, tab) ?? expect.unreachable(tab)).id;
 
@@ -81,4 +81,24 @@ test('every function returns a new layout and leaves its input unchanged', () =>
   ];
   expect(JSON.stringify(layout)).toBe(before);
   for (const result of results) expect(result).not.toBe(layout);
+});
+
+test('the first file opens beside the main tab when there is room, and on top of it otherwise', () => {
+  const main = withMain(empty);
+  expect(tabs(openTab(main, 'file:a'))).toEqual([[mainTabId, 'file:a']]);
+  const beside = openTab(main, 'file:a', true);
+  const split = rooted(beside);
+  expect('axis' in split && split.axis).toBe('x');
+  expect(tabs(beside)).toEqual([[mainTabId], ['file:a']]);
+  expect(tabs(openTab(beside, 'file:b', true))).toEqual([[mainTabId], ['file:a', 'file:b']]);
+  const moved = moveTab(beside, mainTabId, pane(beside, 'file:a'));
+  expect(tabs(openTab(moved, 'file:b', true))).toEqual([['file:a', mainTabId, 'file:b']]);
+});
+
+test('a layout without the main tab gains it at the left', () => {
+  expect(tabs(withMain(empty))).toEqual([[mainTabId]]);
+  const files = open('file:a', 'file:b');
+  const added = withMain(files);
+  expect(tabs(added)).toEqual([[mainTabId], ['file:a', 'file:b']]);
+  expect(withMain(added)).toBe(added);
 });

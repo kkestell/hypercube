@@ -35,12 +35,16 @@ export function Composer({session}: {session: Session}) {
   const mentions = useMentions(field, text, changeText, session.id, state.unsent?.workspace);
   const input = (e: ChangeEvent<HTMLTextAreaElement>) => { changeText(e.currentTarget.value); mentions.sync(e.currentTarget); };
 
-  // The text takes the focus when a session mounts, unless the focus is on a
-  // tab strip.
+  // The text takes the focus when its session or workspace is newly
+  // attached, unless the focus is on a tab strip. Chat mounting again as its
+  // tab moves leaves the focus alone.
   useEffect(() => {
     const element = field.current;
     if (!element) return;
-    if (!document.activeElement?.closest('[role=tablist]')) element.focus();
+    if (store.get().composerFocus) {
+      if (!document.activeElement?.closest('[role=tablist]')) element.focus();
+      store.update(s => s.composerFocus ? {...s, composerFocus: false} : s);
+    }
     return registerComposer(element);
   }, []);
 

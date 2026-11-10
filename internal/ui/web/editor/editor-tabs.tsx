@@ -1,4 +1,5 @@
 // Stock tabs with a separate close action and the existing drag/drop behavior.
+// The main tab has no close action.
 import {useRef} from 'react';
 import {flushSync} from 'react-dom';
 import {barTabs} from '../app/title-bar.ts';
@@ -6,6 +7,7 @@ import {LayoutToggles} from '../app/layout-toggles.tsx';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {FileIcon} from '../files/file-icon.tsx';
 import {usePathMenu} from '../files/path-menu.tsx';
+import {Icon} from '../shared/icon.tsx';
 import {IconButton} from '../shared/icon-button.tsx';
 import {TopBar} from '../shared/top-bar.tsx';
 import {useStore} from '../store.ts';
@@ -38,10 +40,10 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
           <TabsTrigger {...(entry.kind === 'file' ? menu.handlers(entry.path) : {})} className="min-w-0" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
-            <FileIcon name={entry.name} />
+            {entry.kind === 'main' ? <Icon name={entry.icon} /> : <FileIcon name={entry.name} />}
             <span className={`min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.kind === 'file' && entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
-          <IconButton icon="close" label={`Close ${entry.label}`} onClick={() => close(entry.id)} />
+          {entry.kind !== 'main' && <IconButton icon="close" label={`Close ${entry.label}`} onClick={() => close(entry.id)} />}
         </div>)}
       </TabsList>
     </Tabs> : <div className="flex-1" />}

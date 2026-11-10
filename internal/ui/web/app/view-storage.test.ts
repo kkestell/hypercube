@@ -3,8 +3,8 @@ import {stubFetch} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {startDraftStorage} from '../agent/draft-storage.ts';
 import {draftOf, typed, unsentKey} from '../agent/drafts.ts';
-import {activatePane, keepOpen, moveTab, openDiffTab, openFileAt, openRequestedFile, rememberScroll, resizeSplit} from '../editor/editor.ts';
-import {panes} from '../editor/tab-layout.ts';
+import {activatePane, keepOpen, mainTabs, moveTab, openDiffTab, openFileAt, openRequestedFile, rememberScroll, resizeSplit} from '../editor/editor.ts';
+import {mainTabId, panes} from '../editor/tab-layout.ts';
 import {openUnsent, receivedWorkspaces, selectSession, selectWorkspace} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {receivedTranscript, setExpanded} from '../transcript/transcripts.ts';
@@ -33,7 +33,7 @@ test.each(['files', 'git', 'search'] as const)('the %s panel choice survives rel
   expect(reloaded.get().workbench.rightTab).toBe(rightTab);
   expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toContain('file:workspace.md');
   reloaded.update(state => selectSession(state, 'a'));
-  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual(['file:session.md']);
+  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual([mainTabId, 'file:session.md']);
 });
 
 test('session switches and reloads preserve independent view choices without caching server data', async () => {
@@ -41,7 +41,6 @@ test('session switches and reloads preserve independent view choices without cac
   const store = fresh('a');
   startViewStorage(store);
   store.update(state => receivedWorkspaces(state, workspaces));
-  store.update(state => resizeRegion(state, 'editor', 640));
   store.update(state => typed(state, 'a', 'unfinished prompt'));
   openRequestedFile(store, {session: 'a', path: 'guide.md', lines: [{start: 2}]});
   openDiffTab(store, 'changed.go');
@@ -63,7 +62,7 @@ test('session switches and reloads preserve independent view choices without cac
   store.update(state => selectSession(state, 'b'));
   expect(store.get().sessionViews.a).toBeDefined();
   expect(store.get().sessionViews.b).toBeUndefined();
-  expect(store.get().editor!.tabs.root).toBeNull();
+  expect(store.get().editor!.tabs).toEqual(mainTabs);
   store.update(state => rememberScroll(state, 'a', 'a', {top: 345, left: 0, following: false}));
   store.update(state => selectSession(state, 'a'));
   expect(store.get().sessionViews.a).toBeUndefined();
@@ -81,7 +80,6 @@ test('session switches and reloads preserve independent view choices without cac
   const restored = reloaded.get().editor!;
   expect(reloaded.get().selected).toBe('a');
   expect(restored.tabs).toEqual(layout);
-  expect(reloaded.get().workbench.sizes.editor).toBe(640);
   expect(restored.activePane).toBe(activePane);
   expect(restored.files.expanded).toEqual({src: true});
   expect(reloaded.get().session!.expanded.activity).toBe(true);
@@ -181,23 +179,42 @@ test('invalid saved layouts report their failure and retain defaults', () => {
   expect(store.get().errors[0].message).toContain('Could not restore view state');
 });
 
-test.each([
-  ['workspace views', (saved: {workspaceViews?: unknown}) => { delete saved.workspaceViews; }],
-  ['editor size', (saved: {workbench: {sizes: {editor?: number}}}) => { delete saved.workbench.sizes.editor; }],
-] as const)('saved views missing %s report their failure and retain defaults', (_, remove) => {
+test('saved views missing workspace views report their failure and retain defaults', () => {
   const previous = fresh('a');
   startViewStorage(previous);
   previous.update(state => receivedWorkspaces(state, workspaces));
-  previous.update(state => resizeRegion(state, 'editor', 640));
+  previous.update(state => resizeRegion(state, 'sidebar', 400));
   const saved = JSON.parse(localStorage.getItem('hypercube.views')!);
-  remove(saved);
+  delete saved.workspaceViews;
   localStorage.setItem('hypercube.views', JSON.stringify(saved));
 
   const store = fresh();
   startViewStorage(store);
   expect(store.get().sessionViews).toEqual({});
-  expect(store.get().workbench.sizes.editor).not.toBe(640);
+  expect(store.get().workbench.sizes.sidebar).toBe(290);
   expect(store.get().errors[0].message).toContain('Could not restore view state');
+});
+
+test('layouts saved with chat and dashboards outside the tabs gain the main tab at their left', () => {
+  const files = {id: 1, tabs: ['file:a.md'], active: 'file:a.md'};
+  const view = {activePane: 1, panel: false, scroll: {}, folders: {}, files: {}};
+  const saved = {
+    selected: 'a',
+    workbench: {...fresh().get().workbench, sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}},
+    sessionViews: {b: {...view, expanded: {}, tabs: {root: files, preview: null, dragging: null, nextId: 2}}},
+    workspaceViews: {w: {...view, tabs: {root: {id: 3, axis: 'x', ratio: 50, children: [{id: 1, tabs: ['dashboard'], active: 'dashboard'}, {...files, id: 2}]}, preview: null, dragging: null, nextId: 4}}},
+  };
+  localStorage.setItem('hypercube.views', JSON.stringify(saved));
+  const store = fresh();
+  startViewStorage(store);
+  store.update(state => receivedWorkspaces(state, workspaces));
+  expect(store.get().errors).toEqual([]);
+  expect(store.get().workbench.sizes).toEqual({sidebar: 290, rightPanel: 320, panel: 240});
+  expect(panes(store.get().editor!.tabs.root).map(pane => pane.tabs)).toEqual([[mainTabId]]);
+  store.update(state => selectSession(state, 'b'));
+  expect(panes(store.get().editor!.tabs.root).map(pane => pane.tabs)).toEqual([[mainTabId], ['file:a.md']]);
+  store.update(state => selectWorkspace(state, 'w'));
+  expect(panes(store.get().editor!.tabs.root).map(pane => pane.tabs)).toEqual([[mainTabId], ['file:a.md']]);
 });
 
 test('workspace views persist independently and are removed with their workspace', () => {
@@ -251,5 +268,5 @@ test('hiding a collapsed region keeps its size and the other saved views', () =>
   expect(reloaded.get().selected).toBe('a');
   expect(reloaded.get().workbench.rightPanel).toBe(false);
   expect(reloaded.get().workbench.sizes.rightPanel).toBe(420);
-  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual(['file:session.md']);
+  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual([mainTabId, 'file:session.md']);
 });

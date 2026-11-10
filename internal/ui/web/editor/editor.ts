@@ -1,12 +1,14 @@
 // The current editor's tabs, preview, and remembered scroll. File and diff
-// tabs share one preview tab, replaced on the next click until kept open.
+// tabs share one preview tab, replaced on the next click until kept open. The
+// main tab, a session's chat or a workspace's dashboard, is always open.
 import {comparisonLabel, diffComparison, diffReady, diffTabId, diffTitle, isDiffTab, readOpenDiff} from '../changes/changes.ts';
 import type {ChangeComparison} from '../changes/types.ts';
 export {diffTabId, isDiffTab} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
 import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
 import type {EditorView} from './types.ts';
-import {selectionTarget} from './target.ts';
+import {selectedWorkspace, selectionTarget} from './target.ts';
+import {shownSession} from '../sessions/selection.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {ownsScroll} from './view-state.ts';
@@ -14,6 +16,15 @@ import * as layout from './tab-layout.ts';
 import type {Edge, FileOpenRequest, ScrollMemory, TabEntry, TabId, TabLayout} from './types.ts';
 
 export const emptyTabs: TabLayout = {root: null, preview: null, dragging: null, nextId: 1};
+
+// mainTabs is the layout a session or workspace starts with: its main tab alone.
+export const mainTabs: TabLayout = layout.withMain(emptyTabs);
+
+// besideRoom is how wide, in CSS pixels, the tabbed area must be for the first
+// file to open beside the main tab instead of on top of it.
+const besideRoom = 800;
+
+const roomBeside = () => (document.querySelector('[data-editor-area]')?.clientWidth ?? 0) >= besideRoom;
 
 export const fileTabId = (path: string): TabId => 'file:' + path;
 
@@ -30,6 +41,11 @@ const withTabs = (state: State, change: (tabs: TabLayout) => TabLayout) =>
 export function tabEntry(state: State, id: TabId): TabEntry {
   const {editor} = state;
   if (!editor) throw new Error(`Tab ${id} has no attached editor.`);
+  if (id === layout.mainTabId) {
+    const session = shownSession(state);
+    const title = session ? session.title : selectedWorkspace(state)?.name ?? 'Workspace';
+    return {kind: 'main', id, label: title, title, preview: false, icon: session ? 'comment-discussion' : 'files'};
+  }
   const path = tabPath(id);
   const name = path.slice(path.lastIndexOf('/') + 1);
   const preview = editor.tabs.preview === id;
@@ -66,7 +82,9 @@ function forgetTab(editor: EditorView, id: TabId): EditorView {
   return {...editor, files: {...editor.files, open}, scroll};
 }
 
+// closeTab closes a file or diff tab. The main tab stays open.
 export function closeTab(state: State, id: TabId): State {
+  if (id === layout.mainTabId) return state;
   return withEditor(state, editor => {
     const preview = editor.tabs.preview === id ? null : editor.tabs.preview;
     return {...forgetTab(editor, id), tabs: {...layout.closeTab(editor.tabs, id), preview}};
@@ -75,11 +93,11 @@ export function closeTab(state: State, id: TabId): State {
 
 // tabOpened opens a tab as the shared preview, replacing the previous preview,
 // and has add record the new tab's data. An open tab is only selected.
-function tabOpened(state: State, id: TabId, add: (editor: EditorView) => EditorView): State {
+function tabOpened(state: State, id: TabId, beside: boolean, add: (editor: EditorView) => EditorView): State {
   return withEditor(state, editor => {
     if (layout.findPane(editor.tabs.root, id)) return {...editor, tabs: layout.openTab(editor.tabs, id)};
     const preview = editor.tabs.preview;
-    const tabs = preview ? layout.replaceTab(editor.tabs, preview, id) : layout.openTab(editor.tabs, id);
+    const tabs = preview ? layout.replaceTab(editor.tabs, preview, id) : layout.openTab(editor.tabs, id, beside);
     const kept = preview ? forgetTab(editor, preview) : editor;
     return {...add(kept), tabs: {...tabs, preview: id}};
   });
@@ -89,7 +107,8 @@ function tabOpened(state: State, id: TabId, add: (editor: EditorView) => EditorV
 export function openFileTab(store: Store, path: string) {
   if (!store.get().editor) return;
   const ready = fileReady(store.get().editor?.files.open[path]);
-  store.update(state => tabOpened(state, fileTabId(path), editor => ({
+  const beside = roomBeside();
+  store.update(state => tabOpened(state, fileTabId(path), beside, editor => ({
     ...editor, files: {...editor.files, open: {...editor.files.open, [path]: unreadFile}},
   })));
   if (ready) readOpenFile(store, path);
@@ -99,7 +118,8 @@ export function openDiffTab(store: Store, path: string, comparison: ChangeCompar
   if (!store.get().editor) return;
   const id = diffTabId(path, comparison);
   const ready = diffReady(store.get().editor?.diffs[id]);
-  store.update(state => tabOpened(state, id, editor => ({
+  const beside = roomBeside();
+  store.update(state => tabOpened(state, id, beside, editor => ({
     ...editor, diffs: {...editor.diffs, [id]: {text: null, message: null}},
   })));
   if (ready) readOpenDiff(store, path, comparison);
@@ -122,9 +142,10 @@ export function openRequestedFile(store: Store, request: FileOpenRequest) {
 export function openFileAt(store: Store, path: string, lines: FileOpenRequest['lines']) {
   if (!store.get().editor) return;
   const ready = fileReady(store.get().editor?.files.open[path]);
+  const beside = roomBeside();
   store.update(state => withEditor(state, editor => {
     const id = fileTabId(path);
-    const tabs = layout.openTab(editor.tabs, id);
+    const tabs = layout.openTab(editor.tabs, id, beside);
     const file = {...(editor.files.open[path] ?? unreadFile), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
     return {...editor, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...editor.files, open: {...editor.files.open, [path]: file}}};
   }));
@@ -150,6 +171,12 @@ export const keepOpen = (state: State, id: TabId) =>
 
 export const selectTab = (state: State, paneId: number, id: TabId) =>
   withTabs(state, tabs => layout.selectTab(tabs, paneId, id));
+
+// showMain brings the main tab to the front of its pane.
+export const showMain = (state: State) => withTabs(state, tabs => {
+  const pane = layout.findPane(tabs.root, layout.mainTabId);
+  return pane && pane.active !== layout.mainTabId ? layout.selectTab(tabs, pane.id, layout.mainTabId) : tabs;
+});
 
 export const moveTab = (state: State, id: TabId, paneId: number, edge?: Edge, before?: TabId | null) =>
   withTabs(state, tabs => ({...layout.moveTab(tabs, id, paneId, edge, before), dragging: null}));

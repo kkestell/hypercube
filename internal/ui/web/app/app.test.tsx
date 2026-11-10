@@ -2,10 +2,10 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {openUnsent, receivedWorkspaces, selectWorkspace} from '../sessions/selection.ts';
+import {openUnsent, receivedWorkspaces, selectSession, selectWorkspace} from '../sessions/selection.ts';
 import {typed, unsentKey} from '../agent/drafts.ts';
-import {closeTab, keepOpen, moveTab, openDiffTab, openFileTab, openRequestedFile, rememberScroll} from '../editor/editor.ts';
-import {panes} from '../editor/tab-layout.ts';
+import {closeTab, moveTab, openFileTab, showMain} from '../editor/editor.ts';
+import {mainTabId, panes} from '../editor/tab-layout.ts';
 import {receivedTranscript} from '../transcript/transcripts.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -110,53 +110,40 @@ test('app shortcuts work with focus on the transcript background', async () => {
   expect(requests.some(request => request.params.action === 'interrupt')).toBe(true);
 });
 
-test('chat stays mounted outside file tabs while files open, split, and close', async () => {
+test('chat is a tab that files open on top of, that splits beside them, and that never closes', async () => {
   answer(url => new URL(url, 'http://x/').pathname === '/file' ? new Response('import math') : Response.json([]));
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, fixedWidth: true})}, testSession({id: 'a', title: 'Visible chat'}));
   store.update(state => typed(receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [
-    {id: 'reply', seq: 1, kind: 'text', text: 'Always-visible reply'},
+    {id: 'reply', seq: 1, kind: 'text', text: 'Shown reply'},
   ]}), 'a', 'unfinished prompt'));
-  store.update(state => rememberScroll(state, 'a', 'a', {top: 120, left: 0, following: false}));
   const root = mount(store, <App store={store} />);
-  const chat = find(root, '[aria-label=Chat]');
-  const transcript = transcriptView(root);
-  const composer = element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement);
-  expect(chat.closest('[data-editor-area]')).toBeNull();
-  expect(chat.textContent).toContain('Always-visible reply');
-  expect(findAll(chat, '[role=tab]').map(tab => tab.textContent)).toEqual(['Visible chat']);
-  expect(chat.querySelector('[aria-label^="Close"]')).toBeNull();
-  expect(chat.querySelector('[aria-label="Fixed Width"]')).toBeNull();
-  expect(find(chat, '[aria-label=Transcript]').className).not.toContain('max-w-');
-  expect(find(chat, 'textarea[aria-label=Message]').closest('form')!.className).not.toContain('max-w-');
-  expect(root.querySelector('[data-editor-area]')).toBeNull();
-  const unchanged = () => {
-    expect(find(root, '[aria-label=Chat]')).toBe(chat);
-    expect(transcriptView(root)).toBe(transcript);
-    expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement)).toBe(composer);
-    expect(composer.value).toBe('unfinished prompt');
-    expect(transcript.scrollTop).toBe(120);
-  };
+  const tabs = () => findAll(root, '[data-editor-area] [role=tab]').map(tab => tab.textContent);
+  const chat = () => root.querySelector('[aria-label=Chat]');
+  expect(chat()?.closest('[data-editor-area]')).not.toBeNull();
+  expect(chat()?.textContent).toContain('Shown reply');
+  expect(tabs()).toEqual(['Visible chat']);
+  expect(root.querySelector('[aria-label="Close Visible chat"]')).toBeNull();
+  expect(root.querySelector('[aria-label="Fixed Width"]')).toBeNull();
+  expect(find(root, '[aria-label=Transcript]').className).not.toContain('max-w-');
+
+  // The test page has no width, so the first file opens on top of chat.
   await act(async () => { openFileTab(store, 'a.py'); });
-  unchanged();
+  expect(tabs()).toEqual(['Visible chat', 'a.py']);
+  expect(chat()).toBeNull();
   expect(find(root, '[data-editor-area]').textContent).toContain('import math');
-  expect(panes(store.get().editor!.tabs.root).flatMap(pane => pane.tabs)).toEqual(['file:a.py']);
-  await act(async () => { openFileTab(store, 'b.py'); });
-  unchanged();
-  await act(async () => {
-    store.update(state => keepOpen(state, 'file:b.py'));
-    openRequestedFile(store, {session: 'a', path: 'c.py', lines: []});
-    store.update(state => moveTab(state, 'file:c.py', panes(state.editor!.tabs.root)[0].id, 'right'));
-  });
-  unchanged();
+  act(() => store.update(showMain));
+  expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement).value).toBe('unfinished prompt');
+
+  act(() => store.update(state => moveTab(state, mainTabId, panes(state.editor!.tabs.root)[0].id, 'left')));
   expect(root.querySelectorAll('[data-pane]')).toHaveLength(2);
-  await act(async () => { openDiffTab(store, 'c.py'); });
-  unchanged();
-  for (const id of ['file:b.py', 'file:c.py', 'diff:c.py']) act(() => store.update(state => closeTab(state, id)));
-  unchanged();
-  expect(root.querySelector('[data-editor-area]')).toBeNull();
+  expect(chat()?.textContent).toContain('Shown reply');
+  expect(find(root, '[data-editor-area]').textContent).toContain('import math');
+  act(() => store.update(state => closeTab(closeTab(state, 'file:a.py'), mainTabId)));
+  expect(root.querySelectorAll('[data-pane]')).toHaveLength(1);
+  expect(tabs()).toEqual(['Visible chat']);
 });
 
-test('Find follows focus between chat and files, and focusing the composer leaves files open', async () => {
+test('Find follows focus between chat and files, and focusing the composer brings chat forward', async () => {
   answer(url => new URL(url, 'http://x/').pathname === '/file' ? new Response('import math') : Response.json([]));
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false})}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
@@ -166,12 +153,39 @@ test('Find follows focus between chat and files, and focusing the composer leave
   expect(root.querySelector('[role=search][aria-label="Find in file"]')).not.toBeNull();
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).toBeNull();
   keydown(document.activeElement!, 'Escape');
-  keydown(document.activeElement!, 'l', {metaKey: true});
+  act(() => { keydown(document.activeElement!, 'l', {metaKey: true}); });
   expect(document.activeElement).toBe(find(root, 'textarea[aria-label=Message]'));
-  expect(find(root, '[aria-label="File contents"]').textContent).toContain('import math');
+  expect(panes(store.get().editor!.tabs.root).flatMap(pane => pane.tabs)).toContain('file:a.py');
   keydown(document.activeElement!, 'f', {metaKey: true});
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).not.toBeNull();
   expect(root.querySelector('[role=search][aria-label="Find in file"]')).toBeNull();
+});
+
+test('a reply is seen only once chat shows, not while a file covers it', async () => {
+  const requests = answer(url => new URL(url, 'http://x/').pathname === '/file' ? new Response('import math') : new Response(''));
+  const store = appStore({selected: 'a', visible: true, workbench: workbench({rightPanel: false})}, testSession({id: 'a'}));
+  const root = mount(store, <App store={store} />);
+  await act(async () => { openFileTab(store, 'a.py'); });
+  const seen = () => requests.filter(request => request.params.action === 'seen');
+  act(() => store.update(state => receivedWorkspaces(state, workspaces(testSession({id: 'a', unseen: true})))));
+  expect(seen()).toHaveLength(0);
+  await act(async () => store.update(showMain));
+  expect(seen()).toEqual([{params: {action: 'seen', id: 'a'}, method: 'POST'}]);
+  expect(root.querySelector('[aria-label=Chat]')).not.toBeNull();
+});
+
+test('the composer takes the focus each time its session is chosen again, but not when chat moves', () => {
+  answer(() => Response.json([]));
+  const store = appStore({selected: 'a', workbench: workbench({rightPanel: false})}, testSession({id: 'a'}));
+  const root = mount(store, <App store={store} />);
+  const composer = () => find(root, 'textarea[aria-label=Message]');
+  expect(document.activeElement).toBe(composer());
+  act(() => store.update(state => selectWorkspace(state, 'w')));
+  act(() => store.update(state => selectSession(state, 'a')));
+  expect(document.activeElement).toBe(composer());
+  act(() => (document.activeElement as HTMLElement).blur());
+  act(() => store.update(state => moveTab(state, mainTabId, panes(state.editor!.tabs.root)[0].id, 'left')));
+  expect(document.activeElement).toBe(document.body);
 });
 
 test('a new session draft is a sidebar row that reopens its prompt and can be discarded', async () => {
@@ -297,7 +311,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   await act(async () => clickControl(find(root, 'button[title="needle"]')));
   expect(store.get().editor?.files.open['main.go'].lines).toEqual([{start: 3, end: 3}]);
   expect(calls.find(url => url.pathname === '/search-files')?.searchParams.get('workspace')).toBe('w');
-  act(() => store.update(state => selectWorkspace(state, 'w')));
+  act(() => store.update(state => showMain(selectWorkspace(state, 'w'))));
   await act(async () => clickControl(buttonNamed(find(root, '[aria-label="Workspace dashboard"]'), 'Session 1')));
   expect(store.get().selected).toBe('s1');
   expect(store.get().session?.id).toBe('s1');

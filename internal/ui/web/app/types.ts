@@ -44,7 +44,7 @@ export interface Workbench {
   rightTab: RightTab;
   wrap: boolean;
   fixedWidth: boolean;
-  sizes: Record<Region | 'editor', number>;
+  sizes: Record<Region, number>;
   sidebarTab: SidebarTab;
   collapsedWorkspaces: Record<string, true>;
   collapsedSessions: Record<string, true>;

@@ -17,8 +17,7 @@
       "sizes": {
         "sidebar": 290,
         "rightPanel": 320,
-        "panel": 240,
-        "editor": 642
+        "panel": 240
       },
       "sidebarTab": "sessions",
       "collapsedWorkspaces": {},
@@ -33,10 +32,16 @@
       "9c2f69e9": {
         "panel": false,
         "tabs": {
-          "root": null,
+          "root": {
+            "id": 2,
+            "tabs": [
+              "main"
+            ],
+            "active": "main"
+          },
           "preview": null,
           "dragging": null,
-          "nextId": 2
+          "nextId": 3
         },
         "activePane": null,
         "expanded": {

@@ -35,14 +35,36 @@ function withoutTab(pane: Pane, tab: TabId): Pane {
   return {...pane, tabs, active};
 }
 
-// openTab makes a tab active, adding it to the first pane, in left-to-right,
-// top-to-bottom order, if it is not open.
-export function openTab(layout: TabLayout, tab: TabId): TabLayout {
+// The main tab is a session's chat or a workspace's dashboard. It moves like
+// any tab but never closes.
+export const mainTabId: TabId = 'main';
+
+// openTab makes a tab active. A tab that is not open joins the first pane, in
+// left-to-right, top-to-bottom order, that holds a tab besides the main tab.
+// When the main tab is the only one open, the new tab opens in a pane to its
+// right when beside is set, and on top of it otherwise.
+export function openTab(layout: TabLayout, tab: TabId, beside = false): TabLayout {
   const {root} = layout;
   if (!root) return {...layout, root: {id: layout.nextId, tabs: [tab], active: tab}, nextId: layout.nextId + 1};
-  const pane = findPane(root, tab) ?? panes(root)[0];
+  const all = panes(root);
+  const pane = findPane(root, tab) ?? all.find(pane => pane.tabs.some(id => id !== mainTabId)) ?? all[0];
+  if (beside && !pane.tabs.includes(tab) && pane.tabs.length === 1 && pane.tabs[0] === mainTabId) {
+    const added: Pane = {id: layout.nextId, tabs: [tab], active: tab};
+    const split = mapNode(root, pane.id, node => ({id: layout.nextId + 1, axis: 'x', ratio: 50, children: [node, added]}));
+    return {...layout, root: split, nextId: layout.nextId + 2};
+  }
   const tabs = pane.tabs.includes(tab) ? pane.tabs : [...pane.tabs, tab];
   return {...layout, root: mapNode(root, pane.id, () => ({...pane, tabs, active: tab}))};
+}
+
+// withMain adds the main tab to a layout without it, in a pane at the left of
+// the tabs already open.
+export function withMain(layout: TabLayout): TabLayout {
+  const {root, nextId} = layout;
+  if (findPane(root, mainTabId)) return layout;
+  const main: Pane = {id: nextId, tabs: [mainTabId], active: mainTabId};
+  if (!root) return {...layout, root: main, nextId: nextId + 1};
+  return {...layout, root: {id: nextId + 1, axis: 'x', ratio: 50, children: [main, root]}, nextId: nextId + 2};
 }
 
 export function selectTab(layout: TabLayout, paneId: number, tab: TabId): TabLayout {

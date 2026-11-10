@@ -1,5 +1,5 @@
 // Browser storage is an external boundary; runtime state uses these shapes directly.
-import {closeTab} from '../editor/tab-layout.ts';
+import {closeTab, withMain} from '../editor/tab-layout.ts';
 import type {EditorViewState, LayoutNode} from '../editor/types.ts';
 import type {SessionViewState} from '../sessions/types.ts';
 import type {Workbench} from './types.ts';
@@ -43,7 +43,7 @@ function workbench(value: unknown) {
   if (!record(value) || !['sidebar', 'rightPanel', 'wrap', 'fixedWidth'].every(key => typeof value[key] === 'boolean')) return false;
   const sizes = value.sizes;
   return (value.rightTab === 'files' || value.rightTab === 'git' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
-    && record(sizes) && ['sidebar', 'rightPanel', 'panel', 'editor'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
+    && record(sizes) && ['sidebar', 'rightPanel', 'panel'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
     && flags(value.collapsedWorkspaces) && flags(value.collapsedSessions)
     && (value.collapsedPullRequestGroups === undefined || flags(value.collapsedPullRequestGroups))
     && record(value.sidebarScroll) && nonnegative(value.sidebarScroll.sessions) && nonnegative(value.sidebarScroll.archived);
@@ -55,7 +55,11 @@ export function readSavedViews(text: string): SavedViews {
     || !workbench(value.workbench) || !entries(value.sessionViews, sessionView) || !entries(value.workspaceViews, editorView)) throw new Error('Invalid saved view state.');
   const saved = value as unknown as SavedViews;
   saved.workbench.collapsedPullRequestGroups ??= {};
-  // Workspace layouts saved by earlier versions hold the dashboard as a tab.
-  for (const view of Object.values(saved.workspaceViews)) view.tabs = closeTab(view.tabs, 'dashboard');
+  // Earlier versions sized chat and dashboards beside the tabs, and saved
+  // workspace layouts with an older dashboard tab. Every layout now holds the
+  // main tab, which joins a layout without it at the left.
+  delete (saved.workbench.sizes as Record<string, number>).editor;
+  for (const view of Object.values(saved.workspaceViews)) view.tabs = withMain(closeTab(view.tabs, 'dashboard'));
+  for (const view of Object.values(saved.sessionViews)) view.tabs = withMain(view.tabs);
   return saved;
 }

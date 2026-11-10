@@ -43,7 +43,7 @@ export const toggleWrap = (state: State): State => ({...state, workbench: {...st
 
 export const toggleFixedWidth = (state: State): State => ({...state, workbench: {...state.workbench, fixedWidth: !state.workbench.fixedWidth}});
 
-export const resizeRegion = (state: State, region: Region | 'editor', size: number): State => state.workbench.sizes[region] === size
+export const resizeRegion = (state: State, region: Region, size: number): State => state.workbench.sizes[region] === size
   ? state : {...state, workbench: {...state.workbench, sizes: {...state.workbench.sizes, [region]: size}}};
 
 export const selectSidebarTab = (state: State, sidebarTab: SidebarTab): State => state.workbench.sidebarTab === sidebarTab

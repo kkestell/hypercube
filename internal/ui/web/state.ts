@@ -19,7 +19,9 @@ import type {GitHubAccount} from './github/types.ts';
 // Settings section shown, kept while the dialog closes. renaming names the
 // session whose title is being edited and the sidebar's order of top-level
 // sessions when editing started, which the sidebar keeps until it ends.
-// searchFocus counts requests to focus the file search field. drafts are
+// searchFocus counts requests to focus the file search field. composerFocus
+// is set when a session or workspace is attached, until the next composer to
+// mount takes the focus. drafts are
 // keyed by draft key, dismissed by card key, and fileOpens by session ID. unsentDrafts holds parked new-session contexts
 // by draft key; unsent holds the one currently shown. titleBar is null outside
 // the native window.
@@ -37,6 +39,7 @@ export interface State {
   settingsSection: SettingsSection;
   renaming: {session: string; order: Record<string, string[]>} | null;
   searchFocus: number;
+  composerFocus: boolean;
   loaded: boolean;
   config: Config | null;
   systemDark: boolean;
@@ -77,7 +80,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   dialog: null,
   settingsSection: 'General',
   renaming: null,
-  searchFocus: 0,
+  searchFocus: 0, composerFocus: true,
   loaded: false,
   config: null,
   systemDark: false,
@@ -96,7 +99,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   confirmation: null,
   workbench: {
     sidebar: true, rightPanel: false, rightTab: 'files', wrap: false, fixedWidth: true,
-    sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}, sidebarTab: 'sessions',
+    sizes: {sidebar: 290, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
     collapsedWorkspaces: {}, collapsedSessions: {}, collapsedPullRequestGroups: {}, sidebarScroll: {sessions: 0, archived: 0},
   },
   session: null,

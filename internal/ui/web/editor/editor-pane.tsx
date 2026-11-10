@@ -1,10 +1,13 @@
-// A pane of the tabbed area: its tab strip and its active tab's view, the
-// file or diff. A dragged tab drops on the strip, before the
+// A pane of the tabbed area: its tab strip and its active tab's view: chat,
+// the workspace dashboard, a file, or a diff. A dragged tab drops on the strip, before the
 // tab under the pointer, or on the body, where an edge within a quarter of the
 // pane splits it.
 import {useRef, useState, type DragEvent} from 'react';
 import {DiffView} from '../changes/diff-view.tsx';
 import {FileView} from '../files/file-view.tsx';
+import {ChatView} from '../agent/chat-pane.tsx';
+import {shownSession} from '../sessions/selection.ts';
+import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {useStore} from '../store.ts';
 import {activatePane, moveTab, tabEntry} from './editor.ts';
 import {EditorTabs} from './editor-tabs.tsx';
@@ -18,6 +21,13 @@ function edgeAt(e: DragEvent, body: HTMLElement): Edge {
   const sides: [Edge, number][] = [['left', x], ['right', 1 - x], ['top', y], ['bottom', 1 - y]];
   const [edge, distance] = sides.sort((a, b) => a[1] - b[1])[0];
   return distance < 0.25 ? edge : 'center';
+}
+
+// MainView is the shown session's chat, or the selected workspace's dashboard.
+function MainView({active}: {active: boolean}) {
+  const [state] = useStore();
+  const session = shownSession(state);
+  return session ? <ChatView key={session.id} session={session} active={active} /> : <WorkspaceDashboard />;
 }
 
 export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boolean; placement: Placement}) {
@@ -65,7 +75,8 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} placement={placement} />
       <div ref={body} className="relative flex min-h-0 flex-1 flex-col">
-        {active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
+        {active.kind === 'main' ? <MainView active={isActive} />
+          : active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
           : <FileView key={active.id} id={active.id} path={active.path} active={isActive} />}
       </div>
     </div>

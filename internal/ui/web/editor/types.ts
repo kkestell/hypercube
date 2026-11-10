@@ -3,6 +3,7 @@
 import type {ChangeComparison, Changes, OpenDiff} from '../changes/types.ts';
 import type {EditorTarget} from './target.ts';
 import type {LineRange, SessionFiles} from '../files/types.ts';
+import type {IconName} from '../shared/icon.tsx';
 
 // EditorView owns the file tools and tab layout for a session or workspace.
 export interface EditorView {
@@ -28,7 +29,7 @@ export interface EditorViewState {
   files: Record<string, {source: boolean; lines: LineRange[]}>;
 }
 
-// A tab ID is 'file:<path>', 'diff:<path>', or 'branch-diff:<path>'.
+// A tab ID is 'main', 'file:<path>', 'diff:<path>', or 'branch-diff:<path>'.
 export type TabId = string;
 
 // Pane is a group of tabs with one active tab.
@@ -79,6 +80,12 @@ interface TabEntryBase {
   preview: boolean;
 }
 
+// MainTabEntry is the session's chat or the workspace's dashboard.
+export interface MainTabEntry extends TabEntryBase {
+  kind: 'main';
+  icon: IconName;
+}
+
 export interface DiffTabEntry extends TabEntryBase {
   kind: 'diff';
   path: string;
@@ -93,7 +100,7 @@ export interface FileTabEntry extends TabEntryBase {
   source: boolean | null;
 }
 
-export type TabEntry = DiffTabEntry | FileTabEntry;
+export type TabEntry = MainTabEntry | DiffTabEntry | FileTabEntry;
 
 // ScrollMemory is a view's scroll, and whether it follows its end.
 export interface ScrollMemory {

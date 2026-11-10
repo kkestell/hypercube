@@ -34,8 +34,10 @@ its working directory.
   <img alt="A source file open in a separate pane beside the conversation, with the Files tree on the right" src="images/file-preview-light.png">
 </picture>
 
-The file tab stays beside the conversation; the Files tree remains available
-on the right for opening another file.
+When the conversation is the only tab, the first file opens in a pane beside
+it if the view is at least 800 pixels wide, and in a tab on top of it
+otherwise. Later files join the pane that already holds files. The Files tree
+remains available on the right for opening another file.
 
 ## Inspect a diff
 
@@ -93,7 +95,9 @@ file or result is missing.
 
 ## Arrange the view
 
-Drag tabs between panes, or onto a pane edge to split the view. Drag dividers
+The conversation is a tab like any file, except that it never closes. Drag
+tabs, the conversation's included, between panes, or onto a pane edge to split
+the view. Drag dividers
 to resize panes and panels. Toolbar buttons toggle the sidebar, terminal, and
 right panel. Each session remembers its tabs, splits, and scroll positions.
 

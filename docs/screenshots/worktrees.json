@@ -19,8 +19,7 @@
       "sizes": {
         "sidebar": 290,
         "rightPanel": 320,
-        "panel": 240,
-        "editor": 642
+        "panel": 240
       },
       "sidebarTab": "sessions",
       "collapsedWorkspaces": {},
@@ -36,15 +35,29 @@
         "panel": false,
         "tabs": {
           "root": {
-            "id": 3,
-            "tabs": [
-              "file:README.md"
-            ],
-            "active": "file:README.md"
+            "id": 5,
+            "axis": "x",
+            "ratio": 40,
+            "children": [
+              {
+                "id": 4,
+                "tabs": [
+                  "main"
+                ],
+                "active": "main"
+              },
+              {
+                "id": 3,
+                "tabs": [
+                  "file:README.md"
+                ],
+                "active": "file:README.md"
+              }
+            ]
           },
           "preview": null,
           "dragging": null,
-          "nextId": 4
+          "nextId": 6
         },
         "activePane": 3,
         "expanded": {},

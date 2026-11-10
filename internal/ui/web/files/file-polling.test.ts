@@ -35,7 +35,7 @@ function stubRoutes(routes: Record<string, () => Response | Promise<Response>>) 
 // collapsed c), and file tabs x.go (active in its pane) and y.go (behind z.go).
 function attached(id = 's'): EditorView {
   const session = emptyEditor({session: id});
-  let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce(openTab, session.tabs);
+  let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce((layout, id) => openTab(layout, id), session.tabs);
   tabs = moveTab(tabs, fileTabId('x.go'), panes(tabs.root)[0].id, 'right');
   const open = {'x.go': unread, 'y.go': unread, 'z.go': {...unread, text: 'z', etag: '"z"'}};
   return {...session, tabs, files: {listings, listingErrors: {}, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
