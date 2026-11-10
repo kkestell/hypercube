@@ -4,26 +4,23 @@
 // session in the workspace that holds the repository.
 import {useState} from 'react';
 import {Button} from '../components/ui/button';
-import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {Chevron, Icon} from '../shared/icon.tsx';
-import {expandPullRequestGroup} from '../app/workbench.ts';
+import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {CloneDialog} from './clone-dialog.tsx';
 import {tracking} from './clone.ts';
+import {PullRequestGroups} from './pull-request-groups.tsx';
 import {PullRequestRow} from './pull-request-row.tsx';
 import {useReview} from './review.ts';
-import {othersMoves, turnGroups, yourMoves} from './turns.ts';
+import {othersMoves, yourMoves} from './turns.ts';
 import {failureText} from './wording.ts';
 import type {PullRequest} from './types.ts';
 
 export function AllPullRequests() {
-  const [{accounts, workspaces, workbench}, store] = useStore();
+  const [{accounts, workspaces}, store] = useStore();
   const [cloning, setCloning] = useState<{pr: PullRequest; account: string} | null>(null);
   const review = useReview(store);
-  const all = [...yourMoves(accounts), ...othersMoves(accounts)];
   const failed = accounts.filter(account => account.error);
   const checking = !failed.length && accounts.every(account => !account.updated);
-  const groups = turnGroups.map(group => ({...group, turns: all.filter(({turn}) => turn.group === group.id)})).filter(group => group.turns.length);
   return <section aria-label="Pull requests across accounts" className="min-h-0 flex-1 overflow-auto p-6">
     <h1 className="mb-4 text-lg font-medium">Pull Requests</h1>
     {failed.map(({login, error, updated}) => <p key={login} className="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -31,31 +28,13 @@ export function AllPullRequests() {
       <span>{failureText(`Could not read pull requests for ${login}`, error!, updated)}</span>
     </p>)}
     {cloning && <CloneDialog pr={cloning.pr} account={cloning.account} onClose={() => setCloning(null)} />}
-    {checking ? <p className="text-sm text-muted-foreground">Checking GitHub.</p> : <>
-      {!groups.some(group => group.id !== 'waiting') && <p className="mb-4 text-sm text-muted-foreground">Nothing needs you.</p>}
-      {groups.map(group => {
-        const open = !workbench.collapsedPullRequestGroups[group.id];
-        return <Collapsible key={group.id} open={open} onOpenChange={value => store.update(s => expandPullRequestGroup(s, group.id, value))} className="mb-4">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="-ml-2 mb-1 h-7 gap-1.5 px-2 text-sm font-medium">
-              <Chevron open={open} />
-              <span>{group.title}</span>
-              <span className="text-muted-foreground">{group.turns.length}</span>
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <ul aria-label={group.title} className="space-y-2">
-              {group.turns.map(({account, pr, turn}) => {
-                const workspace = tracking(workspaces, pr.repo);
-                return <PullRequestRow key={`${account}\n${pr.url}`} pr={pr} turn={turn} account={account} hideReason={turn.reason === group.implied} place={<>
-                  In <a href={`https://github.com/${pr.repo}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{pr.repo}</a> for {account}.
-                </>} onReview={workspace && review(workspace.id, pr)} trailing={workspace ? null
-                  : <Button variant="secondary" size="sm" aria-label={`Clone ${pr.repo}`} onClick={() => setCloning({pr, account})}>Clone</Button>} />;
-              })}
-            </ul>
-          </CollapsibleContent>
-        </Collapsible>;
-      })}
-    </>}
+    {checking ? <p className="text-sm text-muted-foreground">Checking GitHub.</p>
+      : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({account, pr, turn}, implied) => {
+        const workspace = tracking(workspaces, pr.repo);
+        return <PullRequestRow key={`${account}\n${pr.url}`} pr={pr} turn={turn} account={account} hideReason={implied} place={<>
+          In {pr.repo}<a href={`https://github.com/${pr.repo}`} target="_blank" rel="noopener noreferrer" aria-label={`Open ${pr.repo} on GitHub`} title="Open on GitHub" className="ml-1 inline-flex align-middle opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 hover:text-foreground"><Icon name="link-external" /></a> for {account}.
+        </>} onReview={workspace && review(workspace.id, pr)} trailing={workspace ? null
+          : <Button variant="secondary" size="sm" className="self-center" aria-label={`Clone ${pr.repo}`} onClick={() => setCloning({pr, account})}>Clone</Button>} />;
+      }} />}
   </section>;
 }

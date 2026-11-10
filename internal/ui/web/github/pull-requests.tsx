@@ -1,11 +1,13 @@
-// A GitHub workspace's open pull requests that need the account, then the ones
-// it waits on, with a Review button that starts a review session for a
-// requested review.
+// A GitHub workspace's open pull requests for its account, grouped by the
+// kind of work as on the pull requests page, with a Review button that starts
+// a review session for a requested review.
 import type {Workspace} from '../sessions/types.ts';
+import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {PullRequestRow} from './pull-request-row.tsx';
 import {useReview} from './review.ts';
-import {sortTurns} from './turns.ts';
+import {PullRequestGroups} from './pull-request-groups.tsx';
+import {othersMoves, yourMoves} from './turns.ts';
 import type {GitHubStatus} from './types.ts';
 
 function emptyText({account, updated, error}: GitHubStatus): string {
@@ -20,22 +22,16 @@ export function PullRequests({workspace}: {workspace: Workspace}) {
   const status = workspace.github;
   if (!status) return null;
   const empty = emptyText(status);
-  const {mine, waiting} = sortTurns(status.pullRequests, status.account);
-  const rows = (label: string, turns: typeof mine) => <ul aria-label={label} className="space-y-2">
-    {turns.map(({pr, turn}) => <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} onReview={review(workspace.id, pr)} />)}
-  </ul>;
-  return <section className="mb-6">
-    <h2 className="mb-2 text-sm font-medium">Pull Requests</h2>
-    {empty ? <p className="text-sm text-muted-foreground">{empty}</p> : <>
-      <h3 className="mb-2 text-xs font-medium text-muted-foreground">Your move</h3>
-      {mine.length ? rows('Your move', mine) : <p className="px-3 text-sm text-muted-foreground">Nothing needs you.</p>}
-      {waiting.length > 0 && <>
-        <h3 className="mt-4 mb-2 text-xs font-medium text-muted-foreground">Waiting on others</h3>
-        {rows('Waiting on others', waiting)}
-      </>}
-      <p className="mt-4 px-3 text-sm">
-        <a href={`${status.url}/pulls`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">All open pull requests</a>
-      </p>
-    </>}
+  const accounts = [{login: status.account, pullRequests: status.pullRequests, updated: status.updated}];
+  return <section aria-label="Pull requests">
+    <h2 className="group/heading mb-3 flex items-center gap-2 text-lg font-semibold">
+      Pull Requests
+      <a href={`${status.url}/pulls`} target="_blank" rel="noopener noreferrer" aria-label="All open pull requests on GitHub" title="All open pull requests on GitHub" className="text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover/heading:opacity-100 hover:text-foreground">
+        <Icon name="link-external" />
+      </a>
+    </h2>
+    {empty ? <p className="text-sm text-muted-foreground">{empty}</p>
+      : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({pr, turn}, implied) =>
+        <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} hideReason={implied} onReview={review(workspace.id, pr)} />} />}
   </section>;
 }

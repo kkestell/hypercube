@@ -1,4 +1,5 @@
 import {afterEach, expect, mock, test} from 'bun:test';
+import {act} from 'react';
 import {find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace, testPullRequest} from '../../test-state.ts';
 import {selectWorkspace} from '../sessions/selection.ts';
@@ -23,25 +24,27 @@ function dashboard(status?: GitHubStatus) {
   return {store, root: mount(store, <WorkspaceDashboard />)};
 }
 
-test('a workspace without GitHub shows only its name', () => {
+test('a workspace without GitHub shows no repository bar', () => {
   const {root} = dashboard();
   expect(root.querySelector('a')).toBeNull();
   expect(root.textContent).not.toContain('GitHub');
 });
 
 test('a GitHub workspace shows its repository, account, and tracking', () => {
-  const {root} = dashboard(github({ahead: 1}));
+  const {root, store} = dashboard(github({ahead: 1}));
+  act(() => store.update(s => ({...s, editor: {...s.editor!, changes: {branch: 'main', files: []}}})));
   const link = find(root, 'a');
   expect(link.getAttribute('href')).toBe('https://github.com/kkestell/hypercube');
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(root.textContent).toContain('Using kkestell.');
-  expect(root.textContent).toContain('main is 1 commit ahead of origin/main.');
+  expect(find(root, '[title="Agents and terminals in this workspace use this account."]').textContent).toBe('kkestell');
+  expect(find(root, '[title="Current branch: main. Open Git changes."]').textContent).toBe('main1');
+  expect(find(root, '[title="1 commit ahead of origin/main"]').textContent).toBe('1');
 });
 
 test('several qualifying accounts show a chooser', () => {
   const {root} = dashboard(github({account: '', choices: ['a', 'b']}));
   expect(find(root, '[aria-label="GitHub account"]').textContent).toContain('Choose an account');
-  expect(root.textContent).toContain('Agents and terminals in this workspace use this account.');
+  expect(find(root, '[aria-label="GitHub account"]').getAttribute('title')).toBe('Agents and terminals in this workspace use this account.');
 });
 
 test('choosing an account posts the workspace and account', async () => {

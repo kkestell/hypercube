@@ -3,7 +3,7 @@
 import type {IconName} from '../shared/icon.tsx';
 import type {GitHubStatus, PullRequest} from './types.ts';
 
-const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
+export const commits = (count: number) => `${count} ${count === 1 ? 'commit' : 'commits'}`;
 
 export function trackingText({branch, upstream, ahead, behind}: GitHubStatus): string {
   if (!branch) return 'No branch is checked out.';

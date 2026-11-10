@@ -82,13 +82,14 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
 
   const needYou = yourMoves(state.accounts).length;
   const tree = <>
-    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky top-0 z-10 -mt-1 bg-sidebar pt-1 pb-1">
-      <Button variant="ghost" size="sm" className="h-7 w-full justify-start gap-2 px-2 font-normal" aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
+    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky top-0 z-10 bg-sidebar pb-2">
+      <Button variant={homeShown(state) ? 'secondary' : 'ghost'} size="sm" className={`h-8 w-full justify-start gap-2 px-2 font-normal ${homeShown(state) ? 'hover:bg-secondary' : ''}`} aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
         <Icon name="git-pull-request" className="size-4 text-muted-foreground" />
         <span className="flex-1 text-left">Pull Requests</span>
         {needYou > 0 && <span className="text-[11px] text-muted-foreground">{needYou}</span>}
       </Button>
     </div>}
+    {view === 'sessions' && workspaces.length > 0 && <h2 className="mt-2 flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/70">Workspaces</h2>}
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}

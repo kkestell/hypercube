@@ -17,7 +17,7 @@ function view(accounts: GitHubAccount[]) {
 
 const rows = (root: HTMLElement, group: string) => findAll(root, `[aria-label="${group}"] li`);
 const labels = (root: HTMLElement) => findAll(root, 'li button').map(button => button.getAttribute('aria-label') ?? button.textContent);
-const headings = (root: HTMLElement) => findAll(root, 'section > div > button').map(button => button.textContent);
+const headings = (root: HTMLElement) => findAll(root, '[aria-expanded]').map(button => button.textContent);
 
 test('groups list their counts, own work before reviews, and rows say where they are', () => {
   const root = view([
@@ -54,7 +54,7 @@ test('Review is disabled and Clone shown only where no workspace tracks the repo
 test('collapsing a group hides its rows and is remembered', () => {
   const store = createStore(testState({workspaces: [testWorkspace({id: 'w'})], accounts: [account('a', [pr({repo: 'o/r'})])]}));
   const root = mount(store, <AllPullRequests />);
-  clickControl(findAll(root, 'section > div > button')[0]);
+  clickControl(findAll(root, '[aria-expanded]')[0]);
   expect(store.get().workbench.collapsedPullRequestGroups).toEqual({review: true});
   expect(root.querySelector('[aria-label="Reviews to do"]')).toBeNull();
 });

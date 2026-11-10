@@ -25,19 +25,20 @@ function dashboard(status: GitHubStatus, sessions = [testSession({id: 'a'})]) {
 }
 
 const list = (root: HTMLElement, label: string) => find(root, `[aria-label="${label}"]`);
-const buttons = (root: HTMLElement) => findAll(root, '[aria-label="Your move"] button, [aria-label="Waiting on others"] button');
+const buttons = (root: HTMLElement) => findAll(root, '[aria-label="Pull requests"] li button');
 
-test('rows say why they are the account’s move or a wait, and link GitHub', () => {
+test('rows are grouped as on the pull requests page, say why, and link GitHub', () => {
   const {root} = dashboard(github({pullRequests: [
     pr({number: 7, merge: 'CLEAN'}),
     pr({number: 8, author: 'bob', title: 'Theirs', url: 'https://github.com/o/r/pull/8', requested: 'user'}),
     pr({number: 9, title: 'Mine', review: 'REVIEW_REQUIRED', merge: 'BLOCKED'}),
   ]}));
-  const link = find(list(root, 'Your move'), 'a');
-  expect(link.textContent).toBe('#8 Theirs');
+  const link = find(list(root, 'Reviews to do'), 'a');
+  expect(link.getAttribute('aria-label')).toBe('Open #8 on GitHub');
   expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/8');
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.Review#7 Add itReady to merge.');
+  expect(list(root, 'Reviews to do').textContent).toBe('#8 TheirsFrom bob.Review');
+  expect(list(root, 'Ready to merge').textContent).toBe('#7 Add it');
   expect(list(root, 'Waiting on others').textContent).toBe('#9 MineWaiting for review.');
   expect(buttons(root).map(b => b.textContent)).toEqual(['Review']);
 });
@@ -50,21 +51,21 @@ test('empty states say what is happening', () => {
   ];
   for (const [overrides, expected] of states) {
     const {root} = dashboard(github(overrides));
-    expect(find(root, 'section section').textContent).toContain(expected);
-    expect(root.querySelector('[aria-label="Your move"]')).toBeNull();
+    expect(find(root, '[aria-label="Pull requests"]').textContent).toContain(expected);
+    expect(root.querySelector('[aria-label="Pull requests"] ul')).toBeNull();
     unmountAll();
   }
 });
 
 test('every dashboard links to all open pull requests', () => {
   const {root} = dashboard(github({pullRequests: [pr({merge: 'CLEAN'}), pr({number: 8, author: 'bob'})]}));
-  const link = findAll(root, 'a').find(a => a.textContent === 'All open pull requests');
-  expect(link?.getAttribute('href')).toBe('https://github.com/o/r/pulls');
+  const link = find(root, '[aria-label="All open pull requests on GitHub"]');
+  expect(link.getAttribute('href')).toBe('https://github.com/o/r/pulls');
 });
 
 test('an empty list says nothing needs the account', () => {
   const {root} = dashboard(github());
-  expect(find(root, 'section section').textContent).toContain('Nothing needs you.');
+  expect(find(root, '[aria-label="Pull requests"]').textContent).toContain('Nothing needs you.');
 });
 
 const requested = () => pr({author: 'bob', requested: 'user'});

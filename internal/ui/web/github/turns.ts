@@ -1,5 +1,6 @@
 // Whose move each pull request is: the account's, someone else's while the
 // account waits, or nobody's that concerns the account.
+import type {IconName} from '../shared/icon.tsx';
 import type {GitHubAccount, PullRequest} from './types.ts';
 
 export type TurnGroup = 'fix' | 'replies' | 'merge' | 'review' | 'waiting';
@@ -15,20 +16,21 @@ export const turnGroups: {id: TurnGroup; title: string; implied?: string}[] = [
   {id: 'waiting', title: 'Waiting on others'},
 ];
 
-// Turn is what a pull request waits on and why, and which kind of work it is.
-// rank orders the account's moves: others blocked on the account come first,
-// its own work next.
+// Turn is what a pull request waits on and why, the icon that shows it, and
+// which kind of work it is. rank orders the account's moves: others blocked on
+// the account come first, its own work next.
 export interface Turn {
   yours: boolean;
   reason: string;
+  icon: IconName;
   rank: number;
   group: TurnGroup;
 }
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 const running = (pr: PullRequest) => pr.checks === 'PENDING' || pr.checks === 'EXPECTED';
-const yours = (group: TurnGroup, rank: number, reason: string): Turn => ({yours: true, reason, rank, group});
-const theirs = (reason: string): Turn => ({yours: false, reason, rank: 0, group: 'waiting'});
+const yours = (group: TurnGroup, rank: number, icon: IconName, reason: string): Turn => ({yours: true, reason, icon, rank, group});
+const theirs = (icon: IconName, reason: string): Turn => ({yours: false, reason, icon, rank: 0, group: 'waiting'});
 
 // turnOf says whose move the pull request is for the account, or null when it
 // does not concern the account.
@@ -37,32 +39,32 @@ export function turnOf(pr: PullRequest, account: string): Turn | null {
 }
 
 function reviewTurn(pr: PullRequest): Turn | null {
-  if (pr.requested === 'user') return yours('review', 0, 'Review requested.');
-  if (pr.reviewed === 'CHANGES_REQUESTED' && pr.responded) return yours('replies', 1, 'Updated since you requested changes.');
-  if (pr.unanswered) return yours('replies', 2, `${plural(pr.unanswered, 'reply', 'replies')} to your comments.`);
-  if (pr.requested === 'team' && !pr.reviewed) return yours('review', 5, 'Review requested from your team.');
-  if (pr.reviewed === 'CHANGES_REQUESTED') return theirs('You requested changes.');
+  if (pr.requested === 'user') return yours('review', 0, 'eye', 'Review requested.');
+  if (pr.reviewed === 'CHANGES_REQUESTED' && pr.responded) return yours('replies', 1, 'eye', 'Updated since you requested changes.');
+  if (pr.unanswered) return yours('replies', 2, 'comment-discussion', `${plural(pr.unanswered, 'reply', 'replies')} to your comments.`);
+  if (pr.requested === 'team' && !pr.reviewed) return yours('review', 5, 'eye', 'Review requested from your team.');
+  if (pr.reviewed === 'CHANGES_REQUESTED') return theirs('history', 'You requested changes.');
   return null;
 }
 
 function ownTurn(pr: PullRequest): Turn {
-  if (pr.draft) return theirs('Draft.');
-  if (pr.requiredFailed) return yours('fix', 3, 'A required check failed.');
-  if (pr.merge === 'DIRTY') return yours('fix', 3, 'Has merge conflicts.');
-  if (pr.merge === 'BEHIND') return yours('fix', 3, 'Behind the base branch.');
-  if (pr.review === 'CHANGES_REQUESTED' && !pr.responded) return yours('fix', 3, 'Changes requested.');
+  if (pr.draft) return theirs('git-pull-request-draft', 'Draft.');
+  if (pr.requiredFailed) return yours('fix', 3, 'error', 'A required check failed.');
+  if (pr.merge === 'DIRTY') return yours('fix', 3, 'warning', 'Has merge conflicts.');
+  if (pr.merge === 'BEHIND') return yours('fix', 3, 'refresh', 'Behind the base branch.');
+  if (pr.review === 'CHANGES_REQUESTED' && !pr.responded) return yours('fix', 3, 'edit', 'Changes requested.');
   // After a push answers requested changes, only newer comments count as
   // unanswered, so they come before waiting for the reviewers.
-  if (pr.unanswered) return yours('fix', 3, `${plural(pr.unanswered, 'unanswered comment', 'unanswered comments')}.`);
-  if (pr.review === 'CHANGES_REQUESTED') return theirs('Waiting for another review.');
+  if (pr.unanswered) return yours('fix', 3, 'comment-discussion', `${plural(pr.unanswered, 'unanswered comment', 'unanswered comments')}.`);
+  if (pr.review === 'CHANGES_REQUESTED') return theirs('history', 'Waiting for another review.');
   // Without branch protection GitHub calls a pull request mergeable while
   // requested reviewers have yet to answer.
-  if (pr.pendingReviews && pr.review !== 'APPROVED') return theirs('Waiting for review.');
-  if (['CLEAN', 'HAS_HOOKS', 'UNSTABLE'].includes(pr.merge)) return yours('merge', 4, 'Ready to merge.');
-  if (running(pr)) return theirs('Checks running.');
-  if (pr.review === 'REVIEW_REQUIRED') return theirs('Waiting for review.');
-  if (pr.merge === 'BLOCKED') return theirs('Blocked from merging.');
-  return theirs('Waiting on GitHub.');
+  if (pr.pendingReviews && pr.review !== 'APPROVED') return theirs('history', 'Waiting for review.');
+  if (['CLEAN', 'HAS_HOOKS', 'UNSTABLE'].includes(pr.merge)) return yours('merge', 4, 'git-merge', 'Ready to merge.');
+  if (running(pr)) return theirs('history', 'Checks running.');
+  if (pr.review === 'REVIEW_REQUIRED') return theirs('history', 'Waiting for review.');
+  if (pr.merge === 'BLOCKED') return theirs('history', 'Blocked from merging.');
+  return theirs('history', 'Waiting on GitHub.');
 }
 
 const allTurns = (accounts: GitHubAccount[], group: 'mine' | 'waiting') =>
