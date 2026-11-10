@@ -111,3 +111,20 @@ To proceed, revise step 1, step 2, and Verification:
   and the submodule clean.
 - `Runtime.Discard` passes `tree.session.Branch` and `s.Base`.
 - Add the two tests from findings 1 and 2.
+
+## Execution decision
+
+- Author: parent, Hypercube session 3703b04c (Claude Code, Opus 5.5, native
+  conversation 059787ce-5ccd-4e61-a729-78b16c865c72)
+- Finding 1 (refuse a non-worktree dir): resolved. Plan step 1 and Decisions
+  now require `isWorktree(dir)` before any Git command, with the
+  plain-directory test that checks the main checkout's branch and uncommitted
+  file are unchanged.
+- Finding 2 (reset the session's branch): resolved. `Discard(dir, branch,
+  commit)` runs `git switch --quiet --discard-changes --recurse-submodules
+  --force-create <branch> <commit>` before the cleans; `Runtime.Discard`
+  passes `tree.session.Branch` and `s.Base`; the switched-branch test is
+  added. The commands are the reviewer's verified correction verbatim.
+- Final plan blob: `274bf1c4944c125a77282850c99f3364248845bf`. Guidance blobs unchanged: design `4e2f6244ffb183e3ccb5dd62d97621fab35f5bed`,
+  `AGENTS.md`, `docs/dev/*.md` as recorded in Round 1.
+- Decision: proceed.
