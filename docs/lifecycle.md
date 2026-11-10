@@ -50,7 +50,5 @@ managed worktrees, so commit your work and merge or push it first.
 **Unarchive** makes an archived session usable again. If it had a managed
 worktree, that worktree is recreated with its branch where it was when
 archived; existing project folders and assigned directories are kept.
-Unarchive is refused while a branch with the session's branch name exists;
-rename or delete that branch and try again.
 
 See [cleanup behavior](storage.md#session-cleanup) for what each action keeps.

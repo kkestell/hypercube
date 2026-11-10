@@ -43,7 +43,7 @@ export function NewBranchDialog({workspace, current, onSave, onClose}: NewBranch
   };
 
   return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent>
+    <DialogContent aria-describedby={undefined}>
       <form onSubmit={save} className="grid gap-4">
         <DialogHeader>
           <DialogTitle>Create a branch</DialogTitle>
