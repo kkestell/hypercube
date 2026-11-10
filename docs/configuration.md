@@ -8,6 +8,16 @@ discards edits. Settings has five sections: **General**, **Agents**,
 
 ## General
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-general-dark.png">
+  <img alt="Settings › General showing Theme, Terminal text size, Default model, and Default location" src="images/settings-general-light.png">
+</picture>
+
+### Appearance
+
+- **Theme**: **System**, **Light**, or **Dark**. Defaults to **System**.
+- **Terminal text size**: 12, 13, 14, 16, or 18 pixels. Defaults to 13.
+
 ### New sessions
 
 - **Default model**: the model for the first session in a workspace. Later
@@ -30,11 +40,6 @@ title stays the start of the first message; failures appear in the service log
 Choose a model from any harness. The call runs with no tools, project
 instructions, or saved conversation, in an empty temporary folder. See
 [what each harness runs](harness-support.md#utility-model).
-
-### Appearance
-
-- **Theme**: **System**, **Light**, or **Dark**. Defaults to **System**.
-- **Terminal text size**: 12, 13, 14, 16, or 18 pixels. Defaults to 13.
 
 ## Agents
 
@@ -71,6 +76,11 @@ empty by default.
 **Review** chooses the model and prompt that
 [**Review**](interface.md#github) starts a pull request review session with.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-review-dark.png">
+  <img alt="Settings › Review showing the review model and the default review prompt" src="images/settings-review-light.png">
+</picture>
+
 - **Review model**: the model for review sessions. Not set by default;
   **Use default model** clears it. Without it, a review uses the default
   model, or else the first listed model at its default effort. With neither,
@@ -86,6 +96,11 @@ empty by default.
 ## Notifications
 
 All four settings are on by default.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-notifications-dark.png">
+  <img alt="Settings › Notifications with all four switches on" src="images/settings-notifications-light.png">
+</picture>
 
 Under **Notify me when**:
 
@@ -110,6 +125,11 @@ Notification delivery and dismissal are described in the
 approval, with each choice's harness and whether it applies to one session or
 all sessions. **Remove** deletes a choice, so the harness asks again when it
 needs approval. Removal applies immediately, without **Save changes**.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-permissions-dark.png">
+  <img alt="Settings › Permissions listing tools always allowed in all sessions and in one session" src="images/settings-permissions-light.png">
+</picture>
 
 Saved choices are kept in the [database](storage.md#hypercube-files), not in
 the configuration file. [Permission behavior](harness-support.md#permissions)
