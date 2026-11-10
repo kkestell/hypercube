@@ -1,0 +1,51 @@
+{
+  "size": {"width": 1680, "height": 1020},
+  "workspaces": [
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [{
+            "prompt": "Summarize the sync guide without editing it",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Sign in with the same account on each device. The guide explains how notebooks sync. No files changed.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "changes": "harbor.patch",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Check what the build test covers; do not run it",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The test builds a single Markdown page with a Go template and checks the output HTML. I did not run it or modify files.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Make harbor build skip pages whose source hasn't changed since the last build",
+            "end": "idle",
+            "usage": {"context": 52100, "window": 200000, "cost": 0.71},
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "A cache file in public/ can record each page's source hash and the templates' hash; a page rebuilds when either changes.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+              {"id": "c2", "kind": "tool", "tool": "Write", "input": {"file_path": "cache.go"}, "output": "File created successfully at: cache.go", "done": true},
+              {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "main.go"}, "output": "The file main.go has been updated.", "done": true},
+              {"id": "a1", "kind": "text", "text": "Builds now skip pages whose source and templates are unchanged since the last build. The cache lives in `public/.harbor-cache`, and `harbor build -force` ignores it.\n\nI changed `build.go` and `main.go` and added `cache.go`. I have not run the tests.", "done": true}
+            ]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [1, 1],
+  "terminal": "git status --short"
+}

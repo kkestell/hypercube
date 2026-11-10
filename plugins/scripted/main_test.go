@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
@@ -16,7 +17,9 @@ const testScene = `{"workspaces": [{"sessions": [{"turns": [
     {"id": "r", "kind": "reasoning", "text": "Look at the client.", "done": true},
     {"id": "a", "kind": "text", "text": "Added retry.", "done": true}]},
   {"prompt": "Ship it?", "end": "ask", "items": [
-    {"id": "q", "kind": "attention", "text": "Push to main?", "choices": ["Push", "Wait"]}]}
+    {"id": "q", "kind": "attention", "text": "Push to main?", "choices": ["Push", "Wait"]}]},
+  {"prompt": "Check limits", "end": "idle", "limits": [{"minutes": 300, "used": 40, "left": 90}], "items": [
+    {"id": "l", "kind": "text", "text": "Checked.", "done": true}]}
 ]}]}]}`
 
 func start(t *testing.T) *harnesstest.Serving {
@@ -70,6 +73,24 @@ func TestTurns(t *testing.T) {
 	unmatched := events(c, 4, "Something else", func(harness.Event) bool { return true })
 	if items := unmatched[0].Items; len(items) != 1 || items[0].Kind != harness.KindError {
 		t.Errorf("unmatched input = %+v, want an error item", unmatched)
+	}
+}
+
+// A turn's limits arrive with its end, resetting the given minutes after the
+// reading.
+func TestLimits(t *testing.T) {
+	c := start(t)
+	before := time.Now()
+	got := events(c, 2, "Check limits", func(ev harness.Event) bool { return ev.State == harness.Idle })
+	limits := got[len(got)-1].Limits
+	if len(limits) != 1 || limits[0].Minutes != 300 || limits[0].Used != 40 {
+		t.Fatalf("limits = %+v, want one 300-minute window 40%% used", limits)
+	}
+	if at := time.UnixMilli(limits[0].At); at.Before(before.Truncate(time.Millisecond)) || time.Since(at) > time.Minute {
+		t.Errorf("reading at %v, want now", at)
+	}
+	if left := time.Unix(limits[0].Resets, 0).Sub(time.UnixMilli(limits[0].At)); left < 89*time.Minute || left > 90*time.Minute {
+		t.Errorf("resets %v after the reading, want 90 minutes", left)
 	}
 }
 

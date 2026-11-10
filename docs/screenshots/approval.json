@@ -1,0 +1,53 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "field-sync",
+      "repo": "field-sync",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Why do conflict retries spike after midnight UTC?",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every device token expires at midnight UTC, so clients reconnect at once and retry the writes they queued. I only read files; nothing changed.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "changes": "harbor.patch",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "turns": [{
+            "prompt": "Highlight code blocks in rendered pages",
+            "end": "working",
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}}
+            ]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Make harbor build skip pages whose source hasn't changed since the last build",
+            "end": "ask",
+            "usage": {"context": 41200, "window": 200000, "cost": 0.52},
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "A cache file in public/ can record each page's source hash and the templates' hash; a page rebuilds when either changes.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+              {"id": "c2", "kind": "tool", "tool": "Write", "input": {"file_path": "cache.go"}, "output": "File created successfully at: cache.go", "done": true},
+              {"id": "t1", "kind": "text", "text": "Builds now skip pages whose source and templates are unchanged, and `harbor build -force` rebuilds everything. Next I'll run the tests with the race detector, since pages render in parallel.", "done": true},
+              {"id": "q1", "kind": "attention", "text": "Allow Bash?\n\nRun `go test -race ./...` to check the build cache for data races.", "choices": ["Allow", "Deny"], "free": true, "grant": "Bash"}
+            ]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [1, 1]
+}

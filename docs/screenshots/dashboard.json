@@ -1,0 +1,73 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "turns": [{
+            "prompt": "Add a contributing guide",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "CONTRIBUTING.md covers building, testing, and the commit style.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "turns": [{
+            "prompt": "Explain how harbor picks a template for each page",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every page uses `templates/page.html`. I only read files; nothing changed.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "unseen": true,
+          "turns": [{
+            "prompt": "Check what the build test covers; do not run it",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The test builds a single Markdown page with a Go template and checks the output HTML. I did not run it or modify files.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Prepare the next release: changelog, version bump, and tag",
+            "end": "ask",
+            "items": [
+              {"id": "t1", "kind": "text", "text": "Builds no longer clear `public/`, which may break sites that relied on it.", "done": true},
+              {"id": "q1", "kind": "attention", "text": "Which version should this release be?", "choices": ["0.4.0", "1.0.0"]}
+            ]
+          }]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Highlight code blocks in rendered pages",
+            "end": "working",
+            "items": [
+              {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension.", "done": true},
+              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}}
+            ]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [{
+            "prompt": "Write a guide to sharing notebooks",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The sharing guide explains invitations, read-only links, and how to stop sharing.", "done": true}]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [0]
+}

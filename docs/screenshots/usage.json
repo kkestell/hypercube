@@ -1,0 +1,44 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Check what the build test covers; do not run it",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The test builds a single Markdown page with a Go template and checks the output HTML. I did not run it or modify files.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Explain how harbor picks a template for each page",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}, "output": "package main\n...", "done": true},
+                {"id": "a1", "kind": "text", "text": "Every page uses `templates/page.html`. `Site.Build()` parses all templates in `templates/` and executes `page.html` with the page's title and rendered body. Pages cannot choose another template yet. I only read files; nothing changed.", "done": true}
+              ]
+            },
+            {
+              "prompt": "Let a page choose its template in front matter, falling back to page.html",
+              "end": "idle",
+              "usage": {"context": 58300, "window": 200000, "cost": 0.84},
+              "limits": [{"minutes": 300, "used": 38, "left": 133}, {"minutes": 10080, "used": 61, "left": 4440}],
+              "items": [
+                {"id": "c2", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./...", "description": "Run the tests"}, "output": "ok  \tharbor\t0.214s", "done": true},
+                {"id": "a2", "kind": "text", "text": "A page can now set `template: post.html` in its front matter. Pages without the field still use `page.html`, and a missing template stops the build with the page's path in the error. The tests pass.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 1]
+}

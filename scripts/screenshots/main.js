@@ -9,7 +9,7 @@
 // `make screenshots` creates and deletes it. A scene's sessions play through
 // the backend's own actions: the plugin answers each prompt with the turn
 // the scene assigns to it.
-const {app, BrowserWindow, nativeImage, nativeTheme, screen, session} = require('electron');
+const {app, BrowserWindow, ipcMain, nativeImage, nativeTheme, screen, session} = require('electron');
 const {execFile, spawn} = require('node:child_process');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -20,6 +20,7 @@ const {createMainWindow} = require('../../desktop/window.js');
 const root = path.resolve(__dirname, '../..');
 const fixtures = path.join(root, 'docs/screenshots/repos');
 const images = path.join(root, 'docs/images');
+const pagesDir = path.join(root, 'internal/ui/dist');
 const run = promisify(execFile);
 
 const dirFlag = process.argv.find(arg => arg.startsWith('--dir='));
@@ -90,7 +91,12 @@ async function shoot(file) {
   const scene = JSON.parse(fs.readFileSync(file, 'utf8'));
   validate(scene);
   const base = path.join(dir, name);
+  if (scene.waiting) return shootWaiting(scene, base, name);
   fs.mkdirSync(path.join(base, 'config/hypercube'), {recursive: true});
+  // Terminal panels run zsh with a prompt naming only the directory, and keep
+  // its history in the scene's folder.
+  fs.mkdirSync(path.join(base, 'zsh'));
+  fs.writeFileSync(path.join(base, 'zsh/.zshrc'), "PROMPT='%1~ %# '\nRPROMPT=''\n");
   // The published example configuration supplies the model titles; Pi has no
   // entry there, so the scene config adds one for the Pi sessions.
   const example = JSON.parse(fs.readFileSync(path.join(root, 'docs/examples/config.json'), 'utf8'));
@@ -112,20 +118,51 @@ async function shoot(file) {
     }
     await play(scene, workspaces, backend, ids, s => !s.parked);
     for (const [s, id] of ids) if (!s.unseen) await backend.post('session', {action: 'seen', id});
-    window = createMainWindow({platform: process.platform, origin: backend.origin, pagesDir: path.join(root, 'internal/ui/dist'), userData: base});
-    await capture(scene, ids, backend, window, name);
+    window = createMainWindow({platform: process.platform, origin: backend.origin, pagesDir, userData: base});
+    await capture(scene, ids, workspaces, backend, window, name);
   } finally {
     if (window) BrowserWindow.fromWebContents(window.contents).destroy();
     await backend.stop();
   }
 }
 
+// shootWaiting captures the waiting page that offers to set up the background
+// service, answering its status request as a freshly installed macOS app's
+// setup would.
+async function shootWaiting(scene, base, name) {
+  fs.mkdirSync(base);
+  ipcMain.handle('setup-status', () => ({
+    address: 'http://localhost:4280/', log: '~/.local/state/hypercube/ui.log', bundle: '~/Applications/Hypercube.app', action: 'setup', command: '',
+  }));
+  nativeTheme.themeSource = 'light';
+  const window = createMainWindow({platform: process.platform, origin: 'http://localhost:4280', pagesDir, userData: base});
+  const contents = window.contents;
+  try {
+    const win = place(scene, window);
+    await window.showWaiting();
+    const settled = async theme => {
+      nativeTheme.themeSource = theme;
+      await until(() => nativeTheme.themeSource === theme);
+      await contents.insertCSS(still);
+      await contents.executeJavaScript('document.fonts.ready.then(() => true)');
+      await pageCondition(contents, `document.querySelector('main button') && document.documentElement.classList.contains('dark') === ${theme === 'dark'}`);
+      await frames(contents);
+    };
+    await shot(scene, win, contents, name, 'light', settled);
+    await shot(scene, win, contents, name, 'dark', settled);
+  } finally {
+    BrowserWindow.fromWebContents(contents).destroy();
+    ipcMain.removeHandler('setup-status');
+  }
+}
+
 // validate checks what the plugin and this driver rely on: every turn has
 // items and an end, children have no children, item IDs are unique within a
 // session, no prompt contains another, since the plugin finds a turn by
-// the prompt its input contains, and a parked session ends idle, has no view,
-// and is not selected.
+// the prompt its input contains, a parked session ends idle, has no view,
+// and is not selected, and a terminal belongs to a selected session.
 function validate(scene) {
+  if (scene.waiting) return;
   const prompts = [];
   const check = (s, child) => {
     const ids = new Set();
@@ -145,7 +182,8 @@ function validate(scene) {
     if (s.parked && (s.view || s.turns.at(-1).end !== 'idle')) throw new Error(`parked session "${s.turns[0].prompt}" needs an idle end and no view`);
   }
   const [w, s] = scene.select;
-  if (scene.workspaces[w].sessions[s].parked) throw new Error('the selected session cannot be parked');
+  if (s === undefined && scene.terminal) throw new Error('a terminal needs a selected session');
+  if (s !== undefined && scene.workspaces[w].sessions[s].parked) throw new Error('the selected session cannot be parked');
   for (const [i, a] of prompts.entries()) {
     if (prompts.some((b, j) => i !== j && b.includes(a))) throw new Error(`prompt "${a}" is part of another prompt`);
   }
@@ -168,6 +206,7 @@ async function startBackend(base, sceneFile) {
   const env = {
     HOME: process.env.HOME, USER: process.env.USER, PATH: process.env.PATH, LANG: process.env.LANG || 'en_US.UTF-8',
     TERM: process.env.TERM || 'xterm-256color', XDG_STATE_HOME: path.join(base, 'state'), XDG_CONFIG_HOME: path.join(base, 'config'),
+    SHELL: '/bin/zsh', ZDOTDIR: path.join(base, 'zsh'),
     HYPERCUBE_SCENE: sceneFile,
   };
   const child = spawn(path.join(dir, 'hypercube'), ['ui', String(port)], {env, stdio: ['ignore', 'pipe', 'inherit']});
@@ -281,12 +320,67 @@ async function play(scene, workspaces, backend, ids, chosen) {
 // it last loaded. The data socket stays open and is not counted.
 const requests = {inflight: new Set(), completed: []};
 
-async function capture(scene, ids, backend, window, name) {
-  const contents = window.contents;
-  const win = BrowserWindow.fromWebContents(contents);
+// A session's editor view with no tabs.
+const emptyView = {panel: false, tabs: {root: null, preview: null, dragging: null, nextId: 1}, activePane: null, expanded: {}, scroll: {}, folders: {}, files: {}};
+
+// place sizes the window for the scene on a Retina display and shows it in
+// front, with keys typed meanwhile kept from the page, and returns it.
+function place(scene, window) {
+  const win = BrowserWindow.fromWebContents(window.contents);
   // The window takes focus to draw its buttons active; keys typed meanwhile
   // must not reach the page.
-  contents.on('before-input-event', event => event.preventDefault());
+  window.contents.on('before-input-event', event => event.preventDefault());
+  const {width, height} = scene.size;
+  win.setSize(width, height);
+  win.center();
+  const [shownWidth, shownHeight] = win.getSize();
+  if (shownWidth !== width || shownHeight !== height) throw new Error(`the window is ${shownWidth}×${shownHeight}, not ${width}×${height}; use a larger display`);
+  if (screen.getDisplayMatching(win.getBounds()).scaleFactor !== 2) throw new Error('the window must be on a Retina display, so images are twice the scene size');
+  // A covered window stops painting, so it stays in front while the page
+  // renders and is captured.
+  window.show();
+  return win;
+}
+
+const frames = contents => contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+
+// shot waits until settled says the page shows the scene in theme, then
+// captures the window to docs/images.
+async function shot(scene, win, contents, name, theme, settled) {
+  const {width, height} = scene.size;
+  await settled(theme);
+  const windowNumber = win.getMediaSourceId().split(':')[1];
+  console.log(`${name}: capturing ${theme}`);
+  const file = path.join(images, `${name}-${theme}.png`);
+  // macOS can briefly capture a wider native frame after sizing the window.
+  let image, wrongSize = false;
+  do {
+    if (!win.isFocused()) {
+      const focused = new Promise(resolve => win.once('focus', resolve));
+      app.focus({steal: true});
+      win.focus();
+      await focused;
+    }
+    await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
+    image = nativeImage.createFromPath(file);
+    const size = image.getSize();
+    if (size.width !== 2 * width || size.height !== 2 * height) {
+      if (wrongSize) throw new Error(`${name}-${theme}.png is ${size.width}×${size.height}, not twice ${width}×${height}`);
+      wrongSize = true;
+      continue;
+    }
+    if (win.isFocused()) break;
+  } while (true);
+  // The screen holds the window's last painted frame, which lags the page
+  // when the window was covered; the image must show what the page drew.
+  if (difference(image, await contents.capturePage()) > 8) {
+    throw new Error(`${name}-${theme}.png does not show the page; keep the window in front while it is captured`);
+  }
+  await addShadow(contents, file);
+}
+
+async function capture(scene, ids, workspaces, backend, window, name) {
+  const contents = window.contents;
   const webRequest = session.defaultSession.webRequest;
   webRequest.onBeforeRequest((details, callback) => {
     if (details.resourceType !== 'webSocket') requests.inflight.add(details.id);
@@ -300,21 +394,13 @@ async function capture(scene, ids, backend, window, name) {
   };
   webRequest.onCompleted(finished);
   webRequest.onErrorOccurred(finished);
-
-  const {width, height} = scene.size;
-  win.setSize(width, height);
-  win.center();
-  const [shownWidth, shownHeight] = win.getSize();
-  if (shownWidth !== width || shownHeight !== height) throw new Error(`the window is ${shownWidth}×${shownHeight}, not ${width}×${height}; use a larger display`);
-  if (screen.getDisplayMatching(win.getBounds()).scaleFactor !== 2) throw new Error('the window must be on a Retina display, so images are twice the scene size');
-  // A covered window stops painting, so it stays in front while the page
-  // renders and is captured.
-  window.show();
+  const win = place(scene, window);
 
   // The views are written from a page that does not save its own over them.
+  // A selection of a workspace alone shows its dashboard.
   const [w, s] = scene.select;
-  const top = scene.workspaces[w].sessions[s];
-  const selected = ids.get(top);
+  const top = s === undefined ? null : scene.workspaces[w].sessions[s];
+  const selected = top ? ids.get(top) : 'workspace:' + workspaces[w];
   const sessionViews = {};
   for (const [scened, id] of ids) if (scened.view) {
     backend.select(id);
@@ -328,6 +414,7 @@ async function capture(scene, ids, backend, window, name) {
     }
     sessionViews[id] = {panel: false, ...scened.view, expanded};
   }
+  if (scene.terminal) sessionViews[selected] = {...(sessionViews[selected] ?? emptyView), panel: true};
   const merged = {...defaultWorkbench, ...scene.workbench};
   // The conversation takes two fifths of the space beside the sidebar and right
   // panel; editor panes take the rest.
@@ -338,11 +425,12 @@ async function capture(scene, ids, backend, window, name) {
   await contents.executeJavaScript(`localStorage.setItem('hypercube.views', ${JSON.stringify(JSON.stringify(views))})`);
 
   // settled waits until the page shows the selected session with its open
-  // tabs' content, the window has the theme, and nothing is loading.
+  // tabs' content, or the selected workspace's dashboard, and whatever the
+  // scene opens, the window has the theme, and nothing is loading.
   const workbench = views.workbench;
   const tabs = workbench.rightPanel && workbench.rightTab === 'files' ? ['/files/tree?', '/changes?'] : [];
   const panes = node => node ? (node.tabs ? [node] : node.children.flatMap(panes)) : [];
-  for (const pane of panes(top.view?.tabs.root)) {
+  for (const pane of panes(top?.view?.tabs.root)) {
     const [kind, file] = [pane.active.slice(0, pane.active.indexOf(':')), pane.active.slice(pane.active.indexOf(':') + 1)];
     if (kind === 'file' || kind === 'diff') tabs.push(`/${kind}?${file}`);
   }
@@ -355,10 +443,18 @@ async function capture(scene, ids, backend, window, name) {
     const error = await contents.executeJavaScript(`${errorCard} ?? ''`);
     if (error) throw new Error(`the page shows an error: ${error}`);
   };
+  const shown = top
+    ? `document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`
+    : `document.querySelector('[aria-label="Recent sessions"]')?.children.length === ${Math.min(10, scene.workspaces[w].sessions.length)}`;
+  // The terminal's rows, and whether one is a prompt: the scene's zsh prompt
+  // ends with % after the directory.
+  const rows = `[...document.querySelectorAll('.terminal-panel .xterm-rows > div')].map(row => row.textContent.trimEnd())`;
+  const prompt = `row => /^\\S+ %$/.test(row)`;
+  let typed = false;
   const settled = async theme => {
     await contents.insertCSS(still);
     await contents.executeJavaScript('document.fonts.ready.then(() => true)');
-    await pageCondition(contents, `${errorCard} || document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`);
+    await pageCondition(contents, `${errorCard} || ${shown}`);
     await checkError();
     if (scene.comparison === 'branch') {
       await contents.executeJavaScript(`[...document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === 'Committed').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))`);
@@ -368,50 +464,51 @@ async function capture(scene, ids, backend, window, name) {
       await contents.executeJavaScript(`document.querySelector('button[aria-label^="Model:"]').click()`);
       await pageCondition(contents, `document.querySelector('[data-slot=popover-content] [role=option]')`);
     }
+    if (scene.openSettings) {
+      await contents.executeJavaScript(`document.querySelector('button[aria-label="Settings"]').click()`);
+      await pageCondition(contents, `document.querySelector('nav[aria-label="Settings sections"]')`);
+      await contents.executeJavaScript(`[...document.querySelectorAll('nav[aria-label="Settings sections"] button')].find(button => button.textContent === ${JSON.stringify(scene.openSettings)}).click()`);
+      await pageCondition(contents, `document.querySelector('nav[aria-label="Settings sections"] [aria-current=page]')?.textContent === ${JSON.stringify(scene.openSettings)}
+        && !document.querySelector('[role=dialog]').textContent.includes('Loading settings')`);
+    }
+    if (scene.openSearch) {
+      await contents.executeJavaScript(`document.querySelector('button[aria-label="Search sessions"]').click()`);
+      await pageCondition(contents, `document.querySelector('[cmdk-input]')`);
+      // React takes typing from the input's native value setter.
+      await contents.executeJavaScript(`(() => {
+        const input = document.querySelector('[cmdk-input]');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(scene.openSearch)});
+        input.dispatchEvent(new Event('input', {bubbles: true}));
+      })()`);
+      await pageCondition(contents, `document.querySelector('[cmdk-item]')`);
+    }
+    if (scene.terminal) {
+      // The shell keeps its output when the page reloads, so the command runs
+      // once; xterm.js takes typed text from its textarea's input events.
+      await pageCondition(contents, `${rows}.some(${prompt})`);
+      if (!typed) {
+        typed = true;
+        await contents.executeJavaScript(`document.querySelector('.terminal-panel .xterm-helper-textarea')
+          .dispatchEvent(new InputEvent('input', {data: ${JSON.stringify(scene.terminal + '\r')}, inputType: 'insertText'}))`);
+      }
+      await pageCondition(contents, `(rows => {
+        const ran = rows.findIndex(row => row.endsWith(${JSON.stringify(scene.terminal)}));
+        return ran >= 0 && rows.slice(ran + 1).some(${prompt});
+      })(${rows})`);
+    }
     await until(() => nativeTheme.themeSource === theme && tabs.every(tab => requests.completed.includes(tab)) && requests.inflight.size === 0);
-    await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    await frames(contents);
     // File and diff highlighters run in workers after their text loads. Network
     // completion alone can leave the plain-text fallback in the capture.
     await pageCondition(contents, `[...document.querySelectorAll('.file-view-code, .diff-view-lines')]
       .every(view => view.querySelector('code span[style*="--shiki"]'))`);
-    await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    await frames(contents);
     await checkError();
-  };
-  const shot = async theme => {
-    await settled(theme);
-    const windowNumber = win.getMediaSourceId().split(':')[1];
-    console.log(`${name}: capturing ${theme}`);
-    const file = path.join(images, `${name}-${theme}.png`);
-    // macOS can briefly capture a wider native frame after sizing the window.
-    let image, wrongSize = false;
-    do {
-      if (!win.isFocused()) {
-        const focused = new Promise(resolve => win.once('focus', resolve));
-        app.focus({steal: true});
-        win.focus();
-        await focused;
-      }
-      await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
-      image = nativeImage.createFromPath(file);
-      const size = image.getSize();
-      if (size.width !== 2 * width || size.height !== 2 * height) {
-        if (wrongSize) throw new Error(`${name}-${theme}.png is ${size.width}×${size.height}, not twice ${width}×${height}`);
-        wrongSize = true;
-        continue;
-      }
-      if (win.isFocused()) break;
-    } while (true);
-    // The screen holds the window's last painted frame, which lags the page
-    // when the window was covered; the image must show what the page drew.
-    if (difference(image, await contents.capturePage()) > 8) {
-      throw new Error(`${name}-${theme}.png does not show the page; keep the window in front while it is captured`);
-    }
-    await addShadow(contents, file);
   };
 
   requests.completed = [];
   await contents.loadURL(`${backend.origin}/#${encodeURIComponent(selected)}`);
-  await shot('light');
+  await shot(scene, win, contents, name, 'light', settled);
 
   const config = await (await fetch(backend.origin + '/config')).json();
   await backend.post('config', {}, {...config, theme: 'dark'});
@@ -420,7 +517,7 @@ async function capture(scene, ids, backend, window, name) {
   const reloaded = new Promise(resolve => contents.once('did-finish-load', resolve));
   contents.reload();
   await reloaded;
-  await shot('dark');
+  await shot(scene, win, contents, name, 'dark', settled);
 }
 
 // addShadow rewrites a capture on a transparent canvas with a drop shadow

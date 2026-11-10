@@ -1,0 +1,65 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "field-sync",
+      "repo": "field-sync",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "turns": [{
+            "prompt": "Why do conflict retries spike after midnight UTC?",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every device token expires at midnight UTC, so clients reconnect at once and retry the writes they queued. I only read files; nothing changed.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Rotate sync tokens without signing devices out",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Devices now keep their previous token for an hour after rotation, so a write in flight during rotation succeeds instead of failing with a conflict. The store tests pass.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [{
+            "prompt": "Explain sync conflicts in the sync guide",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The sync guide now explains that when two devices edit the same note offline, both versions are kept and the newer one opens first.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Fix the broken links in the getting-started guide",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Three links pointed at renamed pages. They now point at the current paths.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "turns": [{
+            "prompt": "Explain how harbor picks a template for each page",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "Every page uses `templates/page.html`. `Site.Build()` parses all templates in `templates/` and executes `page.html` with the page's title and rendered body. I only read files; nothing changed.", "done": true}]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [2, 0],
+  "openSearch": "conflict"
+}

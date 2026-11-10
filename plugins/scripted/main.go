@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
@@ -59,6 +60,7 @@ type turn struct {
 	Items    []harness.Item `json:"items"`
 	End      string         `json:"end"`
 	Usage    *harness.Usage `json:"usage"`
+	Limits   []limit        `json:"limits"`
 	Children []session      `json:"children"`
 	// Offers are the titles of tasks the turn offers the user as new sessions.
 	Offers      []string  `json:"offers"`
@@ -68,6 +70,14 @@ type turn struct {
 		File    string   `json:"file"`
 		Content string   `json:"content"`
 	} `json:"git"`
+}
+
+// limit is a usage window's reading, reported as the turn ends: Left is the
+// minutes until the window resets.
+type limit struct {
+	Minutes int `json:"minutes"`
+	Used    int `json:"used"`
+	Left    int `json:"left"`
 }
 
 func main() {
@@ -219,8 +229,9 @@ func match(turns []turn, text string) (turn, bool) {
 	return turn{}, false
 }
 
-// play sends a turn: working, its children and offers, its items, and its end. The last
-// item arrives with the end, so its arrival means the turn has played. A
+// play sends a turn: working, its children and offers, its items, and its end
+// with its usage and limits. The last item arrives with the end, so its arrival
+// means the turn has played. A
 // child that cannot start ends the turn with the reason.
 func play(t turn, start harness.StartArgs, event func(harness.Event) error) error {
 	if err := event(harness.Event{State: harness.Working}); err != nil {
@@ -252,6 +263,10 @@ func play(t turn, start harness.StartArgs, event func(harness.Event) error) erro
 		}
 	}
 	end := harness.Event{Items: t.Items[n:], Usage: t.Usage}
+	now := time.Now()
+	for _, l := range t.Limits {
+		end.Limits = append(end.Limits, harness.Limit{Minutes: l.Minutes, Used: l.Used, Resets: now.Add(time.Duration(l.Left) * time.Minute).Unix(), At: now.UnixMilli()})
+	}
 	if t.End == endIdle {
 		end.State = harness.Idle
 		for i := n; i >= 0; i-- {

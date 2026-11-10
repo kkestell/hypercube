@@ -76,17 +76,26 @@ Each scene declares:
   with optional patches of uncommitted changes.
 - Session settings as shown in the app: harness, model, and effort.
 - Turn prompts, transcript items in plugin-protocol JSON, and ending state
-  (`idle`, `working`, or `ask`).
+  (`idle`, `working`, or `ask`). A turn's `usage` and `limits` arrive with its
+  end; each limit gives a window's `minutes`, percent `used`, and minutes
+  `left` until it resets.
 - Children, task offers, and agent-initiated suggestions.
 - `openModelPicker: true` opens the composer's model picker before capture.
+  `openSettings` opens Settings at the named section, and `openSearch` opens
+  session search with the given query.
+- `terminal` opens the selected session's terminal panel and runs the given
+  command there. The shell is zsh with a prompt naming only its directory.
+- `waiting: true` captures the waiting page offering **Set Up Background
+  Service** instead of a backend's page; such a scene declares only `size`.
 - Optional fixture-file writes and Git steps; `worktree` gives a top-level
   session its own branch.
 - `parked: true` parks a top-level session and its children: they play first,
   then the backend quits and restarts before the other sessions play.
   `unseen: true` leaves a session's reply unread, which shows a notification.
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
-  to expand in a saved turn. `select` chooses the session; `size` sets window
-  dimensions in points.
+  to expand in a saved turn. `select` chooses the session as a workspace and
+  session index, or a workspace's dashboard as a workspace index alone; `size`
+  sets window dimensions in points.
 - `workbench.rightPanel: false` hides the right panel; `workbench.rightTab`
   chooses Files or Git (`files` or `git`); `comparison: "branch"` selects Git's
   Committed view for a worktree. The driver sizes the editor panes so the

@@ -31,6 +31,11 @@ Get the app and `SHA256SUMS` from
 4. In the waiting window, choose **Set Up Background Service**. When setup
    finishes, the workspace view replaces the waiting page.
 
+   <picture>
+     <source media="(prefers-color-scheme: dark)" srcset="images/waiting-dark.png">
+     <img alt="The Waiting for Hypercube window with the Set Up Background Service button" src="images/waiting-light.png">
+   </picture>
+
 No configuration file is required. You can change preferences later in
 **Settings**.
 
