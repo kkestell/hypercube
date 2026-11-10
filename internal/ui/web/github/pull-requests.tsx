@@ -1,12 +1,15 @@
 // A GitHub workspace's open pull requests for its account, grouped by the
 // kind of work as on the pull requests page, with a Review button that starts
-// a review session for a requested review.
+// a review session for a requested review and a Chat button that opens a new
+// session on the pull request's branch.
 import type {Workspace} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
 import {Message} from '../shared/message.tsx';
 import {useStore} from '../store.ts';
 import {PullRequestRow} from './pull-request-row.tsx';
-import {useReview} from './review.ts';
+import {startChat} from './chat.ts';
+import {startReview} from './review.ts';
+import {useRowAction} from './row-action.ts';
 import {PullRequestGroups} from './pull-request-groups.tsx';
 import {othersMoves, yourMoves} from './turns.ts';
 import type {GitHubStatus} from './types.ts';
@@ -20,7 +23,8 @@ function emptyText({account, updated, error}: GitHubStatus): string {
 
 export function PullRequests({workspace}: {workspace: Workspace}) {
   const [, store] = useStore();
-  const review = useReview(store);
+  const review = useRowAction();
+  const chat = useRowAction();
   const status = workspace.github;
   if (!status) return null;
   const empty = emptyText(status);
@@ -34,6 +38,8 @@ export function PullRequests({workspace}: {workspace: Workspace}) {
     </h2>
     {empty ? <Message error={!!status.account && !!status.error}>{empty}</Message>
       : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({pr, turn}, implied) =>
-        <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} hideReason={implied} onReview={review(workspace.id, pr)} />} />}
+        <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} hideReason={implied}
+          onReview={review(`${workspace.id}\n${pr.number}`, () => startReview(store, workspace.id, pr.number))}
+          onChat={chat(`${status.account}\n${pr.url}`, () => startChat(store, workspace.id, status.account, pr))} />} />}
   </section>;
 }

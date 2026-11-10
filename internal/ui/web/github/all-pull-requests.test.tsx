@@ -1,12 +1,12 @@
-import {afterEach, expect, test} from 'bun:test';
+import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, find, findAll, mount, unmountAll} from '../../test-render.tsx';
+import {clickControl, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testPullRequest, testState, testWorkspace} from '../../test-state.ts';
 import {createStore} from '../store.ts';
 import {AllPullRequests} from './all-pull-requests.tsx';
 import type {GitHubAccount, PullRequest} from './types.ts';
 
-afterEach(unmountAll);
+afterEach(() => { unmountAll(); mock.restore(); });
 
 const pr = (overrides: Partial<PullRequest>) => testPullRequest({author: 'bob', requested: 'user', ...overrides});
 const account = (login: string, pullRequests: PullRequest[], overrides: Partial<GitHubAccount> = {}): GitHubAccount =>
@@ -31,24 +31,52 @@ test('groups list their counts, own work before reviews, and rows say where they
     account('work', [pr({number: 3, url: 'https://github.com/x/y/pull/3', repo: 'x/y', title: 'Other repo'})]),
   ]);
   expect(headings(root)).toEqual(['Your pull requests to fix1', 'Ready to merge1', 'Reviews to do2', 'Waiting on others1']);
-  expect(rows(root, 'Your pull requests to fix').map(row => row.textContent)).toEqual(['#4 ConflictedHas merge conflicts.o/rClone']);
-  expect(rows(root, 'Ready to merge').map(row => row.textContent)).toEqual(['#1 Add ito/rClone']);
+  expect(rows(root, 'Your pull requests to fix').map(row => row.textContent)).toEqual(['#4 ConflictedHas merge conflicts.o/rChat']);
+  expect(rows(root, 'Ready to merge').map(row => row.textContent)).toEqual(['#1 Add ito/rChat']);
   expect(rows(root, 'Reviews to do').map(row => row.textContent)).toEqual([
-    '#2 TheirsFrom bob.o/rReviewClone',
-    '#3 Other repoFrom bob.x/yReviewClone',
+    '#2 TheirsFrom bob.o/rReviewChat',
+    '#3 Other repoFrom bob.x/yReviewChat',
   ]);
-  expect(rows(root, 'Waiting on others').map(row => row.textContent)).toEqual(['#5 BlockedBlocked from merging.o/rClone']);
+  expect(rows(root, 'Waiting on others').map(row => row.textContent)).toEqual(['#5 BlockedBlocked from merging.o/rChat']);
 });
 
-test('Review is disabled and Clone shown only where no workspace tracks the repository', () => {
-  const github = {repo: 'O/R', url: '', account: '', branch: '', ahead: 0, behind: 0, pullRequests: [], updated: 1};
-  const store = createStore(testState({workspaces: [testWorkspace({id: 'w', github})], accounts: [
-    account('a', [pr({number: 1, repo: 'o/r', url: 'u1'}), pr({number: 2, repo: 'x/y', url: 'u2'})]),
-  ]}));
+const github = {repo: 'O/R', url: '', account: '', branch: '', ahead: 0, behind: 0, pullRequests: [], updated: 1};
+const tracked = () => createStore(testState({workspaces: [testWorkspace({id: 'w', github})], accounts: [
+  account('a', [pr({number: 1, repo: 'o/r', url: 'u1'}), pr({number: 2, repo: 'x/y', url: 'u2'})]),
+]}));
+const button = (root: ParentNode, label: string, index = 0) =>
+  findAll(root, 'button').filter(b => b.textContent === label)[index] as HTMLButtonElement;
+const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+
+test('every row has Chat; Review is disabled where no workspace tracks the repository', () => {
+  const root = mount(tracked(), <AllPullRequests />);
+  expect(labels(root)).toEqual(['Review', 'Chat', 'Review', 'Chat']);
+  expect([button(root, 'Review', 0).disabled, button(root, 'Review', 1).disabled]).toEqual([false, true]);
+  expect([button(root, 'Chat', 0).disabled, button(root, 'Chat', 1).disabled]).toEqual([false, false]);
+});
+
+test('Chat on a tracked row asks for the branch in that workspace without a dialog', async () => {
+  const stub = stubFetch(() => Response.json({name: 'feature', start: 'abc123'}));
+  const store = tracked();
   const root = mount(store, <AllPullRequests />);
-  expect(labels(root)).toEqual(['Review', 'Review', 'Clone x/y']);
-  const review = findAll(root, 'li button').filter(button => button.textContent === 'Review') as HTMLButtonElement[];
-  expect(review.map(button => button.disabled)).toEqual([false, true]);
+  await act(async () => clickControl(button(root, 'Chat', 0)));
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(Object.fromEntries(new URL(stub.mock.calls[0][0], 'http://x/').searchParams))
+    .toEqual({action: 'pull-request-branch', id: 'w', account: 'a', repo: 'o/r', number: '1'});
+  expect(store.get().unsent).toMatchObject({workspace: 'w', worktree: true, branch: {name: 'feature', start: 'abc123'}});
+});
+
+test('Chat on an untracked row adds the workspace, then opens its new session on the branch', async () => {
+  const stub = stubFetch(url => url.includes('action=clone') ? new Response('new-ws') : Response.json({name: 'feature', start: 'abc123'}));
+  const store = tracked();
+  const root = mount(store, <AllPullRequests />);
+  clickControl(button(root, 'Chat', 1));
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Add x/y');
+  clickControl(button(document, 'Clone'));
+  await flush();
+  expect(Object.fromEntries(new URL(stub.mock.calls[1][0], 'http://x/').searchParams))
+    .toEqual({action: 'pull-request-branch', id: 'new-ws', account: 'a', repo: 'x/y', number: '2'});
+  expect(store.get().unsent).toMatchObject({workspace: 'new-ws', worktree: true, branch: {name: 'feature', start: 'abc123'}});
 });
 
 test('collapsing a group hides its rows and is remembered', () => {
@@ -85,19 +113,18 @@ test('before any account has been read it says GitHub is being checked', () => {
   expect(view([account('a', [], {updated: 0})]).textContent).toContain('Checking GitHub.');
 });
 
-test('closing Clone returns focus to its opener and allows opening it again', async () => {
+test('closing the dialog returns focus to Chat and allows opening it again', async () => {
   const root = view([account('a', [pr({repo: 'o/r'})])]);
-  const opener = find(root, '[aria-label="Clone o/r"]');
+  const opener = button(root, 'Chat');
   act(() => opener.focus());
   clickControl(opener);
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Clone o/r');
-  const cancel = findAll(document, 'button').find(button => button.textContent === 'Cancel')!;
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Add o/r');
   await act(async () => {
-    clickControl(cancel);
+    clickControl(button(document, 'Cancel'));
     await new Promise(resolve => setTimeout(resolve, 0));
   });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.activeElement).toBe(opener);
   clickControl(opener);
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Clone o/r');
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Add o/r');
 });

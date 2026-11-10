@@ -1,14 +1,13 @@
-// The folder prompt for cloning a pull request's repository. The clone runs
-// while the dialog is open; closing the dialog cancels it.
+// Adding a pull request's repository as a workspace: cloning it into a folder,
+// or, in the desktop app, choosing a folder that already has it. The clone
+// runs while the dialog is open; closing the dialog cancels it.
 import {useEffect, useRef, useState, type FormEvent} from 'react';
-import {cloneWorkspace} from '../api.ts';
+import {requestWorkspace} from '../api.ts';
 import {hypercube} from '../app/window.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Input} from '../components/ui/input';
 import {Label} from '../components/ui/label';
-import {workspaceKey} from '../editor/target.ts';
-import {selectSession} from '../sessions/selection.ts';
 import {BusyDot} from '../shared/busy-dot.tsx';
 import {useDialogFocus} from '../shared/focus.ts';
 import {Message} from '../shared/message.tsx';
@@ -20,6 +19,8 @@ interface CloneDialogProps {
   open: boolean;
   pr: PullRequest;
   account: string;
+  // onAdded receives the added workspace's ID.
+  onAdded: (workspace: string) => void;
   onClose: () => void;
 }
 
@@ -36,8 +37,8 @@ export function CloneDialog({open, ...props}: CloneDialogProps) {
 
 // CloneForm mounts with the dialog's content. Closing cancels a clone at once,
 // before the dialog finishes animating closed.
-function CloneForm({open, pr, account, onClose}: CloneDialogProps) {
-  const [state, store] = useStore();
+function CloneForm({open, pr, account, onAdded, onClose}: CloneDialogProps) {
+  const [state] = useStore();
   const [folder, setFolder] = useState(() => suggestedFolder(state.workspaces, pr.repo));
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState('');
@@ -61,7 +62,7 @@ function CloneForm({open, pr, account, onClose}: CloneDialogProps) {
     running.current = controller;
     setCloning(true);
     setError('');
-    const result = await cloneWorkspace({repo: pr.repo, account, path: folder.trim()}, controller.signal);
+    const result = await requestWorkspace({action: 'clone', repo: pr.repo, account, path: folder.trim()}, controller.signal);
     if (controller.signal.aborted) return;
     running.current = null;
     if ('error' in result) {
@@ -69,14 +70,29 @@ function CloneForm({open, pr, account, onClose}: CloneDialogProps) {
       setError(result.error);
       return;
     }
-    store.update(s => selectSession(s, workspaceKey(result.workspace)));
+    onAdded(result.workspace);
+    onClose();
+  }
+
+  // addExisting adds a folder the user chooses, which the server refuses
+  // unless it is a checkout of the repository.
+  async function addExisting() {
+    const chosen = await hypercube()?.chooseFolder();
+    if (!chosen) return;
+    setError('');
+    const result = await requestWorkspace({action: 'new', path: chosen, repo: pr.repo});
+    if ('error' in result) {
+      setError(result.error);
+      return;
+    }
+    onAdded(result.workspace);
     onClose();
   }
 
   return <form onSubmit={clone} className="grid gap-4">
     <DialogHeader>
-      <DialogTitle>Clone {pr.repo}</DialogTitle>
-      <DialogDescription>Clones with {account} and adds a workspace.</DialogDescription>
+      <DialogTitle>Add {pr.repo}</DialogTitle>
+      <DialogDescription>Clone it with {account}, or use a folder that already has it.</DialogDescription>
     </DialogHeader>
     <div className="grid gap-2">
       <Label htmlFor="clone-folder">Folder</Label>
@@ -88,6 +104,7 @@ function CloneForm({open, pr, account, onClose}: CloneDialogProps) {
     </div>
     <DialogFooter>
       <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>
+      {hypercube() && <Button type="button" variant="secondary" disabled={cloning} onClick={addExisting}>Use Existing Folder…</Button>}
       <Button type="submit" disabled={cloning || !folder.trim()}>
         {cloning ? <><BusyDot title="Cloning" />Cloning…</> : 'Clone'}
       </Button>

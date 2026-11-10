@@ -32,6 +32,19 @@ func TestCheckNewBranch(t *testing.T) {
 	}
 }
 
+func TestFreeBranch(t *testing.T) {
+	t.Parallel()
+	root, run := gitRepo(t)
+	run(root, "branch", "one")
+	run(root, "branch", "two")
+	run(root, "branch", "two-2")
+	for name, want := range map[string]string{"free": "free", "one": "one-2", "two": "two-3"} {
+		if got := FreeBranch(root, name); got != want {
+			t.Errorf("FreeBranch(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
 func TestAddWorktreeRefusesExistingBranch(t *testing.T) {
 	t.Parallel()
 	root, run := gitRepo(t)

@@ -192,12 +192,13 @@ workspace's dashboard and in **Pull Requests** in the sidebar, with a
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/pull-requests-dark.png">
-  <img alt="The Pull Requests view grouping pull requests from three repositories, with Review and Clone buttons on requested reviews" src="images/pull-requests-light.png">
+  <img alt="The Pull Requests view grouping pull requests from three repositories, with a Chat button on every row and Review on requested reviews" src="images/pull-requests-light.png">
 </picture>
 
-In **Pull Requests**, a pull request from a repository with no workspace
-shows **Clone**, and **Review** stays disabled. Clone the repository to add it
-as a workspace, then choose **Review**. To
+In **Pull Requests**, **Review** stays disabled on a pull request from a
+repository with no workspace. Choose **Chat** on its row to clone the
+repository or use a folder that already holds it; that adds the workspace, and
+**Review** becomes available. To
 choose the review model and prompt, see
 [Review settings](configuration.md#review).
 

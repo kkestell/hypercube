@@ -40,3 +40,13 @@ func Branches(root string) (local, remote []string, err error) {
 	}
 	return local, remote, nil
 }
+
+// FreeBranch returns name when root's repository has no local branch of that
+// name, else the first of name-2, name-3, … that it lacks.
+func FreeBranch(root, name string) string {
+	free := name
+	for n := 2; exists(root, free); n++ {
+		free = fmt.Sprintf("%s-%d", name, n)
+	}
+	return free
+}

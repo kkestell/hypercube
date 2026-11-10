@@ -197,15 +197,28 @@ the sidebar shows the number of pull requests that need its account.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/pull-requests-dark.png">
-  <img alt="The Pull Requests view grouping pull requests from three repositories, with Review and Clone buttons on requested reviews" src="images/pull-requests-light.png">
+  <img alt="The Pull Requests view grouping pull requests from three repositories, with a Chat button on every row and Review on requested reviews" src="images/pull-requests-light.png">
 </picture>
 
-A row whose repository has no workspace shows **Clone**. It asks for a folder,
-suggesting one beside a workspace of the same GitHub owner, and clones the
-repository over HTTPS with the row's account. The clone records that account in
-its own `credential.githubAccount` setting, becomes a workspace, and opens its
-dashboard. The dialog shows Git's error if the clone fails, and closing it
-cancels the clone. In the desktop app, **Choose…** picks the parent folder.
+Every pull request row, on a dashboard or the Pull Requests view, shows
+**Chat**. Chat fetches the pull request's head commit and opens the
+workspace's new session with **New worktree on branch…** set to the pull
+request's branch, starting at that commit, and the cursor in the message box.
+Nothing is sent: write the first prompt and send it. Text already typed in
+that new session, and its model, stay. When the workspace's checkout already
+has a branch of that name, the new branch is named with the first free suffix,
+such as `feature-2`. The name can be edited before sending.
+
+On the Pull Requests view, Chat on a row whose repository has no workspace
+first opens **Add {repository}**. **Clone** clones the repository over HTTPS
+with the row's account into the folder shown, suggested beside a workspace of
+the same GitHub owner; **Choose…** picks the parent folder. The clone records
+that account in its own `credential.githubAccount` setting. The dialog shows
+Git's error if the clone fails, and closing it cancels the clone. **Use
+Existing Folder…** adds a folder that already holds the repository: its
+current branch's remote, or else `origin`, must be the row's repository on
+GitHub, and otherwise the dialog says which repository the folder holds. Either
+way the folder becomes a workspace, and Chat continues in it.
 
 A pull request whose review was requested from the account shows **Review**.
 It fetches the pull request's head commit, starts a new worktree session at that
