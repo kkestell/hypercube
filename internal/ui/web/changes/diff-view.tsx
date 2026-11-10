@@ -4,7 +4,7 @@ import {useEffect, useMemo, useRef} from 'react';
 import {matches} from '../app/shortcuts.ts';
 import {Button} from '../components/ui/button';
 import {openFileAt} from '../editor/editor.ts';
-import {useScrollMemory} from '../editor/use-scroll-memory.ts';
+import {useScrollMemory} from '../shared/use-scroll-memory.ts';
 import type {TabId} from '../editor/types.ts';
 import {language} from '../files/language.ts';
 import {useHighlight} from '../files/use-highlight.ts';
@@ -81,7 +81,7 @@ export function DiffView({id, path, active = true}: {id: TabId; path: string; ac
           <Button className="size-6" variant="ghost" size="icon" aria-label="Next change" title="Next change (Option+F5)" disabled={!hasChanges} onClick={() => move(1)}><Icon name="arrow-down" /></Button>
         </div>
       </div>
-      <Find list={list} view={view} active={active} label="Find in diff" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />
+      <Find list={list} view={view} active={active} label="Find in diff" />
       <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">
         <div ref={list}>{diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
           : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench.wrap} /> : null)}</div>

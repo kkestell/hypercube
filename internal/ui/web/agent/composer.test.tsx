@@ -58,8 +58,9 @@ test('a composer focuses its text box when it mounts', () => {
 
 test('a composer leaves the focus in a tab strip', () => {
   const strip = document.createElement('div');
-  strip.className = 'editor-tabs';
+  strip.setAttribute('role', 'tablist');
   const tab = document.createElement('button');
+  tab.setAttribute('role', 'tab');
   strip.append(tab);
   document.body.append(strip);
   tab.focus();

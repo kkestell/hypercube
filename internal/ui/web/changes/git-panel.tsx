@@ -1,7 +1,7 @@
 import {useEffect} from 'react';
 import {Button} from '../components/ui/button';
 import {Tabs, TabsContent, TabsList, TabsTrigger} from '../components/ui/tabs';
-import {openDiffTab} from '../editor/editor.ts';
+import {openDiffTab, setGitComparison} from '../editor/editor.ts';
 import {FileIcon} from '../files/file-icon.tsx';
 import {currentSession} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
@@ -47,7 +47,7 @@ export function GitPanel() {
   }, [editor?.id, state.editorVersion, comparison, state.workbench.rightPanel, state.workbench.rightTab]);
   const selectComparison = (value: string) => {
     if (value !== 'uncommitted' && value !== 'branch') return;
-    store.update(state => state.editor ? {...state, editor: {...state.editor, gitComparison: value}} : state);
+    store.update(state => setGitComparison(state, value));
   };
   return <div className="git-panel flex h-full min-h-0 flex-col">
     <div className="min-h-0 flex-1 overflow-auto p-2 pt-1">

@@ -176,3 +176,7 @@ export function rememberScroll(state: State, sessionId: string, id: TabId, scrol
   return workspace ? {...state, workspaceViews: {...state.workspaceViews, [workspace]: {...state.workspaceViews[workspace], scroll: remembered}}}
     : {...state, sessionViews: {...state.sessionViews, [sessionId]: {...state.sessionViews[sessionId], scroll: remembered}}};
 }
+
+// setGitComparison chooses what the Git panel compares the working tree with.
+export const setGitComparison = (state: State, comparison: ChangeComparison): State =>
+  withEditor(state, editor => ({...editor, gitComparison: comparison}));

@@ -11,7 +11,7 @@ afterEach(unmountAll);
 
 function Pane({id, active, text = 'some text'}: {id: number; active: boolean; text?: string}) {
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  return <div className="editor-pane" data-pane={id}>
+  return <div data-pane={id}>
     <Find view={view} list={list} active={active} label="Find in file" />
     <div ref={view} tabIndex={0}><div ref={list}>{text}</div></div>
   </div>;

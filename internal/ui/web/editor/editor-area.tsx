@@ -35,7 +35,7 @@ export function EditorArea({besideMain = false}: {besideMain?: boolean}) {
   const focused = usePaneFocus(area, !besideMain);
   const {root} = state.editor?.tabs ?? emptyTabs;
   const placement = {...whole, left: !besideMain, right: !besideMain};
-  return <div ref={area} className="editor-area h-full min-h-0 min-w-0">
+  return <div ref={area} className="h-full min-h-0 min-w-0" data-editor-area="">
     {root ? <PaneTree node={root} focused={focused} placement={placement} /> : <EditorTabs pane={null} entries={[]} placement={placement} />}
   </div>;
 }

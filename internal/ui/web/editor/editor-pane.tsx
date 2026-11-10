@@ -4,7 +4,6 @@
 // pane splits it.
 import {useRef, useState, type DragEvent} from 'react';
 import {DiffView} from '../changes/diff-view.tsx';
-import {Card} from '../components/ui/card';
 import {FileView} from '../files/file-view.tsx';
 import {useStore} from '../store.ts';
 import {activatePane, moveTab, tabEntry} from './editor.ts';
@@ -61,11 +60,11 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
   return (
     <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-pane={pane.id}
       onFocusCapture={activate} onPointerDownCapture={activate} data-drop={drop ?? undefined} onDragEnter={over} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      {drop && <Card aria-hidden="true" className={`pointer-events-none absolute z-10 opacity-50 ${
+      {drop && <div aria-hidden="true" className={`pointer-events-none absolute z-10 animate-in fade-in rounded-md border bg-accent/50 ${
         drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} placement={placement} />
-      <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
+      <div ref={body} className="relative flex min-h-0 flex-1 flex-col">
         {active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
           : <FileView key={active.id} id={active.id} path={active.path} active={isActive} />}
       </div>

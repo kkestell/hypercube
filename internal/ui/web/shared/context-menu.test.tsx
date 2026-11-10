@@ -7,10 +7,9 @@ import {ContextMenu} from './context-menu.tsx';
 
 afterEach(unmountAll);
 
-
 test('a menu uses stock menu items', () => {
   const store = createStore(testState());
-  mount(store, <ContextMenu x={0} y={innerHeight - 10} items={[[{label: 'Action', icon: 'check', run() {}}]]} onClose={() => {}} />);
+  mount(store, <ContextMenu open x={0} y={innerHeight - 10} items={[[{label: 'Action', icon: 'check', run() {}}]]} onClose={() => {}} />);
   expect(find(document, '[role=menuitem]').textContent).toBe('Action');
   unmountAll();
 });
@@ -23,7 +22,7 @@ test('selecting an item returns focus before running its action', () => {
   const store = createStore(testState());
   function Menu() {
     const [open, setOpen] = useState(true);
-    return open && <ContextMenu x={0} y={0} items={[[{label: 'Action', icon: 'check', run: () => { focusedDuringAction = document.activeElement === invoker; }}]]} onClose={() => setOpen(false)} />;
+    return <ContextMenu open={open} x={0} y={0} items={[[{label: 'Action', icon: 'check', run: () => { focusedDuringAction = document.activeElement === invoker; }}]]} onClose={() => setOpen(false)} />;
   }
   mount(store, <Menu />);
   clickControl(find(document, '[role=menuitem]'));

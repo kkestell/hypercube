@@ -1,6 +1,7 @@
 // The directory and branch of the selected session or workspace, independent
 // of the file tools. details go before the branch, and tracking inside it.
 import type {ReactNode} from 'react';
+import {showRightTab} from '../app/workbench.ts';
 import {editorDirectory} from '../editor/target.ts';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
@@ -20,7 +21,7 @@ export function WorkingContext({details, tracking}: {details?: ReactNode; tracki
     {details}
     {branch !== null && <button type="button" className="flex min-w-0 max-w-1/2 items-center gap-1.5 hover:text-foreground"
       title={`Current branch: ${branch || 'Detached HEAD'}. Open Git changes.`}
-      onClick={() => store.update(s => ({...s, workbench: {...s.workbench, rightPanel: true, rightTab: 'git'}}))}>
+      onClick={() => store.update(s => showRightTab(s, 'git'))}>
       <Icon name="git-branch" className="size-3.5" />
       <span className="truncate">{branch || 'Detached HEAD'}</span>
       {tracking}

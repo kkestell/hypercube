@@ -1,12 +1,13 @@
-import type {Session} from './types.ts';
-import {StatusDot} from '../shared/status-dot.tsx';
+// A session's status dot: ended, waiting on the user, with a new reply,
+// working, or idle. A child's dot is hollow.
 import {BusyDot} from '../shared/busy-dot.tsx';
+import {StatusDot} from '../shared/status-dot.tsx';
+import type {Session} from './types.ts';
 
-// statusOf returns a session's status dot, hollow when outline is set.
-export const statusOf = (session: Session, selected: boolean, waiting: boolean, outline: boolean) => {
+export function SessionStatus({session, selected, waiting, outline}: {session: Session; selected: boolean; waiting: boolean; outline: boolean}) {
   if (session.ended) return <StatusDot kind="ended" title="Ended" />;
   if (waiting) return <StatusDot kind="waiting" title="Waiting on you" outline={outline} />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" outline={outline} />;
   if (session.activity === 'busy') return <BusyDot title="Working" outline={outline} />;
   return <StatusDot kind="idle" title="Idle" outline={outline} />;
-};
+}

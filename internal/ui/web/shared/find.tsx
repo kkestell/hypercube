@@ -1,21 +1,22 @@
-import {Button} from '../components/ui/button';
-import {Input} from '../components/ui/input';
-import {Icon} from './icon.tsx';
+// Find and navigate matches in rendered content as it changes. The find bar
+// fades in over the top right corner of its view, or, inline, as a row above
+// it.
 import {useEffect, useLayoutEffect, useRef, useState, type RefObject} from 'react';
+import {Input} from '../components/ui/input';
 import {matches} from '../app/shortcuts.ts';
 import {findMatches} from './find-matches.ts';
 import {focusedElement} from './focus.ts';
+import {IconButton} from './icon-button.tsx';
 
-// Find and navigate matches in rendered content as it changes.
 interface FindProps {
   list: RefObject<HTMLElement | null>;
   view: RefObject<HTMLElement | null>;
   active: boolean;
   label: string;
-  className?: string;
+  inline?: boolean;
 }
 
-export function Find({list, view, active, label, className}: FindProps) {
+export function Find({list, view, active, label, inline = false}: FindProps) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const [ranges, setRanges] = useState<Range[]>([]), [index, setIndex] = useState(0);
   const input = useRef<HTMLInputElement>(null), previousFocus = useRef<HTMLElement | null>(null);
@@ -82,15 +83,16 @@ export function Find({list, view, active, label, className}: FindProps) {
     previousFocus.current?.focus();
   };
   if (!open) return null;
-  return <div className={className} role="search" aria-label={label} onKeyDown={event => {
+  const place = inline ? 'shrink-0 border-b' : 'absolute right-2 top-2 z-10 rounded-md border bg-background shadow-md';
+  return <div className={`flex animate-in fade-in items-center gap-2 p-2 ${place}`} role="search" aria-label={label} onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }
   }}>
     <Input ref={input} value={query} placeholder="Find" aria-label={label} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
       if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
     }} />
-    <span className="transcript-find-count shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>
-    <Button variant="ghost" size="icon" type="button" aria-label="Previous match" title="Previous match" onClick={() => step(-1)} disabled={!ranges.length}><Icon name="arrow-up" /></Button>
-    <Button variant="ghost" size="icon" type="button" aria-label="Next match" title="Next match" onClick={() => step(1)} disabled={!ranges.length}><Icon name="arrow-down" /></Button>
-    <Button variant="ghost" size="icon" type="button" aria-label="Close find" title="Close" onClick={close}><Icon name="close" /></Button>
+    <span className="shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>
+    <IconButton icon="arrow-up" label="Previous match" shortcut="findPrevious" type="button" onClick={() => step(-1)} disabled={!ranges.length} />
+    <IconButton icon="arrow-down" label="Next match" shortcut="findNext" type="button" onClick={() => step(1)} disabled={!ranges.length} />
+    <IconButton icon="close" label="Close find" type="button" onClick={close} />
   </div>;
 }

@@ -16,3 +16,6 @@ export function IconButton({icon, label, shortcut, variant = 'ghost', ...props}:
     <Icon name={icon} />
   </Button>;
 }
+
+// pressable marks a toggle's state by its icon's color: muted when off.
+export const pressable = 'text-muted-foreground aria-pressed:text-foreground';

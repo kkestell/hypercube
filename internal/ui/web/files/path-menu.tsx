@@ -32,7 +32,7 @@ export function usePathMenu() {
   const relative = (path: string) => path.startsWith(dir + '/') ? path.slice(dir.length + 1) : path;
   const absolute = (path: string) => path.startsWith('/') ? path : `${dir.replace(/\/$/, '')}/${path}`;
   const changed = menu && changeTree(state.editor?.changes ?? null).files.has(menu.path);
-  const element = menu && dir && <ContextMenu x={menu.x} y={menu.y} onClose={close} items={[
+  const element = menu && dir && <ContextMenu open x={menu.x} y={menu.y} onClose={close} items={[
     ...(changed ? [[{label: 'Open Changes', icon: 'source-control' as const, run: () => openDiffTab(store, menu.path)}]] : []),
     revealItem(store, absolute(menu.path)),
     [

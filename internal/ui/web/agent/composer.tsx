@@ -10,6 +10,7 @@ import {sendPrompt} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
 import {submitsOnKey} from '../shared/submit-key.ts';
 import {useStore} from '../store.ts';
+import {registerComposer} from './focus-composer.ts';
 import {attachImages, canSend, draftOf, isUnsent, removeImage, typed} from './drafts.ts';
 import {promptHistory, stepHistory, type History} from './history.ts';
 import {MentionList, useMentions} from './use-mentions.tsx';
@@ -35,9 +36,13 @@ export function Composer({session}: {session: Session}) {
   const mentions = useMentions(field, text, changeText, session.id, state.unsent?.workspace);
   const input = (e: ChangeEvent<HTMLTextAreaElement>) => { changeText(e.currentTarget.value); mentions.sync(e.currentTarget); };
 
-  // Preserve keyboard focus in the file tab strip when a session mounts.
+  // The text takes the focus when a session mounts, unless the focus is on a
+  // tab strip.
   useEffect(() => {
-    if (!document.activeElement?.closest('.editor-tabs')) field.current?.focus();
+    const element = field.current;
+    if (!element) return;
+    if (!document.activeElement?.closest('[role=tablist]')) element.focus();
+    return registerComposer(element);
   }, []);
 
   const send = () => {

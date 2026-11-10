@@ -4,6 +4,7 @@ import {Button} from '../components/ui/button';
 import {MainTabBar} from '../editor/main-tab-bar.tsx';
 import {selectedWorkspace} from '../editor/target.ts';
 import {useStore} from '../store.ts';
+import {Message} from '../shared/message.tsx';
 import {StatusDot} from '../shared/status-dot.tsx';
 import {chooseSession} from './session-actions.ts';
 
@@ -30,7 +31,7 @@ export function WorkspaceDashboard() {
               <span className="flex-1 truncate text-left">{session.title}</span>
               {session.archived && <time dateTime={new Date(session.archived).toISOString()} className="shrink-0 text-xs text-muted-foreground">{archivedText(session.archived)}</time>}
             </Button>
-          </li>)}</ul> : <p className="text-sm text-muted-foreground">No archived sessions.</p>}
+          </li>)}</ul> : <Message>No archived sessions.</Message>}
         </section>
       </div>
     </div>

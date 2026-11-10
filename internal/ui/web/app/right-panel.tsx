@@ -16,7 +16,7 @@ const tabs: PanelTab<RightTab>[] = [
 export function RightPanel() {
   const [state, store] = useStore();
   return (
-    <aside className="right-panel h-full min-w-0 bg-sidebar">
+    <aside className="h-full min-w-0 bg-sidebar" data-region="rightPanel">
       <PanelTabs label="File tools" tabs={tabs} selected={state.workbench.rightTab}
         onSelect={id => store.update(s => selectRightTab(s, id))}>
         <FilesPanel key={state.editor?.id} />

@@ -13,9 +13,10 @@ export function SearchPanel() {
   const [error, setError] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const editor = state.editor?.id;
+  // Showing search, and each request for it, focuses its field.
   useLayoutEffect(() => {
     if (state.workbench.rightPanel && state.workbench.rightTab === 'search') input.current?.focus();
-  }, [state.workbench.rightPanel, state.workbench.rightTab]);
+  }, [state.workbench.rightPanel, state.workbench.rightTab, state.searchFocus]);
   useEffect(() => {
     if (!editor || !query) { setResults([]); setError(''); return; }
     const controller = new AbortController();

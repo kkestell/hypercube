@@ -1,24 +1,26 @@
 // Workspace groups show either active sessions or archived families.
 import {useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
-import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
-import {homeShown, showHome, unsentRow} from '../sessions/selection.ts';
+import {addWorkspace} from '../sessions/session-actions.ts';
+import {homeShown, showHome} from '../sessions/selection.ts';
 import {isUnsent} from '../agent/drafts.ts';
 import {hypercube} from '../app/window.ts';
-import {scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
+import {openSettings, scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
 import type {SidebarTab} from '../app/types.ts';
-import type {Session, Workspace} from '../sessions/types.ts';
+import type {Session} from '../sessions/types.ts';
 import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
+import {IconButton} from '../shared/icon-button.tsx';
 import {PanelTabs} from '../shared/panel-tabs.tsx';
 import {useStore} from '../store.ts';
 import {sessionItems, workspaceItems} from './sidebar-menus.ts';
+import {sidebarSession, sidebarWorkspaces, startRenaming, stopRenaming} from './sidebar-rows.ts';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
 import {yourMoves} from '../github/turns.ts';
 
-const below = (button: HTMLElement) => {
-  const rect = button.getBoundingClientRect();
+const below = (element: HTMLElement) => {
+  const rect = element.getBoundingClientRect();
   return {x: rect.left, y: rect.bottom};
 };
 
@@ -28,42 +30,26 @@ interface Menu {
   items: ContextMenuItem[][];
 }
 
-interface SidebarProps {
-  searchOpen: boolean;
-  onSearchOpenChange: (open: boolean) => void;
-  onSettings: () => void;
-}
-
-export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarProps) {
+export function Sidebar() {
   const [state, store] = useStore();
-  const [renaming, setRenaming] = useState<string | null>(null);
+  // The last menu stays drawn while it closes.
   const [menu, setMenu] = useState<Menu | null>(null);
-  const closeMenu = useCallback(() => setMenu(null), []);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showMenu = (next: Menu) => { setMenu(next); setMenuOpen(true); };
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const view = state.workbench.sidebarTab;
-  const frozen = useRef(state.workspaces);
-
-  // The sessions view lists a workspace's unsent session above its sessions.
-  const visible = (workspace: Workspace) => {
-    const sessions = workspace.sessions.filter(top => top.ended === (view === 'archived'));
-    const unsent = view === 'sessions' ? unsentRow(state, workspace.id) : null;
-    return unsent ? [unsent, ...sessions] : sessions;
-  };
-  if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: visible(workspace)}));
-  const workspaces = frozen.current;
-  const sessionById = (id: string | undefined) => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
-
-  const workspaceMenu = (workspace: Workspace) => workspaceItems(store, workspace);
-  const sessionMenu = (session: Session) => sessionItems(store, session, () => setRenaming(session.id));
+  const workspaces = sidebarWorkspaces(state);
+  const sessionMenu = (session: Session) => sessionItems(store, session, () => store.update(s => startRenaming(s, session.id)));
+  const workspaceOf = (target: Element) => state.workspaces.find(w => w.id === target.closest<HTMLElement>('[data-workspace]')?.dataset.workspace);
 
   const contextMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
-    const session = sessionById(e.target.closest<HTMLElement>('[data-session]')?.dataset.session);
-    const workspaceId = e.target.closest<HTMLElement>('[data-workspace]')?.dataset.workspace;
-    const workspace = workspaces.find(w => w.id === workspaceId);
-    const items = session ? sessionMenu(session) : workspace && workspaceMenu(workspace);
+    const session = sidebarSession(state, e.target.closest<HTMLElement>('[data-session]')?.dataset.session);
+    const workspace = workspaceOf(e.target);
+    const items = session ? sessionMenu(session) : workspace && workspaceItems(store, workspace);
     if (!items) return;
     e.preventDefault();
-    setMenu({x: e.clientX, y: e.clientY, items});
+    showMenu({x: e.clientX, y: e.clientY, items});
   };
 
   // On a focused row, F2 renames its session, and Shift+F10 or the menu key
@@ -71,60 +57,56 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
     const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
-    const header = e.target.closest<HTMLElement>('.workspace-section-header');
-    const workspace = workspaces.find(w => w.id === header?.closest<HTMLElement>('[data-workspace]')?.dataset.workspace);
+    const header = e.target.closest<HTMLElement>('[data-workspace-header]');
+    const workspace = header && workspaceOf(header);
     if (menuKey && header && workspace) {
       e.preventDefault();
-      setMenu({...below(header), items: workspaceMenu(workspace)});
+      showMenu({...below(header), items: workspaceItems(store, workspace)});
       return;
     }
     const row = e.target.closest<HTMLElement>('[data-session]');
-    const session = sessionById(row?.dataset.session);
+    const session = sidebarSession(state, row?.dataset.session);
     if (!row || !session || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
     if (e.key === 'F2') {
-      if (!isUnsent(session.id) && (session.parent || !session.ended)) setRenaming(session.id);
-    } else setMenu({...below(row), items: sessionMenu(session)});
+      if (!isUnsent(session.id) && (session.parent || !session.ended)) store.update(s => startRenaming(s, session.id));
+    } else showMenu({...below(row), items: sessionMenu(session)});
   };
 
   const needYou = yourMoves(state.accounts).length;
+  const home = homeShown(state);
   const tree = <>
     {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky top-0 z-10 bg-sidebar pb-2">
-      <Button variant={homeShown(state) ? 'secondary' : 'ghost'} size="sm" className={`h-8 w-full justify-start gap-2 px-2 font-normal ${homeShown(state) ? 'hover:bg-secondary' : ''}`} aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
-        <Icon name="git-pull-request" className="size-4 text-muted-foreground" />
+      <Button variant={home ? 'secondary' : 'ghost'} size="sm" className={`h-8 w-full justify-start gap-2 px-2 font-normal ${home ? 'hover:bg-secondary' : ''}`} aria-pressed={home} onClick={() => store.update(s => showHome(stopRenaming(s)))}>
+        <Icon name="git-pull-request" className="text-muted-foreground" />
         <span className="flex-1 text-left">Pull Requests</span>
-        {needYou > 0 && <span className="text-[11px] text-muted-foreground">{needYou}</span>}
+        {needYou > 0 && <span className="text-xs text-muted-foreground">{needYou}</span>}
       </Button>
     </div>}
-    {view === 'sessions' && workspaces.length > 0 && <h2 className="mt-2 flex h-8 items-center px-2 text-xs font-medium text-sidebar-foreground/70">Workspaces</h2>}
-    {workspaces.map(workspace => (
-      <WorkspaceSection
-        key={workspace.id} workspace={workspace}
-        renaming={renaming} onRenaming={setRenaming}
-      />
-    ))}
+    {view === 'sessions' && workspaces.length > 0 && <h2 className="mt-2 flex h-8 items-center px-2 text-xs font-medium text-muted-foreground">Workspaces</h2>}
+    {workspaces.map(({workspace, groups}) => <WorkspaceSection key={workspace.id} workspace={workspace} groups={groups} />)}
   </>;
 
-  const bodies = (['sessions', 'archived'] as const).map(tab => <SidebarBody key={tab} tab={tab} active={view === tab} onContextMenu={contextMenu} onKeyDown={keyDown}>
-    {view === tab && tree}
-  </SidebarBody>);
-
   return (
-    <div className="sidebar flex h-full min-h-0 flex-col bg-sidebar">
+    <div className="flex h-full min-h-0 flex-col bg-sidebar" data-region="sidebar">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}, {id: 'archived', title: 'Archived', icon: 'archive'}]}
-        selected={view} onSelect={value => { setRenaming(null); store.update(s => selectSidebarTab(s, value)); }} clearsWindowButtons actions={<>
-          <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={id => chooseSession(store, id)} />
-          <Button className="size-7" variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
-          {hypercube() && <Button className="size-7" variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>}
+        selected={view} onSelect={value => store.update(s => selectSidebarTab(stopRenaming(s), value))} clearsWindowButtons actions={<>
+          <SessionSearch />
+          <IconButton icon="settings" label="Settings" shortcut="settings" onClick={() => store.update(s => openSettings(s))} />
+          {hypercube() && <IconButton icon="new-folder" label="Add Workspace" onClick={() => addWorkspace(store)} />}
         </>}>
-        {bodies}
+        {(['sessions', 'archived'] as const).map(tab => <SidebarBody key={tab} tab={tab} active={view === tab} onContextMenu={contextMenu} onKeyDown={keyDown}>
+          {view === tab && tree}
+        </SidebarBody>)}
       </PanelTabs>
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
+      {menu && <ContextMenu open={menuOpen} x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );
 }
 
-// Each tab owns its native scroller even while its rows are hidden.
+// Each tab owns its native scroller even while its rows are hidden. Its
+// position is kept here while it scrolls and saved when the tab is hidden, the
+// sidebar unmounts, or the page hides.
 function SidebarBody({tab, active, onContextMenu, onKeyDown, children}: {
   tab: SidebarTab;
   active: boolean;
@@ -136,28 +118,28 @@ function SidebarBody({tab, active, onContextMenu, onKeyDown, children}: {
   const ref = useRef<HTMLDivElement>(null);
   const top = useRef(state.workbench.sidebarScroll[tab]);
   const shown = useRef(active);
-  shown.current = active;
+  // save records the shown tab's position, then stores it.
+  const save = useCallback(() => {
+    if (shown.current && ref.current) top.current = ref.current.scrollTop;
+    store.update(s => scrollSidebar(s, tab, top.current));
+  }, [store, tab]);
+  // Rows arriving with the workspaces make room to restore the position.
   useLayoutEffect(() => {
-    if (!active || !ref.current) return;
-    top.current = store.get().workbench.sidebarScroll[tab];
-    ref.current.scrollTop = top.current;
+    if (active && ref.current) ref.current.scrollTop = top.current;
   }, [active, state.workspaces]);
   useLayoutEffect(() => {
-    const save = () => store.update(s => scrollSidebar(s, tab, top.current));
-    const pagehide = () => {
-      if (shown.current && ref.current) top.current = ref.current.scrollTop;
-      save();
-    };
-    window.addEventListener('pagehide', pagehide);
+    shown.current = active;
+    if (!active) store.update(s => scrollSidebar(s, tab, top.current));
+  }, [active, store, tab]);
+  useLayoutEffect(() => {
+    window.addEventListener('pagehide', save);
     return () => {
       save();
-      window.removeEventListener('pagehide', pagehide);
+      window.removeEventListener('pagehide', save);
     };
-  }, [store, tab]);
-  return <div ref={ref} className="sidebar-body h-full min-h-0 overflow-auto p-2 pt-1" data-sidebar-tab={tab}
+  }, [save]);
+  return <div ref={ref} className="h-full min-h-0 overflow-auto p-2 pt-1" data-sidebar-tab={tab}
     onContextMenu={onContextMenu} onKeyDown={onKeyDown} onScroll={event => {
-      if (!active) return;
-      top.current = event.currentTarget.scrollTop;
-      store.update(s => scrollSidebar(s, tab, top.current));
+      if (active) top.current = event.currentTarget.scrollTop;
     }}>{children}</div>;
 }

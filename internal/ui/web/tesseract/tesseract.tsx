@@ -1,6 +1,8 @@
 // A wireframe tesseract turning in 4D above a new session's composer.
-// Lines fade with depth. It animates while mounted.
+// Lines fade with depth. It animates while mounted, and holds still, redrawn
+// only when its size changes, while the reduced-motion setting is on.
 import {useEffect, useRef} from 'react';
+import {useReducedMotion} from '../shared/motion.ts';
 
 const vertexShader = `#version 300 es
 void main() {
@@ -75,8 +77,9 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
   return shader;
 }
 
-// animate draws on the canvas until the returned function stops it.
-function animate(canvas: HTMLCanvasElement): () => void {
+// animate draws on the canvas until the returned function stops it, still
+// at its starting position when still is set.
+function animate(canvas: HTMLCanvasElement, still: boolean): () => void {
   const gl = canvas.getContext('webgl2', {antialias: false, alpha: true});
   if (!gl) return () => {};
 
@@ -115,17 +118,20 @@ function animate(canvas: HTMLCanvasElement): () => void {
     gl.uniform1f(uniform.width, 0.5 * devicePixelRatio);
     gl.uniform1f(uniform.dark, document.documentElement.classList.contains('dark') ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-    frame = requestAnimationFrame(draw);
+    if (!still) frame = requestAnimationFrame(draw);
   };
+  if (still) {
+    const observer = new ResizeObserver(() => draw(0));
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }
   frame = requestAnimationFrame(draw);
-  return () => {
-    cancelAnimationFrame(frame);
-  };
+  return () => cancelAnimationFrame(frame);
 }
 
 export function Tesseract() {
   const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => ref.current ? animate(ref.current) : undefined, []);
-  return <canvas ref={ref} className="tesseract block min-h-0 w-full flex-1 pointer-events-none opacity-40" aria-hidden="true" />;
+  const still = useReducedMotion();
+  useEffect(() => ref.current ? animate(ref.current, still) : undefined, [still]);
+  return <canvas ref={ref} className="block min-h-0 w-full flex-1 pointer-events-none opacity-40" aria-hidden="true" />;
 }

@@ -10,6 +10,7 @@ import {openUnsent} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import {createStore, useStore} from '../store.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
+import {openSettings} from './workbench.ts';
 import type {Config} from './types.ts';
 
 const unsentKey = workspaceDraftKey('w');
@@ -39,9 +40,9 @@ const select = (id: string, option: string) => {
 const shown = (id: string) => element(document, '#' + id, HTMLButtonElement).textContent;
 function View() {
   const [, store] = useStore();
-  return <><button onClick={() => store.update(s => ({...s, settings: 'General'}))}>Open settings</button><SettingsDialog /></>;
+  return <><button onClick={() => store.update(s => openSettings(s))}>Open settings</button><SettingsDialog /></>;
 }
-const open = async () => { mount(createStore(testState({settings: 'General'})), <View />); await settle(); };
+const open = async () => { mount(createStore(testState({dialog: 'settings'})), <View />); await settle(); };
 
 test('preferences save with the config and apply to the page', async () => {
   const posts: Config[] = [];
@@ -49,7 +50,7 @@ test('preferences save with the config and apply to the page', async () => {
     if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
     return url === 'version' ? new Response('build') : Response.json(config);
   });
-  const store = createStore(openUnsent(testState({settings: 'General', workspaces: [testWorkspace({id: 'w'})]}), 'w'));
+  const store = createStore(openUnsent(testState({dialog: 'settings', workspaces: [testWorkspace({id: 'w'})]}), 'w'));
   const root = mount(store, <><WorktreeSelect /><View /></>);
   await settle();
   select('theme', 'Dark');
@@ -177,7 +178,7 @@ test('the default model is chosen without a workspace and initializes a draft th
     }
     return url === 'version' ? new Response('build') : Response.json({...config, models: [sol]});
   });
-  const store = createStore(testState({settings: 'General', config: testConfig({default_selection: undefined})}));
+  const store = createStore(testState({dialog: 'settings', config: testConfig({default_selection: undefined})}));
   const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);

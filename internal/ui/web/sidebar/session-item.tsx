@@ -10,31 +10,20 @@ import {shownId} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {PullRequestIcon} from '../github/pull-request-icon.tsx';
 import {BranchIcon} from '../shared/branch-icon.tsx';
-import {statusOf} from '../sessions/session-status.tsx';
+import {SessionStatus} from '../sessions/session-status.tsx';
 import {useStore} from '../store.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Chevron} from '../shared/icon.tsx';
+import {stopRenaming, type SidebarRow} from './sidebar-rows.ts';
 
-interface SessionItemProps {
-  session: Session;
-  level: 1 | 2;
-  position: number;
-  siblings: number;
-  hasChildren: boolean;
-  expanded: boolean;
-  tabbable: boolean;
-  onToggle: () => void;
-  onFocus: () => void;
-  renaming: string | null;
-  onRenaming: (id: string | null) => void;
-}
-
-export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}: SessionItemProps) {
+export function SessionItem({row, tabbable, onToggle}: {row: SidebarRow; tabbable: boolean; onToggle: () => void}) {
   const [state, store] = useStore();
+  const {session, level, position, siblings, hasChildren, expanded} = row;
   const selected = session.id === shownId(state);
-  const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id), level === 2);
-  const classes = `session-item group/session relative h-8 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''}`;
+  const renaming = state.renaming?.session === session.id;
+  const waiting = session.attention || state.requests.some(request => request.session === session.id);
+  const classes = `group/session relative h-8 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''}`;
   // A parked or ended session dims its contents but not its guide line, which stays
   // even along the tree.
   const dim = session.ended || session.activity === 'exited' ? 'opacity-60' : '';
@@ -47,18 +36,20 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
     <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm" className={classes}><div
       role="treeitem" data-row={session.id} data-session={session.id}
       aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
-      tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
+      tabIndex={tabbable ? 0 : -1}
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
-      <span className={`session-item-status inline-flex size-4 shrink-0 items-center justify-center ${dim}`}>{status}</span>
+      <span className={`inline-flex size-4 shrink-0 items-center justify-center ${dim}`}>
+        <SessionStatus session={session} selected={selected} waiting={waiting} outline={level === 2} />
+      </span>
       <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree || session.pullRequest ? '' : toEdge}`}>
-        {session.id === renaming
-          ? <RenameField session={session} onDone={() => onRenaming(null)} />
+        {renaming
+          ? <RenameField session={session} onDone={() => store.update(stopRenaming)} />
           : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} padded={!session.worktree && !session.pullRequest} onToggle={toggle} />}
       </span>
-      {session.id !== renaming && session.pullRequest && <PullRequestIcon pr={session.pullRequest} className={`session-item-pull-request shrink-0 ${dim}`} />}
-      {session.id !== renaming && session.worktree && <BranchIcon className={`session-item-branch shrink-0 ${dim}`} merge={session.merge} />}
+      {!renaming && session.pullRequest && <PullRequestIcon pr={session.pullRequest} className={`shrink-0 ${dim}`} />}
+      {!renaming && session.worktree && <BranchIcon className={`shrink-0 ${dim}`} merge={session.merge} />}
     </div></Button>
   );
 }
@@ -117,8 +108,8 @@ function Title({title, small, chevron, padded, onToggle}: TitleProps) {
   return (
     <span ref={room} className="flex min-w-0 flex-1 items-center">
       <span className="relative flex min-w-0 items-center">
-        <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left transition-[--fade-end,--fade-width] ${small ? 'text-xs' : ''} ${overflows || covered ? fade : ''} ${covered ? padded ? fadeBeforePaddedChevron : fadeBeforeChevron : ''} ${covered && !overflows ? fadeOnlyBeforeChevron : ''}`}>{title}</span>
-        {chevron && <span className={`session-item-twistie invisible absolute top-1/2 flex size-4 -translate-y-1/2 items-center opacity-0 transition-[opacity,visibility] group-hover/session:visible group-hover/session:opacity-100 group-focus-visible/session:visible group-focus-visible/session:opacity-100 ${chevronFits ? 'left-full ml-1' : padded ? 'right-2' : 'right-0'}`} onClick={onToggle}>
+        <span ref={ref} className={`min-w-0 overflow-hidden whitespace-nowrap text-left transition-[--fade-end,--fade-width] ${small ? 'text-xs' : ''} ${overflows || covered ? fade : ''} ${covered ? padded ? fadeBeforePaddedChevron : fadeBeforeChevron : ''} ${covered && !overflows ? fadeOnlyBeforeChevron : ''}`}>{title}</span>
+        {chevron && <span className={`invisible absolute top-1/2 flex size-4 -translate-y-1/2 items-center opacity-0 transition-[opacity,visibility] group-hover/session:visible group-hover/session:opacity-100 group-focus-visible/session:visible group-focus-visible/session:opacity-100 ${chevronFits ? 'left-full ml-1' : padded ? 'right-2' : 'right-0'}`} onClick={onToggle}>
           {chevron}
         </span>}
       </span>
@@ -174,7 +165,6 @@ function RenameField({session, onDone}: {session: Session; onDone: () => void}) 
   return (
     <Input
       ref={ref}
-      className="session-item-rename"
       aria-label="Session title"
       defaultValue={session.title}
       maxLength={48}

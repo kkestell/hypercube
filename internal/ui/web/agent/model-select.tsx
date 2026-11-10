@@ -1,5 +1,6 @@
 // Chooses only from the user's saved model entries, without plugin discovery.
 import {useRef, useState} from 'react';
+import {openSettings} from '../app/workbench.ts';
 import {Button} from '../components/ui/button';
 import {Command, CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {Popover, PopoverContent, PopoverTrigger} from '../components/ui/popover';
@@ -17,12 +18,13 @@ interface ModelSelectProps {
   fixedHarness?: boolean;
   disabled?: boolean;
   label?: string;
+  id?: string;
   className?: string;
   // entries is the list to choose from; the saved list when omitted.
   entries?: ModelEntry[];
 }
 
-export function ModelSelect({value, onChange, fixedHarness = false, disabled = false, label = 'Model', className = '', entries: given}: ModelSelectProps) {
+export function ModelSelect({value, onChange, fixedHarness = false, disabled = false, label = 'Model', id, className = '', entries: given}: ModelSelectProps) {
   const [state, store] = useStore();
   const [open, setOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -33,7 +35,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
   const empty = !entries.length ? 'No models configured.' : !models.length ? `No ${displayName(value?.harness)} models configured.` : null;
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild>
-      <Button type="button" variant="ghost" size="sm" disabled={disabled}
+      <Button id={id} type="button" variant="ghost" size="sm" disabled={disabled}
         className={`h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground ${className}`}
         aria-label={value ? `${label}: ${settingsText(value, entries)}` : label} title={value ? settingsText(value, entries) : undefined}>
         {value ? <SelectionName settings={value} entries={entries} /> : 'Choose a model'}<Icon name="chevron-down" />
@@ -42,7 +44,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
     <PopoverContent side="top" align="start" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2"
       onOpenAutoFocus={event => { event.preventDefault(); input.current?.focus(); }}>
       {list === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
-        <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => ({...s, settings: 'Agents'})); }}>Open Settings</Button>
+        <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => openSettings(s, 'Agents')); }}>Open Settings</Button>
       </div> : <>
         <Command loop className="[&_[data-slot=command-input-wrapper]]:border-b-0">
           <CommandInput ref={input} placeholder="Search models" aria-label="Search models" />

@@ -47,7 +47,7 @@ function buttonNamed(root: ParentNode, name: string): HTMLElement {
 }
 
 const sendDisabled = (root: ParentNode) => {
-  const button = find(root, '.composer [title=Send]');
+  const button = find(root, '[aria-label=Send]');
   return button instanceof HTMLButtonElement && button.disabled;
 };
 
@@ -63,7 +63,7 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, rightTab: 'search'})}, ...sessions);
   const root = mount(store, <App store={store} />);
   requests.length = 0;
-  const field = find(root, '.composer textarea');
+  const field = find(root, 'textarea[aria-label=Message]');
   await act(async () => { expect(keydown(field, 'Escape').defaultPrevented).toBe(true); });
   expect(requests).toHaveLength(1);
   expect(requests[0].params).toEqual({action: 'interrupt', id: 'a'});
@@ -71,15 +71,15 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   keydown(field, 'Escape', {repeat: true});
   keydown(field, 'Escape', {isComposing: true});
   keydown(field, 'Escape', {metaKey: true});
-  keydown(find(root, '.terminal-panel'), 'Escape');
+  keydown(find(root, '[data-region=panel]'), 'Escape');
   const handled = new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true});
   handled.preventDefault();
   act(() => { field.dispatchEvent(handled); });
   expect(requests).toHaveLength(1);
 
   act(() => { find(root, '[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})); });
-  keydown(find(document, '.context-menu'), 'Escape');
-  expect(document.querySelector('.context-menu')).toBeNull();
+  keydown(find(document, '[role=menu]'), 'Escape');
+  expect(document.querySelector('[role=menu]')).toBeNull();
   expect(requests).toHaveLength(1);
 
   act(() => store.update(state => ({...state, confirmation: {message: 'Confirm?', detail: '', primary: 'OK', accept() {}}})));
@@ -96,7 +96,7 @@ test('app shortcuts work with focus on the transcript background', async () => {
   const requests = answer(() => Response.json([]));
   const store = appStore({selected: 'a'}, testSession({id: 'a', activity: 'busy'}));
   const root = mount(store, <App store={store} />);
-  act(() => find(root, '.composer textarea').blur());
+  act(() => find(root, 'textarea[aria-label=Message]').blur());
   expect(document.activeElement).toBe(document.body);
   expect(keydown(document.body, 'b', {metaKey: true}).defaultPrevented).toBe(true);
   expect(store.get().workbench.sidebar).toBe(false);
@@ -115,27 +115,27 @@ test('chat stays mounted outside file tabs while files open, split, and close', 
   ]}), 'a', 'unfinished prompt'));
   store.update(state => rememberScroll(state, 'a', 'a', {top: 120, left: 0, following: false}));
   const root = mount(store, <App store={store} />);
-  const chat = find(root, '.chat-pane');
+  const chat = find(root, '[aria-label=Chat]');
   const transcript = find(root, '.transcript');
-  const composer = element(root, '.composer textarea', HTMLTextAreaElement);
-  expect(chat.closest('.editor-area')).toBeNull();
+  const composer = element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement);
+  expect(chat.closest('[data-editor-area]')).toBeNull();
   expect(chat.textContent).toContain('Always-visible reply');
   expect(findAll(chat, '[role=tab]').map(tab => tab.textContent)).toEqual(['Visible chat']);
   expect(chat.querySelector('[aria-label^="Close"]')).toBeNull();
   expect(chat.querySelector('[aria-label="Fixed Width"]')).toBeNull();
   expect(find(chat, '.transcript-list').className).not.toContain('max-w-');
   expect(find(chat, '.composer').className).not.toContain('max-w-');
-  expect(root.querySelector('.editor-area')).toBeNull();
+  expect(root.querySelector('[data-editor-area]')).toBeNull();
   const unchanged = () => {
-    expect(find(root, '.chat-pane')).toBe(chat);
+    expect(find(root, '[aria-label=Chat]')).toBe(chat);
     expect(find(root, '.transcript')).toBe(transcript);
-    expect(element(root, '.composer textarea', HTMLTextAreaElement)).toBe(composer);
+    expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement)).toBe(composer);
     expect(composer.value).toBe('unfinished prompt');
     expect(transcript.scrollTop).toBe(120);
   };
   await act(async () => { openFileTab(store, 'a.py'); });
   unchanged();
-  expect(find(root, '.editor-area').textContent).toContain('import math');
+  expect(find(root, '[data-editor-area]').textContent).toContain('import math');
   expect(panes(store.get().editor!.tabs.root).flatMap(pane => pane.tabs)).toEqual(['file:a.py']);
   await act(async () => { openFileTab(store, 'b.py'); });
   unchanged();
@@ -145,12 +145,12 @@ test('chat stays mounted outside file tabs while files open, split, and close', 
     store.update(state => moveTab(state, 'file:c.py', panes(state.editor!.tabs.root)[0].id, 'right'));
   });
   unchanged();
-  expect(root.querySelectorAll('.editor-pane')).toHaveLength(2);
+  expect(root.querySelectorAll('[data-pane]')).toHaveLength(2);
   await act(async () => { openDiffTab(store, 'c.py'); });
   unchanged();
   for (const id of ['file:b.py', 'file:c.py', 'diff:c.py']) act(() => store.update(state => closeTab(state, id)));
   unchanged();
-  expect(root.querySelector('.editor-area')).toBeNull();
+  expect(root.querySelector('[data-editor-area]')).toBeNull();
 });
 
 test('Find follows focus between chat and files, and focusing the composer leaves files open', async () => {
@@ -164,7 +164,7 @@ test('Find follows focus between chat and files, and focusing the composer leave
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).toBeNull();
   keydown(document.activeElement!, 'Escape');
   keydown(document.activeElement!, 'l', {metaKey: true});
-  expect(document.activeElement).toBe(find(root, '.composer textarea'));
+  expect(document.activeElement).toBe(find(root, 'textarea[aria-label=Message]'));
   expect(find(root, '.file-view').textContent).toContain('import math');
   keydown(document.activeElement!, 'f', {metaKey: true});
   expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).not.toBeNull();
@@ -175,17 +175,17 @@ test('a new session draft is a sidebar row that reopens its prompt and can be di
   answer(() => Response.json(testConfig()));
   const store = appStore({selected: 'a'}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
-  const draftRow = () => root.querySelector<HTMLElement>(`.sidebar [data-session="${unsentKey('w')}"]`);
+  const draftRow = () => root.querySelector<HTMLElement>(`[data-region=sidebar] [data-session="${unsentKey('w')}"]`);
   act(() => store.update(state => openUnsent(state, 'w')));
-  act(() => find(root, '.sidebar [data-session="a"]').click());
+  act(() => find(root, '[data-region=sidebar] [data-session="a"]').click());
   expect(draftRow()).toBeNull();
 
   act(() => store.update(state => typed(openUnsent(state, 'w'), unsentKey('w'), 'finish this later')));
   expect(draftRow()?.getAttribute('aria-selected')).toBe('true');
-  act(() => find(root, '.sidebar [data-session="a"]').click());
+  act(() => find(root, '[data-region=sidebar] [data-session="a"]').click());
   expect(store.get().selected).toBe('a');
   act(() => draftRow()!.click());
-  expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
+  expect(element(root, 'textarea[aria-label=Message]', HTMLTextAreaElement).value).toBe('finish this later');
 
   act(() => { draftRow()!.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Discard Draft']);
@@ -206,7 +206,7 @@ test('archived families open from the sidebar and can be deleted', async () => {
   const root = mount(store, <App store={store} />);
   expect(root.querySelector('[data-session="archived"]')).toBeNull();
   act(() => { clickControl(find(root, '[aria-label="Sidebar"] [role=tab][aria-label="Archived"]')); });
-  expect(root.querySelector('.sidebar [data-session="active"]')).toBeNull();
+  expect(root.querySelector('[data-region=sidebar] [data-session="active"]')).toBeNull();
   act(() => { find(root, '[data-session="archived"]').click(); });
   expect(store.get().selected).toBe('archived');
   expect(sendDisabled(root)).toBe(true);
@@ -264,7 +264,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   const sessions = Array.from({length: 12}, (_, i) => testSession({id: `s${i}`, title: `Session ${i}`, ended: i === 1}));
   const store = appStore({selected: 's0', workbench: workbench({rightPanel: true})}, ...sessions);
   const root = mount(store, <App store={store} />);
-  await act(async () => clickControl(find(root, '.workspace-section-toggle')));
+  await act(async () => clickControl(buttonNamed(root, 'repo')));
   const dashboard = find(root, '[aria-label="Workspace dashboard"]');
   expect(dashboard.className).not.toContain('max-w-');
   expect([...dashboard.querySelectorAll('[class*="max-w-"]')].filter(e => !e.closest('[aria-label="Working directory and branch"]'))
@@ -279,7 +279,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   expect(find(root, '[aria-label="Expand repo"]')).toBeDefined();
   await act(async () => clickControl(find(root, '[data-file="main.go"]')));
   expect(store.get().editor?.tabs.preview).toBe('file:main.go');
-  await act(async () => clickControl(find(root, '.right-panel [role=tab][aria-label="Git"]')));
+  await act(async () => clickControl(find(root, '[data-region=rightPanel] [role=tab][aria-label="Git"]')));
   expect(store.get().workbench.rightTab).toBe('git');
   const git = find(root, '.git-panel');
   expect(git.closest('[role=tabpanel]')?.hasAttribute('hidden')).toBe(false);
@@ -288,7 +288,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   const toolRequests = calls.filter(url => ['/files/tree', '/file', '/changes', '/diff'].includes(url.pathname) && url.searchParams.has('workspace'));
   expect(toolRequests.map(url => url.pathname)).toEqual(expect.arrayContaining(['/files/tree', '/file', '/changes', '/diff']));
   expect(toolRequests.every(url => url.searchParams.get('workspace') === 'w' && !url.searchParams.has('session'))).toBe(true);
-  await act(async () => clickControl(find(root, '.right-panel [aria-label="Search"]')));
+  await act(async () => clickControl(find(root, '[data-region=rightPanel] [aria-label="Search"]')));
   const search = element(root, '[aria-label="Search files contents"]', HTMLInputElement);
   await act(async () => { setValue(search, 'needle'); search.dispatchEvent(new Event('input', {bubbles: true})); });
   await act(async () => clickControl(find(root, 'button[title="needle"]')));
@@ -298,7 +298,7 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   await act(async () => clickControl(buttonNamed(find(root, '[aria-label="Workspace dashboard"]'), 'Session 1')));
   expect(store.get().selected).toBe('s1');
   expect(store.get().session?.id).toBe('s1');
-  await act(async () => clickControl(find(root, '.right-panel [role=tab][aria-label="Git"]')));
+  await act(async () => clickControl(find(root, '[data-region=rightPanel] [role=tab][aria-label="Git"]')));
   await act(async () => clickControl(find(root, '.git-panel [aria-label="main.go, Modified, 1 added, 1 removed"]')));
   expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.get('session')).toBe('s1');
   expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.has('workspace')).toBe(false);

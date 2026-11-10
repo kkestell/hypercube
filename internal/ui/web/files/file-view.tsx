@@ -1,10 +1,9 @@
 // Source line selection uses the same theme tokens as the standard controls.
 import {Fragment, useEffect, useLayoutEffect, useRef, type ReactNode} from 'react';
-import {useScrollMemory} from '../editor/use-scroll-memory.ts';
+import {useScrollMemory} from '../shared/use-scroll-memory.ts';
 import {openFileTab} from '../editor/editor.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
-import {tabBackground} from '../shared/tab-background.ts';
 import {Markdown, MarkdownLink} from '../transcript/markdown.tsx';
 import {fileReady, readOpenFile, revealed} from './files.ts';
 import {BrowserPreview} from './browser-preview.tsx';
@@ -27,7 +26,7 @@ function Source({text, lines, lang, wrap}: SourceProps) {
     {text.split('\n').map((line, i) => {
       const selected = lines.some(({start, end = start}) => i + 1 >= start && i + 1 <= end);
       return <Fragment key={i}>
-        <span data-find-ignore aria-hidden="true" className={`file-view-gutter sticky left-0 select-none px-4 text-right text-muted-foreground ${selected ? 'bg-accent' : tabBackground}`}>{i + 1}</span>
+        <span data-find-ignore aria-hidden="true" className={`file-view-gutter sticky left-0 select-none px-4 text-right text-muted-foreground ${selected ? 'bg-accent' : 'bg-tab'}`}>{i + 1}</span>
         <code className={`block ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'} pr-4 ${selected ? 'file-view-highlight bg-accent' : ''}`}
           {...(html?.[i] !== undefined ? {dangerouslySetInnerHTML: {__html: html[i] || ' '}} : {children: line || ' '})} />
       </Fragment>;
@@ -78,7 +77,7 @@ export function FileView({id, path, active = true}: FileViewProps) {
       : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} />;
   }
   return <div className="relative flex min-h-0 flex-1 flex-col">
-    {!preview && <Find list={list} view={view} active={active} label="Find in file" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />}
+    {!preview && <Find list={list} view={view} active={active} label="Find in file" />}
     <div ref={view} tabIndex={0} className={`file-view min-h-0 flex-1 overflow-auto ${preview ? 'flex flex-col' : ''}`}>
       {preview ? content : <div ref={list}>{content}</div>}
     </div>

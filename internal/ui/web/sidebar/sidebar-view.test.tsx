@@ -19,7 +19,7 @@ const workspaces = [testWorkspace({id: 'w', name: 'repo', sessions: [
   testSession({id: 'parent', children: [testSession({id: 'child', parent: 'parent'})]}),
   testSession({id: 'archived', ended: true}),
 ]})];
-const sidebar = (store: ReturnType<typeof createStore>) => mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+const sidebar = (store: ReturnType<typeof createStore>) => mount(store, <Sidebar />);
 const click = (element: HTMLElement) => act(() => clickControl(element));
 const tab = (root: HTMLElement, name: string) => find(root, `[role=tab][aria-label="${name}"]`);
 const body = (root: HTMLElement, name: string) => find(root, `[data-sidebar-tab=${name}]`);

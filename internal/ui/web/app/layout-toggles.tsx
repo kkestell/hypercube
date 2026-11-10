@@ -1,20 +1,19 @@
-import {Button} from '../components/ui/button';
-import {Icon, type IconName} from '../shared/icon.tsx';
+// The buttons that show and hide the sidebar, the terminal, and the right
+// panel, named as their shortcuts are.
+import {IconButton, pressable} from '../shared/icon-button.tsx';
+import type {IconName} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
-import {toggle} from './workbench.ts';
-import {firstKeys} from './shortcuts.ts';
+import {shortcutTitle} from './shortcuts.ts';
 import type {Region} from './types.ts';
+import {toggle} from './workbench.ts';
 
-const toggles: {region: Region; icon: IconName; title: string}[] = [
-  {region: 'sidebar', icon: 'layout-sidebar-left', title: 'Toggle Primary Side Bar'},
-  {region: 'panel', icon: 'layout-panel', title: 'Toggle Panel'},
-  {region: 'rightPanel', icon: 'layout-sidebar-right', title: 'Toggle Secondary Side Bar'},
-];
+const icons: Record<Region, IconName> = {sidebar: 'layout-sidebar-left', panel: 'layout-panel', rightPanel: 'layout-sidebar-right'};
+
 export function LayoutToggles() {
   const [state, store] = useStore();
-  return <div className="layout-toggles flex items-center">
-    {toggles.map(({region, icon, title}) => <Button key={region} className="size-6 text-muted-foreground aria-pressed:text-foreground" variant="ghost" size="icon"
-      aria-label={title} title={`${title} (${firstKeys(region)})`} aria-pressed={region === 'panel' ? state.editor?.panel ?? false : state.workbench[region]} disabled={region === 'panel' && !state.editor}
-      onClick={() => store.update(s => toggle(s, region))}><Icon name={icon} /></Button>)}
+  return <div className="flex items-center">
+    {(['sidebar', 'panel', 'rightPanel'] as const).map(region => <IconButton key={region} icon={icons[region]} label={shortcutTitle(region)} shortcut={region}
+      className={pressable} aria-pressed={region === 'panel' ? state.editor?.panel ?? false : state.workbench[region]} disabled={region === 'panel' && !state.editor}
+      onClick={() => store.update(s => toggle(s, region))} />)}
   </div>;
 }

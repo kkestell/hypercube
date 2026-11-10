@@ -80,5 +80,8 @@ export interface Grant {
   harness: string;
   tool: string;
 }
+// Dialog is a dialog the page opens from shortcuts and menus.
+export type Dialog = 'settings' | 'shortcuts' | 'quickOpen' | 'sessionSearch';
+
 export const sections = ['General', 'Agents', 'Review', 'Notifications', 'Permissions'] as const;
 export type SettingsSection = typeof sections[number];

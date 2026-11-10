@@ -1,6 +1,8 @@
 // A stock menu anchored to a mouse or keyboard position. Its items come in
-// groups, drawn with a separator between each.
-import {Fragment, useEffect, useRef, useState} from 'react';
+// groups, drawn with a separator between each. It stays mounted so it can
+// animate closed; each time it opens it remembers the element that had focus,
+// which gets the focus back when it closes.
+import {Fragment, useEffect, useLayoutEffect, useRef, useState, type RefObject} from 'react';
 import {flushSync} from 'react-dom';
 import {DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator} from '../components/ui/dropdown-menu';
 import {focusedElement} from './focus.ts';
@@ -18,12 +20,15 @@ interface ItemsProps {
   items: ContextMenuItem[][];
   onClose: () => void;
   invoker: HTMLElement | null;
+  selected: RefObject<boolean>;
 }
 
-function Items({items, onClose, invoker}: ItemsProps) {
-  const selected = useRef(false);
-  return <DropdownMenuContent className="context-menu" align="start" sideOffset={0}
-    onCloseAutoFocus={e => { e.preventDefault(); if (!selected.current) invoker?.focus(); }}>
+function Items({items, onClose, invoker, selected}: ItemsProps) {
+  return <DropdownMenuContent align="start" sideOffset={0}
+    onCloseAutoFocus={e => {
+      e.preventDefault();
+      if (!selected.current) invoker?.focus();
+    }}>
     {items.filter(group => group.length).map((group, i) => <Fragment key={group[0].label}>
       {i > 0 && <DropdownMenuSeparator />}
       {group.map(item => <DropdownMenuItem key={item.label} variant={item.destructive ? 'destructive' : 'default'}
@@ -35,20 +40,29 @@ function Items({items, onClose, invoker}: ItemsProps) {
 }
 
 interface ContextMenuProps {
+  open: boolean;
   x: number;
   y: number;
   items: ContextMenuItem[][];
   onClose: () => void;
 }
 
-export function ContextMenu({x, y, items, onClose}: ContextMenuProps) {
-  const [invoker] = useState(focusedElement);
+export function ContextMenu({open, x, y, items, onClose}: ContextMenuProps) {
+  const [invoker, setInvoker] = useState<HTMLElement | null>(null);
+  // selected is set once an item is chosen, which returns the focus itself.
+  const selected = useRef(false);
+  useLayoutEffect(() => {
+    if (!open) return;
+    setInvoker(focusedElement());
+    selected.current = false;
+  }, [open]);
   useEffect(() => {
+    if (!open) return;
     addEventListener('blur', onClose);
     return () => removeEventListener('blur', onClose);
-  }, [onClose]);
-  return <DropdownMenu open onOpenChange={open => { if (!open) onClose(); }}>
+  }, [open, onClose]);
+  return <DropdownMenu open={open} onOpenChange={next => { if (!next) onClose(); }}>
     <DropdownMenuTrigger asChild><span aria-hidden="true" className="fixed size-0" style={{left: x, top: y}} /></DropdownMenuTrigger>
-    <Items items={items} onClose={onClose} invoker={invoker} />
+    <Items items={items} onClose={onClose} invoker={invoker} selected={selected} />
   </DropdownMenu>;
 }

@@ -81,7 +81,7 @@ test('a session row shows its open pull request', () => {
   const store = createStore(testState({workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [
     testSession({id: 'a', pullRequest}), testSession({id: 'b'}),
   ]})]}));
-  const root = mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+  const root = mount(store, <Sidebar />);
   const images = (id: string) => findAll(root, `[data-session="${id}"] [role=img]`).map(image => image.getAttribute('aria-label')).filter(name => name?.startsWith('Pull request'));
   expect(images('a')).toEqual(['Pull request #12: Add it. Draft.']);
   expect(images('b')).toEqual([]);

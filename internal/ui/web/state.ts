@@ -1,7 +1,7 @@
 // The page's state, which the store holds: the server's workspaces, GitHub
 // accounts, requests, and limits, and what the page itself keeps.
 import type {Draft} from './agent/types.ts';
-import type {Config, Limit, SettingsSection, TitleBar, Workbench} from './app/types.ts';
+import type {Config, Dialog, Limit, SettingsSection, TitleBar, Workbench} from './app/types.ts';
 import type {EditorView, EditorViewState, FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
 import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
@@ -15,8 +15,12 @@ import type {GitHubAccount} from './github/types.ts';
 // an ID that the next workspaces may move to a running session. pending names
 // a session chosen before the server listed it. endedShown names the active
 // parents whose ended children the sidebar lists. loaded is set once the first
-// workspaces arrive. drafts are keyed by draft key, dismissed by card key,
-// and fileOpens by session ID. unsentDrafts holds parked new-session contexts
+// workspaces arrive. dialog names the open dialog; settingsSection is the
+// Settings section shown, kept while the dialog closes. renaming names the
+// session whose title is being edited and the sidebar's order of top-level
+// sessions when editing started, which the sidebar keeps until it ends.
+// searchFocus counts requests to focus the file search field. drafts are
+// keyed by draft key, dismissed by card key, and fileOpens by session ID. unsentDrafts holds parked new-session contexts
 // by draft key; unsent holds the one currently shown. titleBar is null outside
 // the native window.
 // config is the most recently fetched or saved configuration. systemDark is
@@ -29,7 +33,10 @@ import type {GitHubAccount} from './github/types.ts';
 export interface State {
   workspaces: Workspace[];
   accounts: GitHubAccount[];
-  settings: SettingsSection | null;
+  dialog: Dialog | null;
+  settingsSection: SettingsSection;
+  renaming: {session: string; order: Record<string, string[]>} | null;
+  searchFocus: number;
   loaded: boolean;
   config: Config | null;
   systemDark: boolean;
@@ -67,7 +74,10 @@ export interface State {
 export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
   accounts: [],
-  settings: null,
+  dialog: null,
+  settingsSection: 'General',
+  renaming: null,
+  searchFocus: 0,
   loaded: false,
   config: null,
   systemDark: false,

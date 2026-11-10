@@ -1,6 +1,10 @@
+// The page's keyboard shortcuts: their bindings, which also supply the
+// desktop app's menus and the keyboard reference, and what each does.
+import {focusComposerField} from '../agent/focus-composer.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {openUnsent} from '../sessions/selection.ts';
-import {toggle, toggleWrap} from './workbench.ts';
+import {sidebarRows} from '../sidebar/sidebar-rows.ts';
+import {focusFileSearch, openDialog, openSettings, toggle, toggleWrap} from './workbench.ts';
 import type {Store} from '../store.ts';
 import {hypercube} from './window.ts';
 import {binding, keysLabel, linux} from './keys.ts';
@@ -86,52 +90,43 @@ function shortcutOf(id: ShortcutId): Shortcut {
 // firstKeys is the label of a shortcut's first binding.
 export const firstKeys = (id: ShortcutId) => keysLabel(keysOf(shortcutOf(id))[0]);
 
+export const shortcutTitle = (id: ShortcutId) => shortcutOf(id).title;
+
 // terminalShortcut says a shortcut marked terminal matches the keystroke, which
 // the terminal then leaves to the page and the menus.
 export const terminalShortcut = (event: Keystroke) => shortcuts.some(item => item.terminal && matches(event, item.id));
 
-export interface ShortcutActions {
-  focusComposer: () => void;
-  showHelp: () => void;
-  showSettings: () => void;
-  openQuickOpen: () => void;
-  openSessionSearch: () => void;
-}
-
-const regionSelectors: Record<Region, string> = {sidebar: '.sidebar', panel: '.terminal-panel', rightPanel: '.right-panel'};
+// A region's element carries its name in data-region.
+const inRegion = (target: Element, region: Region) => !!target.closest(`[data-region="${region}"]`);
 
 // shortcutAction is what shortcut id does for a keystroke in target, or
 // undefined when it does nothing there. editing says the keystroke is in a text
 // field, which keeps its own keys.
-function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: string, store: Store, actions: ShortcutActions): (() => void) | undefined {
+function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: string, store: Store): (() => void) | undefined {
   const state = store.get();
   switch (id) {
     case 'wrap':
       return editing ? undefined : () => store.update(toggleWrap);
     case 'searchSessions':
-      return actions.openSessionSearch;
+      return () => store.update(s => openDialog(s, 'sessionSearch'));
     case 'searchFiles':
-      if (!state.editor || state.unsent) return undefined;
-      return () => {
-        store.update(s => ({...s, workbench: {...s.workbench, rightPanel: true, rightTab: 'search'}}));
-        if (state.workbench.rightPanel && state.workbench.rightTab === 'search') document.querySelector<HTMLElement>('[aria-label="Search files contents"]')?.focus();
-      };
+      return state.editor && !state.unsent ? () => store.update(focusFileSearch) : undefined;
     case 'quickOpen':
-      return state.editor && !state.unsent ? actions.openQuickOpen : undefined;
+      return state.editor && !state.unsent ? () => store.update(s => openDialog(s, 'quickOpen')) : undefined;
     case 'new':
       return () => store.update(s => openUnsent(s));
     case 'composer':
-      return actions.focusComposer;
+      return focusComposerField;
     case 'select': {
       const session = state.workspaces.flatMap(w => w.sessions.filter(s => !s.ended))[Number(key) - 1];
       return session && (() => chooseSession(store, session.id));
     }
     case 'next':
     case 'previous': {
-      const rows = [...document.querySelectorAll<HTMLElement>('.sidebar [role="treeitem"][data-session]')];
-      const index = rows.findIndex(row => row.dataset.session === state.selected);
+      const rows = sidebarRows(state);
+      const index = rows.findIndex(row => row.id === state.selected);
       const previous = id === 'previous';
-      const session = rows[index < 0 ? (previous ? rows.length - 1 : 0) : (index + (previous ? -1 : 1) + rows.length) % rows.length]?.dataset.session;
+      const session = rows[index < 0 ? (previous ? rows.length - 1 : 0) : (index + (previous ? -1 : 1) + rows.length) % rows.length]?.id;
       return session ? () => chooseSession(store, session) : undefined;
     }
     case 'sidebar':
@@ -139,13 +134,13 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'rightPanel':
       if (editing) return undefined;
       return () => {
-        if ((id === 'panel' ? state.editor?.panel : state.workbench[id]) && target.closest(regionSelectors[id])) actions.focusComposer();
+        if ((id === 'panel' ? state.editor?.panel : state.workbench[id]) && inRegion(target, id)) focusComposerField();
         store.update(s => toggle(s, id));
       };
     case 'settings':
-      return actions.showSettings;
+      return () => store.update(s => openSettings(s));
     case 'help':
-      return actions.showHelp;
+      return () => store.update(s => openDialog(s, 'shortcuts'));
     default:
       return undefined;
   }
@@ -155,14 +150,14 @@ const editingTarget = (target: Element) => !!target.closest('input, textarea, [c
 
 // shortcut runs the shortcut that a key press in the page names. In the
 // desktop app the menus run the shortcuts they own.
-export function shortcut(e: KeyboardEvent, store: Store, actions: ShortcutActions) {
+export function shortcut(e: KeyboardEvent, store: Store) {
   if (e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
   if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
-  if (e.target.closest('.terminal-panel') && !terminalShortcut(e)) return;
+  if (inRegion(e.target, 'panel') && !terminalShortcut(e)) return;
   if (store.get().confirmation) return;
   const item = shortcuts.find(s => matches(e, s.id));
   if (item?.menu && hypercube()) return;
-  const action = item && shortcutAction(item.id, e.target, editingTarget(e.target), e.key, store, actions);
+  const action = item && shortcutAction(item.id, e.target, editingTarget(e.target), e.key, store);
   if (!action) return;
   e.preventDefault();
   e.stopPropagation();
@@ -171,7 +166,7 @@ export function shortcut(e: KeyboardEvent, store: Store, actions: ShortcutAction
 
 // nativeShortcut runs the shortcut that the app's menu names, for the element
 // that has focus.
-export function nativeShortcut(id: string, store: Store, actions: ShortcutActions) {
+export function nativeShortcut(id: string, store: Store) {
   const item = shortcuts.find(s => s.id === id);
-  if (item) shortcutAction(item.id, document.activeElement ?? document.body, false, '', store, actions)?.();
+  if (item) shortcutAction(item.id, document.activeElement ?? document.body, false, '', store)?.();
 }

@@ -13,10 +13,9 @@ import {isUnsent} from '../agent/drafts.ts';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {Icon} from '../shared/icon.tsx';
-import {useScrollMemory} from '../editor/use-scroll-memory.ts';
+import {useScrollMemory} from '../shared/use-scroll-memory.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
-import {tabBackground} from '../shared/tab-background.ts';
 import type {Session} from '../sessions/types.ts';
 import {dismissSubmission, retrySubmission} from '../sessions/session-actions.ts';
 import {submissionsOf} from '../sessions/submissions.ts';
@@ -74,7 +73,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
 
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
-      <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
+      <Find list={list} view={view} active={active} label="Find in transcript" inline />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto">
         <div ref={list} onClickCapture={holdTrigger} className="transcript-list flex w-full flex-1 flex-col gap-3 px-[37px] py-4">
           {rows.map(row => {
@@ -94,7 +93,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
           })}
         </div>
       </div>
-      <div className={`transcript-footer relative flex max-h-3/4 min-h-0 shrink-0 flex-col ${tabBackground}`}>
+      <div className="transcript-footer relative flex max-h-3/4 min-h-0 shrink-0 flex-col bg-tab">
         {away && (
           <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
             onClick={() => { followEnd(true); focusComposerField(); }}><Icon name="arrow-down" /></Button>

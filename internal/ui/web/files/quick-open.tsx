@@ -3,16 +3,14 @@ import {mentionFiles} from '../api.ts';
 import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {openFileTab} from '../editor/editor.ts';
 import {matches} from '../app/shortcuts.ts';
+import {setDialog} from '../app/workbench.ts';
 import {CommandDialog} from '../shared/command-dialog.tsx';
 import {useStore} from '../store.ts';
 
-interface QuickOpenProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-export function QuickOpen({open, onOpenChange}: QuickOpenProps) {
+export function QuickOpen() {
   const [state, store] = useStore();
+  const open = state.dialog === 'quickOpen' && !state.unsent;
+  const onOpenChange = (next: boolean) => store.update(s => setDialog(s, 'quickOpen', next));
   const editor = state.editor?.id;
   const [files, setFiles] = useState<string[]>([]);
   const [error, setError] = useState('');

@@ -11,7 +11,7 @@ afterEach(() => {
 
 // searchFiles is the Search Files row's keycaps and the text between them.
 function searchFiles() {
-  mount(createStore(testState()), <ShortcutsDialog open onOpenChange={() => {}} />);
+  mount(createStore(testState({dialog: 'shortcuts'})), <ShortcutsDialog />);
   const row = [...document.querySelectorAll('dl > div')].find(item => item.querySelector('dt')?.textContent === 'Search Files');
   const group = row?.querySelector('[data-slot=kbd-group]');
   return {keys: [...group?.querySelectorAll('kbd') ?? []].map(key => key.textContent), text: group?.textContent};

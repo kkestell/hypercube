@@ -98,7 +98,7 @@ export function TerminalPanel() {
   useEffect(() => () => shell.current?.close(), []);
 
   // FitAddon measures its parent's full height without subtracting padding.
-  return <div className="terminal-panel h-full min-h-0 overflow-hidden p-2">
+  return <div className="h-full min-h-0 overflow-hidden p-2" data-region="panel">
     <div ref={box} className="h-full" />
   </div>;
 }

@@ -7,6 +7,7 @@ import type {FileRead, FolderListing, SearchFile} from './files/types.ts';
 import {showError} from './notifications/errors.ts';
 import type {BranchList, SessionSearchResult} from './sessions/types.ts';
 import type {Store} from './store.ts';
+import {errorText} from './shared/error-text.ts';
 
 // HttpError is a refused request, with the response's status.
 export class HttpError extends Error {
@@ -45,7 +46,7 @@ async function request<T>(store: Store, path: string, init: RequestInit | undefi
     }
     return await read(response);
   } catch (error) {
-    showError(store, error instanceof Error ? error.message : String(error));
+    showError(store, errorText(error));
     return null;
   }
 }
@@ -65,7 +66,7 @@ export async function submitPrompt(params: Record<string, string>, body: string)
     const text = await response.text();
     return response.ok ? {} : {error: text || 'Sending failed.'};
   } catch (error) {
-    return {error: (error instanceof Error ? error.message : String(error)) + unconfirmed};
+    return {error: (errorText(error)) + unconfirmed};
   }
 }
 
@@ -78,7 +79,7 @@ export async function cloneWorkspace(params: {repo: string; account: string; pat
     const text = await response.text();
     return response.ok ? {workspace: text} : {error: text || 'Cloning failed.'};
   } catch (error) {
-    return {error: error instanceof Error ? error.message : String(error)};
+    return {error: errorText(error)};
   }
 }
 

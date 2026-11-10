@@ -1,12 +1,12 @@
 // Persist view choices, refreshing transcript and file data on every attachment.
 import {showError} from '../notifications/errors.ts';
+import {errorText} from '../shared/error-text.ts';
 import {editorView} from '../editor/view-state.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {readSavedViews, type SavedViews} from './saved-views.ts';
 
 const storageKey = 'hypercube.views';
-const reason = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 function snapshot(state: State): SavedViews {
   const sessionViews = {...state.sessionViews};
@@ -36,7 +36,7 @@ export function startViewStorage(store: Store): () => void {
       store.update(state => ({...state, workbench: saved.workbench, sessionViews: saved.sessionViews, workspaceViews: saved.workspaceViews, selected: state.selected || saved.selected}));
     }
   } catch (error) {
-    showError(store, 'Could not restore view state: ' + reason(error));
+    showError(store, 'Could not restore view state: ' + errorText(error));
   }
 
   let previous = store.get();
@@ -51,7 +51,7 @@ export function startViewStorage(store: Store): () => void {
     } catch (error) {
       if (failed) return;
       failed = true;
-      showError(store, 'View state could not be saved: ' + reason(error));
+      showError(store, 'View state could not be saved: ' + errorText(error));
     }
   };
   return store.subscribe(state => {

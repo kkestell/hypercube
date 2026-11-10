@@ -3,14 +3,13 @@ import {testBridge} from '../../test-render.tsx';
 import {testState} from '../../test-state.ts';
 import {createStore} from '../store.ts';
 import {binding} from './keys.ts';
-import {keysOf, matches, nativeShortcut, shortcut, shortcuts, terminalShortcut, type ShortcutActions} from './shortcuts.ts';
+import {keysOf, matches, nativeShortcut, shortcut, shortcuts, terminalShortcut} from './shortcuts.ts';
 
 afterEach(() => {
   delete globalThis.hypercube;
 });
 
 const none = () => {};
-const actions: ShortcutActions = {focusComposer: none, showHelp: none, showSettings: none, openQuickOpen: none, openSessionSearch: none};
 const keyDown = (key: string, code: string) => ({key, code, metaKey: true, target: document.body, defaultPrevented: false, repeat: false,
   isComposing: false, preventDefault: none, stopPropagation: none}) as unknown as KeyboardEvent;
 
@@ -19,14 +18,14 @@ test('the desktop app\'s menus run the shortcuts they own, once', () => {
   const sidebar = () => store.get().workbench.sidebar;
   const before = sidebar();
 
-  shortcut(keyDown('b', 'KeyB'), store, actions);
+  shortcut(keyDown('b', 'KeyB'), store);
   expect(sidebar()).toBe(!before);
 
   globalThis.hypercube = testBridge();
   try {
-    shortcut(keyDown('b', 'KeyB'), store, actions);
+    shortcut(keyDown('b', 'KeyB'), store);
     expect(sidebar()).toBe(!before);
-    nativeShortcut('sidebar', store, actions);
+    nativeShortcut('sidebar', store);
     expect(sidebar()).toBe(before);
   } finally {
     delete globalThis.hypercube;
@@ -69,9 +68,8 @@ const press = (key: string, modifiers: {ctrlKey?: boolean; altKey?: boolean; shi
 test('on Linux the bindings use Ctrl and avoid GNOME\'s', () => {
   useLinux();
   const store = createStore(testState());
-  let searched = 0;
-  shortcut(press('k', {ctrlKey: true}), store, {...actions, openSessionSearch: () => { searched++; }});
-  expect(searched).toBe(1);
+  shortcut(press('k', {ctrlKey: true}), store);
+  expect(store.get().dialog).toBe('sessionSearch');
 
   expect(matches(press('ArrowDown', {ctrlKey: true, altKey: true}), 'next')).toBe(false);
   expect(matches(press('F5', {altKey: true}), 'nextChange')).toBe(false);
@@ -90,13 +88,13 @@ test('the terminal panel keeps every key except the shortcuts marked terminal', 
   expect(terminalShortcut(press('F', {ctrlKey: true, shiftKey: true}))).toBe(true);
 
   const panel = document.createElement('div');
-  panel.className = 'terminal-panel';
+  panel.dataset.region = 'panel';
   document.body.append(panel);
-  let searched = 0;
+  const store = createStore(testState());
   try {
-    shortcut(press('k', {ctrlKey: true}, panel), createStore(testState()), {...actions, openSessionSearch: () => { searched++; }});
+    shortcut(press('k', {ctrlKey: true}, panel), store);
   } finally {
     panel.remove();
   }
-  expect(searched).toBe(0);
+  expect(store.get().dialog).toBeNull();
 });

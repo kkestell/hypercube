@@ -5,10 +5,8 @@
 import type {Store} from '../store.ts';
 import type {State} from '../state.ts';
 
-let count = 0;
-
 export function showError(store: Store, message: string) {
-  const key = `error:${++count}`;
+  const key = `error:${crypto.randomUUID()}`;
   store.update(state => ({...state, errors: [{key, message}, ...state.errors]}));
 }
 

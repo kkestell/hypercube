@@ -1,8 +1,8 @@
 import {afterEach, expect, mock, test} from 'bun:test';
-import {act, useState} from 'react';
+import {act} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testPullRequest, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {nativeShortcut, type ShortcutActions} from '../app/shortcuts.ts';
+import {nativeShortcut} from '../app/shortcuts.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import type {GitHubAccount, GitHubStatus, PullRequest} from '../github/types.ts';
 import {selectSession, selectWorkspace} from '../sessions/selection.ts';
@@ -28,11 +28,7 @@ function setup(sessions: Session[], selected: string | null = null) {
   let state = testState({workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]});
   if (selected) state = selectSession(state, selected);
   const store = createStore(state);
-  function View() {
-    const [searchOpen, setSearchOpen] = useState(false);
-    return <><Sidebar searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} onSettings={() => {}} /><ConfirmDialog /></>;
-  }
-  const root = mount(store, <View />);
+  const root = mount(store, <><Sidebar /><ConfirmDialog /></>);
   const posted = () => requests.map(url => Object.fromEntries(url.searchParams));
   return {store, root, posted, answer: (next: () => Response) => { respond = next; }};
 }
@@ -57,6 +53,13 @@ const choose = (root: HTMLElement, selector: string, label: string) => {
   pick(label);
 };
 
+// byText is the innermost element in root whose text is text.
+const byText = (root: HTMLElement, text: string) => {
+  const found = findAll(root, '*').findLast(element => element.textContent === text);
+  if (!found) throw new Error('No element reads ' + text);
+  return found;
+};
+
 const menuLabels = () => findAll(document, '[role=menuitem]').map(item => item.textContent);
 
 const dialog = () => document.querySelector('[role=alertdialog]');
@@ -68,19 +71,18 @@ const dialogButton = (label: string) => {
   return button;
 };
 
-test('workspace row background selects its dashboard without changing the action buttons', () => {
+test("a workspace's name selects its dashboard without changing the action buttons", () => {
   const {store, root} = setup([session('a')], 'a');
-  const header = find(root, '.workspace-section-header');
+  const header = find(root, '[data-workspace-header]');
   click(find(header, '[aria-label="Collapse repo"]'));
   expect(store.get().selected).toBe('a');
   expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
 
-  click(header);
+  const name = findAll(header, 'button').find(button => button.textContent === 'repo')!;
+  click(name);
   expect(store.get().selected).toBe('workspace:w');
+  expect(name.getAttribute('aria-pressed')).toBe('true');
   expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
-  act(() => chooseSession(store, 'a'));
-  click(header.firstElementChild as HTMLElement);
-  expect(store.get().selected).toBe('workspace:w');
 
   act(() => chooseSession(store, 'a'));
   click(find(header, '[aria-label="New Session"]'));
@@ -215,14 +217,12 @@ test.each([false, true])('session shortcuts skip hidden ended children and wrap 
   const children = runningChild ? [session('live', {parent: 'a'}), ended] : [ended];
   const {root, store} = setup([session('a', {children}), session('b')], 'a');
   expect(sessionRows(root)).toEqual(runningChild ? ['a', 'live', 'b'] : ['a', 'b']);
-  const none = () => {};
-  const actions: ShortcutActions = {focusComposer: none, showHelp: none, showSettings: none, openQuickOpen: none, openSessionSearch: none};
   for (const id of runningChild ? ['live', 'b', 'a'] : ['b', 'a']) {
-    act(() => nativeShortcut('next', store, actions));
+    act(() => nativeShortcut('next', store));
     expect(store.get().selected).toBe(id);
   }
   for (const id of runningChild ? ['b', 'live', 'a'] : ['b', 'a']) {
-    act(() => nativeShortcut('previous', store, actions));
+    act(() => nativeShortcut('previous', store));
     expect(store.get().selected).toBe(id);
   }
 });
@@ -332,8 +332,8 @@ test.each([null, 'parked'])('parked sessions dim without dimming running session
     session('parked', {activity: 'exited'}),
   ], selected);
   for (const id of ['parked', 'child']) {
-    expect(find(row(root, id), '.session-item-status').classList.contains('opacity-60')).toBe(true);
-    expect(find(row(root, id), '.session-item-title').closest('.opacity-60')).not.toBeNull();
+    expect(find(row(root, id), '[aria-label=Idle], [aria-label=Ended]').closest('.opacity-60')).not.toBeNull();
+    expect(byText(row(root, id), 'Session ' + id).closest('.opacity-60')).not.toBeNull();
   }
   for (const id of ['busy', 'idle']) expect(row(root, id).querySelector('.opacity-60')).toBeNull();
 });
@@ -349,8 +349,8 @@ test('a saved offer shows waiting while its session is parked', () => {
 test('the parent chevron toggles children without selecting the parent', () => {
   const {root, store} = setup([session('a', {title: 'A long session title', children: [session('child', {parent: 'a'})]})], 'child');
   const parent = row(root, 'a');
-  const title = find(parent, '.session-item-title');
-  const chevron = find(parent, '.session-item-twistie');
+  const title = byText(parent, 'A long session title');
+  const chevron = parent.querySelector('[data-icon=chevron-right]')!.parentElement!;
   click(chevron);
   expect(sessionRows(root)).toEqual(['a']);
   expect(store.get().selected).toBe('child');
@@ -369,7 +369,7 @@ const status = (pullRequests: PullRequest[]): GitHubStatus => ({
 
 function withGitHub(pullRequests: PullRequest[], accounts: GitHubAccount[] = [{login: 'me', pullRequests, updated: 1}]) {
   const store = createStore(testState({selected: '', workspaces: [testWorkspace({id: 'w', name: 'repo', github: status(pullRequests)})], accounts}));
-  const root = mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+  const root = mount(store, <Sidebar />);
   return {store, root};
 }
 
@@ -403,7 +403,7 @@ test('the Pull Requests button shows the home view and counts what needs the use
 test('the Pull Requests button is absent without workspaces or accounts', () => {
   for (const state of [testState({workspaces: [], accounts: [{login: 'me', pullRequests: [], updated: 1}]}),
     testState({workspaces: [testWorkspace({id: 'w'})], accounts: []})]) {
-    const root = mount(createStore(state), <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+    const root = mount(createStore(state), <Sidebar />);
     expect(findAll(root, 'button').some(b => b.textContent?.startsWith('Pull Requests'))).toBe(false);
     unmountAll();
   }

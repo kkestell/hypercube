@@ -31,5 +31,5 @@ export function Icon({name, className = '', title, ...props}: IconProps) {
 
 // Chevron marks an expandable item, turning to point down as it opens.
 export function Chevron({open}: {open: boolean}) {
-  return <Icon name="chevron-right" className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />;
+  return <Icon name="chevron-right" className={`transition-transform ${open ? 'rotate-90' : ''}`} />;
 }

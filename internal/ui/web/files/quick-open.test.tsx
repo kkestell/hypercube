@@ -16,8 +16,8 @@ afterEach(() => {
 async function swallowed(platform: string, modifier: 'metaKey' | 'ctrlKey') {
   globalThis.hypercube = testBridge({platform});
   stubFetch(() => Response.json([]));
-  const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({id: 'w', sessions: [testSession({id: 'a'})]})]));
-  mount(store, <QuickOpen open onOpenChange={() => {}} />);
+  const store = createStore(receivedWorkspaces(testState({selected: 'a', dialog: 'quickOpen'}), [testWorkspace({id: 'w', sessions: [testSession({id: 'a'})]})]));
+  mount(store, <QuickOpen />);
   await act(async () => {});
   const event = new KeyboardEvent('keydown', {key: 'p', [modifier]: true, bubbles: true, cancelable: true});
   act(() => { find(document, '[cmdk-input]').dispatchEvent(event); });
@@ -33,9 +33,9 @@ test('Quick Open keeps the shortcut that opened it from the menu', async () => {
 
 test('Quick Open lists files for the selected workspace', async () => {
   const requests = stubFetch(() => Response.json(['main.go']));
-  const store = createStore(receivedWorkspaces(testState(), [testWorkspace({id: 'w'})]));
+  const store = createStore(receivedWorkspaces(testState({dialog: 'quickOpen'}), [testWorkspace({id: 'w'})]));
   store.update(state => selectWorkspace(state, 'w'));
-  mount(store, <QuickOpen open onOpenChange={() => {}} />);
+  mount(store, <QuickOpen />);
   await act(async () => {});
   const url = new URL(requests.mock.calls[0][0], 'http://localhost/');
   expect(url.pathname).toBe('/mention-files');

@@ -5,6 +5,7 @@ import {testConfig, testSession, testState, testWorkspace} from '../../test-stat
 import type {ModelEntry} from '../agent/types.ts';
 import {createStore, useStore} from '../store.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
+import {openSettings} from './workbench.ts';
 import type {Config} from './types.ts';
 
 afterEach(() => { mock.restore(); unmountAll(); });
@@ -32,7 +33,7 @@ const config = testConfig({models: [saved]});
 
 function View() {
   const [, store] = useStore();
-  return <><button onClick={() => store.update(s => ({...s, settings: 'Agents'}))}>Open settings</button><SettingsDialog /></>;
+  return <><button onClick={() => store.update(s => openSettings(s, 'Agents'))}>Open settings</button><SettingsDialog /></>;
 }
 
 // openAgents opens Settings › Agents against a server holding served, and
@@ -44,7 +45,7 @@ async function openAgents(state = testState(), served = config) {
     if (url === 'config' && init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
     return url === 'version' ? new Response('build') : Response.json(served);
   });
-  const store = createStore({...state, settings: 'Agents', config: served});
+  const store = createStore({...state, dialog: 'settings', settingsSection: 'Agents', config: served});
   mount(store, <View />);
   await settle();
   return {store, fetches, posts};
@@ -60,7 +61,7 @@ test('added entries apply with Save changes', async () => {
   await select('model-default-effort', 'medium');
   await click('Save');
   expect(document.body.textContent).toContain('Friendly title');
-  expect(document.body.textContent).toContain('Low · Medium (default) · High');
+  expect(document.body.textContent).toContain('Low, Medium (default), High');
   expect(fetches.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`).filter(call => call !== 'GET config')).toEqual(['GET harnesses?']);
   expect(store.get().config?.models).toEqual([saved]);
   await click('Save changes');

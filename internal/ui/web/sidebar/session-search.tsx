@@ -1,54 +1,33 @@
-import {useEffect, useState} from 'react';
-import {Search} from 'lucide-react';
+// Search across session titles and conversations, from its button in the
+// sidebar or its shortcut. Choosing a result shows its session.
+import {useState} from 'react';
 import {searchSessions} from '../api.ts';
+import {setDialog} from '../app/workbench.ts';
 import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
+import {chooseSession} from '../sessions/session-actions.ts';
 import {CommandDialog} from '../shared/command-dialog.tsx';
-import {Button} from '../components/ui/button';
-import type {SessionSearchResult} from '../sessions/types.ts';
+import {IconButton} from '../shared/icon-button.tsx';
+import {useRequest} from '../shared/use-request.ts';
+import {useStore} from '../store.ts';
 
-interface SessionSearchProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSelect: (id: string) => void;
-}
-
-export function SessionSearch({open, onOpenChange, onSelect}: SessionSearchProps) {
+export function SessionSearch() {
+  const [state, store] = useStore();
+  const open = state.dialog === 'sessionSearch';
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SessionSearchResult[]>([]);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!open || !query.trim()) {
-      setResults([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setResults([]);
-    setError('');
-    setLoading(true);
-    searchSessions(query, controller.signal)
-      .then(data => { if (!controller.signal.aborted) { setResults(data); setLoading(false); } })
-      .catch((err: unknown) => { if (!controller.signal.aborted) {
-        setError('Could not search sessions: ' + (err instanceof Error ? err.message : String(err)));
-        setLoading(false);
-      } });
-    return () => controller.abort();
-  }, [open, query]);
+  const typed = query.trim();
+  const search = useRequest(open && typed ? signal => searchSessions(query, signal) : null, [open, query]);
 
   const changeOpen = (next: boolean) => {
-    onOpenChange(next);
+    store.update(s => setDialog(s, 'sessionSearch', next));
     if (!next) setQuery('');
   };
   return <>
-    <Button className="size-7" variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => onOpenChange(true)}><Search /></Button>
+    <IconButton icon="search" label="Search sessions" shortcut="searchSessions" onClick={() => changeOpen(true)} />
     <CommandDialog open={open} onOpenChange={changeOpen} title="Search sessions" description="Search session titles and conversations" commandProps={{shouldFilter: false}}>
       <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
       <CommandList>
-        {query.trim() && <CommandEmpty>{error || (loading ? 'Searching…' : 'No sessions found.')}</CommandEmpty>}
-        {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); onSelect(result.id); }}>
+        {typed && <CommandEmpty>{search.error ? 'Could not search sessions: ' + search.error : search.loading ? 'Searching…' : 'No sessions found.'}</CommandEmpty>}
+        {typed && search.data?.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); chooseSession(store, result.id); }}>
           <div className="flex min-w-0 flex-col gap-1">
             <span className="truncate">{result.title}</span>
             <span className="truncate text-xs text-muted-foreground">{result.workspace}</span>

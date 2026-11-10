@@ -29,6 +29,8 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   --color-sidebar: var(--sidebar);
+  /* Tab content and the bars and sticky surfaces over it. */
+  --color-tab: color-mix(in oklab, var(--background), var(--card));
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -92,7 +94,7 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-neutral-700 dark:text-neutral-300; }
+  body { @apply bg-background text-foreground; }
   * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
   *:hover { scrollbar-color: color-mix(in oklab, var(--muted-foreground) 50%, transparent) transparent; }
   ::highlight(find) { background-color: Highlight; color: HighlightText; }

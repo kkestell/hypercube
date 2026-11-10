@@ -9,6 +9,7 @@ import {Switch} from '../components/ui/switch';
 import {Textarea} from '../components/ui/textarea';
 import {Icon} from '../shared/icon.tsx';
 import {SettingsModels} from './settings-models.tsx';
+import type {Settings} from '../agent/types.ts';
 import type {Config, Notifications, Theme} from './types.ts';
 
 interface SectionProps {
@@ -31,7 +32,7 @@ function Choice({id, value, onChange, children}: {id: string; value: string; onC
 }
 
 function Group({title, children}: {title: string; children: ReactNode}) {
-  return <section className="grid gap-6"><h3 className="text-base font-medium">{title}</h3>{children}</section>;
+  return <section className="grid gap-6"><h3 className="text-sm font-semibold">{title}</h3>{children}</section>;
 }
 
 export function SettingsGeneral({draft, onChange}: SectionProps) {
@@ -49,7 +50,9 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
       </Field>
     </Group>
     <Group title="New sessions">
-      <DefaultSelection draft={draft} onChange={onChange} />
+      <ModelField id="default-model" label="Default model" draft={draft} value={draft.default_selection} onChange={default_selection => onChange({default_selection})}>
+        New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.
+      </ModelField>
       <Field id="default-location" label="Default location">
         <Choice id="default-location" value={draft.default_worktree ? 'worktree' : 'local'} onChange={value => onChange({default_worktree: value === 'worktree'})}>
           <SelectItem value="local"><Icon name="laptop" />Existing checkout</SelectItem>
@@ -57,30 +60,27 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
         </Choice>
         <p className="text-sm text-muted-foreground">For Git workspaces. Existing checkout includes uncommitted changes; a new worktree starts from the current commit. Change it for each session below the message box.</p>
       </Field>
-    </Group>
-    <Group title="Utility model">
-      <div className="grid gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <ModelSelect value={draft.utility_selection ?? null} label="Utility model" entries={draft.models}
-            onChange={utility_selection => onChange({utility_selection})} />
-          {draft.utility_selection && <Button type="button" variant="ghost" size="sm" onClick={() => onChange({utility_selection: undefined})}>Clear</Button>}
-        </div>
-        <p className="text-sm text-muted-foreground">Names each new session after its first message. Without one, a session's title is the start of its first message. Titles you set with Rename stay.</p>
-      </div>
+      <ModelField id="utility-model" label="Utility model" draft={draft} value={draft.utility_selection} clear="Clear"
+        onChange={utility_selection => onChange({utility_selection})}>
+        Names each new session after its first message. Without one, a session's title is the start of its first message. Titles you set with Rename stay.
+      </ModelField>
     </Group>
   </div>;
 }
 
-// DefaultSelection chooses from the draft's model entries, so entries added in
-// this Settings visit can be chosen before they are saved.
-function DefaultSelection({draft, onChange}: SectionProps) {
+// ModelField chooses from the draft's model entries, so entries added in this
+// Settings visit can be chosen before they are saved. With clear, a button
+// of that name removes the choice.
+function ModelField({id, label, draft, value, clear, onChange, children}: {
+  id: string; label: string; draft: Config; value?: Settings; clear?: string; onChange: (value: Settings | undefined) => void; children: ReactNode;
+}) {
   return <div className="grid gap-3">
-    <span className="text-sm font-medium leading-none">Default model</span>
-    <ModelSelect value={draft.default_selection ?? null} label="Default model" entries={draft.models}
-      className="justify-self-start" onChange={default_selection => onChange({default_selection})} />
-    <p className="text-sm text-muted-foreground">
-      New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.
-    </p>
+    <Label htmlFor={id}>{label}</Label>
+    <div className="flex flex-wrap items-center gap-2">
+      <ModelSelect id={id} value={value ?? null} label={label} entries={draft.models} onChange={onChange} />
+      {clear && value && <Button type="button" variant="ghost" size="sm" onClick={() => onChange(undefined)}>{clear}</Button>}
+    </div>
+    <p className="text-sm text-muted-foreground">{children}</p>
   </div>;
 }
 
@@ -101,15 +101,10 @@ export function SettingsAgents({draft, onChange}: SectionProps) {
 // review session with.
 export function SettingsReview({draft, onChange}: SectionProps) {
   return <div className="grid gap-10">
-    <div className="grid gap-3">
-      <span className="text-sm font-medium leading-none">Review model</span>
-      <div className="flex flex-wrap items-center gap-2">
-        <ModelSelect value={draft.review_selection ?? null} label="Review model" entries={draft.models}
-          onChange={review_selection => onChange({review_selection})} />
-        {draft.review_selection && <Button type="button" variant="ghost" size="sm" onClick={() => onChange({review_selection: undefined})}>Use default model</Button>}
-      </div>
-      <p className="text-sm text-muted-foreground">Review starts a new session with this model. Without one, it uses the default model.</p>
-    </div>
+    <ModelField id="review-model" label="Review model" draft={draft} value={draft.review_selection} clear="Use default model"
+      onChange={review_selection => onChange({review_selection})}>
+      Review starts a new session with this model. Without one, it uses the default model.
+    </ModelField>
     <Field id="review-prompt" label="Review prompt">
       <Textarea id="review-prompt" rows={8} value={draft.review_prompt}
         onChange={e => onChange({review_prompt: e.target.value})} />

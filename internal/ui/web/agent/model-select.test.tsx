@@ -110,7 +110,7 @@ test('unlisted selections survive and empty pickers link to Agents settings with
   await open(root);
   expect(document.body.textContent).toContain('No models configured.');
   clickControl(findAll(document, 'button').find(b => b.textContent === 'Open Settings')!);
-  expect(s.get().settings).toBe('Agents');
+  expect(s.get()).toMatchObject({dialog: 'settings', settingsSection: 'Agents'});
   expect(s.get().unsent?.settings?.model).toBe('opus');
   unmountAll();
   const session = testSession({id: 's', harness: 'missing', model: 'old', effort: 'max', ready: true});
@@ -119,7 +119,7 @@ test('unlisted selections survive and empty pickers link to Agents settings with
   await open(running);
   expect(document.body.textContent).toContain('No missing models configured.');
   clickControl(findAll(document, 'button').find(b => b.textContent === 'Open Settings')!);
-  expect(other.get().settings).toBe('Agents');
+  expect(other.get()).toMatchObject({dialog: 'settings', settingsSection: 'Agents'});
   expect(fetches).not.toHaveBeenCalled();
 });
 

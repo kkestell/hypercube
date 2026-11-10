@@ -9,7 +9,7 @@ import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore, useStore} from '../store.ts';
 import {Transcript} from '../transcript/transcript.tsx';
 import {receivedTranscript} from '../transcript/transcripts.ts';
-import {openTab} from './tab-layout.ts';
+import {openTab} from '../editor/tab-layout.ts';
 
 const imageComplete = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'complete')!;
 afterEach(() => {
@@ -117,10 +117,12 @@ test.each([false, true])('transcript restoration keeps following=%s after delaye
   height(1000);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [{id: 'answer', seq: 1, kind: 'text', text: 'saved answer'}]})));
   expect(view.scrollTop).toBe(following ? 900 : 200);
+  act(() => window.dispatchEvent(new Event('pagehide')));
   expect(store.get().editor!.scroll.a.following).toBe(following);
   height(1400);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: false, items: [{id: 'new', seq: 2, kind: 'text', text: 'next answer'}]})));
   expect(view.scrollTop).toBe(following ? 1300 : 200);
+  act(() => window.dispatchEvent(new Event('pagehide')));
   expect(store.get().editor!.scroll.a.following).toBe(following);
 });
 
@@ -163,5 +165,6 @@ test.each([false, true])('transcript preserves image restoration and follow inte
   expect(view.scrollTop).toBe(userScroll ? 150 : 500);
   act(() => find(root, '[aria-label="Scroll to newest output"]').click());
   expect(view.scrollTop).toBe(1300);
+  act(() => window.dispatchEvent(new Event('pagehide')));
   expect(store.get().editor!.scroll.a.following).toBe(true);
 });

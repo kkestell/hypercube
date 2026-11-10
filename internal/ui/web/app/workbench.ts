@@ -2,7 +2,25 @@
 // page itself is visible.
 
 import type {State} from '../state.ts';
-import type {Region, RightTab, SidebarTab} from './types.ts';
+import type {Dialog, Region, RightTab, SettingsSection, SidebarTab} from './types.ts';
+
+export const openDialog = (state: State, dialog: Dialog): State => ({...state, dialog});
+
+export const closeDialog = (state: State): State => state.dialog ? {...state, dialog: null} : state;
+
+// setDialog opens dialog or closes it, as a dialog's onOpenChange reports.
+export const setDialog = (state: State, dialog: Dialog, open: boolean): State =>
+  open ? openDialog(state, dialog) : state.dialog === dialog ? closeDialog(state) : state;
+
+export const openSettings = (state: State, section: SettingsSection = 'General'): State => ({...state, dialog: 'settings', settingsSection: section});
+
+export const showSettingsSection = (state: State, section: SettingsSection): State => ({...state, settingsSection: section});
+
+// showRightTab shows the right panel at tab.
+export const showRightTab = (state: State, tab: RightTab): State => ({...state, workbench: {...state.workbench, rightPanel: true, rightTab: tab}});
+
+// focusFileSearch shows file search and asks its field for focus.
+export const focusFileSearch = (state: State): State => ({...showRightTab(state, 'search'), searchFocus: state.searchFocus + 1});
 
 // toggle shows or hides the 'sidebar', 'rightPanel', or 'panel'.
 export const toggle = (state: State, region: Region): State => region === 'panel'
