@@ -196,6 +196,29 @@ func TestServeDrivesTheAgent(t *testing.T) {
 	}
 }
 
+// A harness that begins a turn while it starts, such as a resumed
+// conversation with queued work, stays working after start's reply.
+func TestServeKeepsAStateReportedDuringStart(t *testing.T) {
+	c := serveStart(t, func(a harness.StartArgs, emit func(harness.Event)) (Agent, error) {
+		p, err := StartProcess("Shell", exec.Command("sh", "-c", "cat >/dev/null"))
+		if err != nil {
+			return Agent{}, err
+		}
+		emit(harness.Event{State: harness.Working})
+		return Agent{Process: p, Conversation: "conversation-a1", Stop: p.Stop}, nil
+	})
+	c.command(harness.Command{ID: 1, Command: harness.CmdStart, Start: &startArgs})
+	if r := c.next(); r.Event == nil || r.Event.State != harness.Working {
+		t.Fatalf("%+v is not the working event", r)
+	}
+	if r := c.next(); r.Reply == nil || r.Reply.Error != "" {
+		t.Fatalf("%+v is not start's reply", r)
+	}
+	if r := c.next(); r.Event == nil || r.Event.State != "" || r.Event.Conversation != "conversation-a1" {
+		t.Fatalf("%+v is not the conversation event", r)
+	}
+}
+
 func TestServeBeforeStart(t *testing.T) {
 	c := serveStandIn(t, &standIn{script: "cat >/dev/null"})
 	if err := c.reply(harness.Command{ID: 2, Command: harness.CmdInput, Text: "hello"}); err != "not started" {

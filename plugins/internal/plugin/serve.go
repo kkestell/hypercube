@@ -14,7 +14,7 @@ import (
 // Agent is a started harness, as the serve loop drives it. Stop ends it.
 type Agent struct {
 	Process      *Process // Serve returns Process.Err() when it ends by itself
-	Conversation string   // reported with the idle event that follows start's reply
+	Conversation string   // reported with the event that follows start's reply
 	// Selection is the model and effort the harness reports it started with,
 	// when they differ from the requested ones. Start's reply carries it.
 	Selection *harness.Selection
@@ -87,7 +87,7 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 			selection, err := s.handle(cmd, start)
 			s.reply(cmd.ID, selection, err)
 			if err == nil && cmd.Command == harness.CmdStart {
-				s.write(harness.Record{Event: &harness.Event{Conversation: s.agent.Conversation, State: harness.Idle}})
+				s.started()
 				exited = s.agent.Process.Done()
 			}
 			continue
@@ -126,12 +126,34 @@ type server struct {
 	enc   *json.Encoder
 
 	agent *Agent // set by start
+	state string // the last work state written, guarded by outMu
 }
 
 func (s *server) write(r harness.Record) {
 	s.outMu.Lock()
 	defer s.outMu.Unlock()
+	s.encode(r)
+}
+
+// encode writes r and notes its work state. The caller holds outMu.
+func (s *server) encode(r harness.Record) {
+	if r.Event != nil && r.Event.State != "" {
+		s.state = r.Event.State
+	}
 	_ = s.enc.Encode(r)
+}
+
+// started reports the started harness's conversation. It reports the harness
+// idle unless the harness already reported a work state, such as a turn that
+// a resumed conversation began on its own.
+func (s *server) started() {
+	s.outMu.Lock()
+	defer s.outMu.Unlock()
+	ev := harness.Event{Conversation: s.agent.Conversation}
+	if s.state == "" {
+		ev.State = harness.Idle
+	}
+	s.encode(harness.Record{Event: &ev})
 }
 
 func (s *server) reply(id int64, selection *harness.Selection, err error) {
