@@ -12,12 +12,13 @@ separate worktrees differ, see
 ## Choose where a session works
 
 When you start a session in a Git workspace, the location menu below the
-message box offers two choices:
+message box offers three choices:
 
 | Location | Branch | Use it to |
 | --- | --- | --- |
 | **Existing checkout** | The branch checked out in the workspace folder, shared with every other session there. | Work on the current branch, switch branches, or review uncommitted changes. |
 | **New worktree** | A new branch, `hypercube/session-<id>`, starting at the checkout's current commit, in its own folder under `.hypercube/`. | Develop a change that you will merge later, alone or beside other changes. |
+| **New worktree on branch…** | A new branch you name, starting at a branch or commit you choose, in its own folder under `.hypercube/`. | Develop a change on a branch you will push or open a pull request from. |
 
 To make one choice the default for new sessions, set
 **Settings › General › Default location**.
@@ -33,15 +34,15 @@ To make one choice the default for new sessions, set
 Every session in the existing checkout sees these edits as soon as they are
 made. Give concurrent sessions there separate files, or use worktrees.
 
-## Work on a named feature branch
+## Switch the workspace folder to another branch
 
-Use this when you want a branch name of your choosing, such as one that
-already exists on the remote or one you will open a pull request from.
+Use this to continue work on a branch that already exists, or to change the
+branch that **Merge into …** targets.
 
 1. Start a session with **Existing checkout**.
-2. Ask the agent to create or switch to the branch, for example:
+2. Ask the agent to switch branches, for example:
 
-   > Create a branch named `fix-login-timeout` from `main` and switch to it.
+   > Fetch and switch to the `fix-login-timeout` branch.
 
 3. Ask for the change, review it, and have the agent commit.
 
@@ -53,7 +54,10 @@ The bar above chat shows the current branch.
 
 1. Commit anything in the existing checkout that the change depends on. A new
    worktree starts from the current commit and leaves out uncommitted edits.
-2. Start a session with **New worktree** and describe the change.
+2. Start a session with **New worktree** and describe the change. To name the
+   branch or start from somewhere other than the checkout's current commit,
+   follow [Name the branch and its starting point](#name-the-branch-and-its-starting-point)
+   instead.
 3. Review the work:
    - **Git → Uncommitted** shows files the agent has not committed.
    - **Git → Committed** shows everything the branch has committed since it
@@ -87,13 +91,33 @@ Merging into the workspace folder's branch does not push it. To push, ask a
 session in the existing checkout, or open the workspace's dashboard and run
 `git push` in its terminal.
 
+### Name the branch and its starting point
+
+1. Below the message box, open the location menu and choose **New worktree on
+   branch…**.
+2. In **Create a branch**, enter a **New branch name**, such as
+   `fix-login-timeout`. The name must not already exist.
+3. Choose a **Source**: a local or remote branch, or type a commit or other
+   reference and choose **Use “…”**.
+4. Choose **Save**, then send the first prompt. Hypercube creates the branch at
+   the source's commit and starts the session in its own worktree.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/new-branch-dark.png">
+  <img alt="A new session with the Create a branch dialog open, showing the new branch name fix-login-timeout and the source branch main" src="images/new-branch-light.png">
+</picture>
+
+The location button then shows the branch name. Merge status, **Merge into
+…**, the pull request icon, and cleanup follow this branch.
+
 ### Merge into a branch other than main
 
 **Merge into …** targets whatever branch is checked out in the workspace
 folder. To integrate a worktree's work into a feature branch instead:
 
 1. Switch the workspace folder to that feature branch before starting the
-   worktree session, as in [Work on a named feature branch](#work-on-a-named-feature-branch).
+   worktree session, as in
+   [Switch the workspace folder to another branch](#switch-the-workspace-folder-to-another-branch).
 2. Start the session with **New worktree**. It starts from the feature
    branch's current commit.
 3. Choose **Merge into fix-login-timeout**, or whichever branch the button
@@ -135,13 +159,14 @@ checked-out branch is ahead of or behind its upstream branch; see
 These steps use GitHub through the `gh` command. Hypercube gives agents a
 token for the workspace's GitHub account; see [GitHub](interface.md#github).
 
-1. Develop the change in a **New worktree** session.
-2. Ask the agent to push its branch and open a pull request:
+1. Start the session with **New worktree on branch…**, naming the branch as
+   it should appear on GitHub; see
+   [Name the branch and its starting point](#name-the-branch-and-its-starting-point).
+2. When the change is ready, ask the agent to push its branch and open a pull
+   request:
 
    > Push your branch and open a pull request against `main` with `gh`.
 
-   The pull request's branch is the session's branch,
-   `hypercube/session-<id>`.
 3. A pull request icon appears on the session's row. Hover over it for the
    pull request's review and check status. The workspace's dashboard lists the
    pull request under **Your move** when it needs you, such as after a failed
@@ -150,11 +175,6 @@ token for the workspace's GitHub account; see [GitHub](interface.md#github).
    them with `gh`, in the same session. Have it commit and push.
 5. After the pull request merges on GitHub, update the workspace folder's
    branch with `git pull`, then archive the session.
-
-To open a pull request from a named branch instead, use
-[Work on a named feature branch](#work-on-a-named-feature-branch) and ask the
-agent to push that branch and open the pull request. The icon then appears on
-sessions in the existing checkout while that branch is checked out.
 
 ## Review a pull request
 
@@ -237,17 +257,20 @@ If archiving is refused, see
 
 ## Discard a worktree's changes
 
-Discarding deletes the worktree's uncommitted files and unmerged commits.
-They cannot be recovered afterward.
+**Discard All Changes** permanently deletes the uncommitted files and the
+commits that a worktree session and its children made since the session
+started. It also stops their agents. Ignored files, such as copies from
+`.worktreeinclude`, stay. See [cleanup behavior](storage.md#session-cleanup)
+for exactly what is deleted.
 
-1. Open the session's terminal panel. It runs in the worktree.
-2. Reset the branch to the workspace folder's branch and delete untracked
-   files, replacing `main` with that branch's name:
+1. Right-click the session in the sidebar and choose **Discard All Changes**.
+2. Read the confirmation and choose **Discard All Changes**.
 
-   ```sh
-   git reset --hard main
-   git clean -fd
-   ```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/discard-dark.png">
+  <img alt="The Discard All Changes confirmation for a worktree session, explaining that its worktree returns to its starting commit and its uncommitted files and branch commits are deleted" src="images/discard-light.png">
+</picture>
 
-3. Choose **Archive Session** or **Delete Session**. With nothing left to
-   lose, the Git checks pass and Hypercube removes the worktree and branch.
+The session stays active, at the commit it started from. Continue working in
+it, or choose **Archive Session** or **Delete Session**; with nothing left to
+lose, the Git checks pass.
