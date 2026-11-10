@@ -300,12 +300,14 @@ test('pending questions and their draft stay outside the history list while outp
   expect(find(root, '.transcript-pending') === pending).toBe(true);
   expect(find(pending, 'input') === field).toBe(true);
   expect(field.value).toBe('My answer');
-  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['First?', 'Second?']);
+  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['First?']);
+  expect(find(pending, '.questions-form-progress').textContent).toBe('Question 1 of 2');
   expect(find(view, '.transcript-list').textContent).toBe('More work');
   expect(find(root, '.transcript-footer').contains(pending)).toBe(true);
   send([{id: 'q1', kind: 'attention', text: 'First?', done: true, answer: 'My answer', seq: 0}]);
   expect(find(view, '.attention-item').textContent).toContain('My answer');
-  expect(pending.querySelectorAll('.attention-item').length).toBe(1);
+  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['Second?']);
+  expect(pending.querySelector('.questions-form-progress')).toBeNull();
 });
 
 test('a turn draws as it runs and folds its activity under Worked for once it finishes', () => {
@@ -368,7 +370,8 @@ test('pending forms have a shrinking scroll region before the composer', () => {
   expect(find(footer, '.transcript-footer-content').classList.contains('overflow-y-auto')).toBe(true);
   expect(pending.classList.contains('min-h-24')).toBe(true);
   expect(pending.classList.contains('overflow-y-auto')).toBe(true);
-  expect(findAll(pending, '.attention-form-submit')).toHaveLength(6);
+  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['Question 0']);
+  expect(findAll(pending, '.questions-form-next')).toHaveLength(1);
   expect(findAll(pending, '[aria-label="Proposed child session"] button').map(button => button.textContent)).toEqual(['Start', 'Dismiss']);
   const controls = findAll(footer, 'button, input, textarea').filter(control => !control.hasAttribute('tabindex') || control.tabIndex >= 0);
   expect(controls.at(-1)?.getAttribute('aria-label')).toBe('Message');

@@ -142,6 +142,22 @@ function repeatsQuestions(item: Item, index: number, {order, items}: Transcript)
 // which waits on the user.
 export const isPending = <T extends Item>(item: T): item is Extract<T, {kind: 'attention' | 'proposal'}> => (item.kind === 'attention' || item.kind === 'proposal') && !item.done;
 
+// isQuestion reports an attention item that is neither an approval nor a task
+// offer.
+export const isQuestion = (item: Item): boolean => item.kind === 'attention' && !item.grant && !item.offer;
+
+// pendingGroups groups the pending items the card shows together. Adjacent
+// questions, asked together, form one group; every other item is its own.
+export function pendingGroups<T extends Item>(pending: T[]): T[][] {
+  const groups: T[][] = [];
+  for (const item of pending) {
+    const group = groups.at(-1);
+    if (group && isQuestion(item) && isQuestion(group[0])) group.push(item);
+    else groups.push([item]);
+  }
+  return groups;
+}
+
 // Some models report their reasoning only as a bold title per step. A run of
 // such titles draws as one row showing the latest.
 const isHeading = (item: Item): boolean => item.kind === 'reasoning' && /^\*\*[^*\n]+\*\*$/.test(item.text?.trim() ?? '');

@@ -4,7 +4,7 @@ import {element, find, findAll, mount, unmountAll} from '../../test-render.tsx';
 import {testState} from '../../test-state.ts';
 import {draftOf} from '../agent/drafts.ts';
 import {createStore} from '../store.ts';
-import {AttentionForm} from './attention-form.tsx';
+import {AttentionForm, QuestionsForm} from './attention-form.tsx';
 import type {AttentionItem} from './types.ts';
 
 afterEach(() => {
@@ -56,4 +56,33 @@ test('ended multi-choice questions keep all controls disabled', () => {
   const root = mount(store, <AttentionForm session="s" item={question} ended />);
   expect(findAll(root, 'button').every(button => button.hasAttribute('disabled'))).toBe(true);
   expect(element(root, 'input:not([type="checkbox"])', HTMLInputElement).disabled).toBe(true);
+});
+
+test('questions asked together show one at a time and submit together once all are answered', async () => {
+  const fetches = spyOn(globalThis, 'fetch');
+  fetches.mockImplementation(((() => Promise.resolve(new Response(''))) as unknown) as typeof fetch);
+  const store = createStore(testState());
+  const items: AttentionItem[] = [
+    {id: 'a', kind: 'attention', text: 'Which color?', choices: ['Red', 'Blue'], free: true},
+    {id: 'b', kind: 'attention', text: 'Which size?', choices: ['Small', 'Large'], free: true},
+  ];
+  const root = mount(store, <QuestionsForm session="s" items={items} />);
+  const question = () => find(root, '.attention-item-question').textContent;
+  expect(question()).toBe('Which color?');
+  expect(find(root, '.questions-form-progress').textContent).toBe('Question 1 of 2');
+  expect(find(root, '.questions-form-next').hasAttribute('disabled')).toBe(true);
+  expect(root.querySelector('.attention-form-submit')).toBeNull();
+  act(() => find(root, '[data-choice="Blue"]').click());
+  act(() => find(root, '.questions-form-next').click());
+  expect(question()).toBe('Which size?');
+  expect(find(root, '.attention-form-submit').hasAttribute('disabled')).toBe(true);
+  act(() => find(root, '.questions-form-back').click());
+  expect(find(root, '[data-choice="Blue"]').getAttribute('aria-checked')).toBe('true');
+  act(() => find(root, '.questions-form-next').click());
+  act(() => find(root, '[data-choice="Large"]').click());
+  await act(async () => find(root, '.attention-form-submit').click());
+  const answers = fetches.mock.calls.map(([url]) => new URL(String(url), 'http://x/').searchParams);
+  expect(answers.map(params => [params.get('request'), params.get('choice')])).toEqual([['a', 'Blue'], ['b', 'Large']]);
+  expect(draftOf(store.get(), 's/a').choices).toBeUndefined();
+  expect(draftOf(store.get(), 's/b').choices).toBeUndefined();
 });

@@ -85,9 +85,11 @@ The change takes effect at different times
 
 ## Answer a question or approval
 
-Requests stay above the message box while you scroll. Select an answer; for
-multiple-choice questions with checkboxes, select your choices and choose
-**Submit**. Use **Other response** when offered.
+Requests stay above the message box while you scroll. Select an answer, or
+select your choices for a question with checkboxes, and choose **Submit**. Use
+**Other response** when offered. Questions asked together appear one at a
+time: choose **Next** after each, and **Submit** on the last sends every
+answer.
 
 A child's request also appears in its parent's chat. You can answer there
 without switching sessions; the parent agent does not receive that copy.

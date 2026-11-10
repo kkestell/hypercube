@@ -1,7 +1,8 @@
 import {Card, CardContent} from '../components/ui/card';
 import {Icon} from '../shared/icon.tsx';
-// A session's question or approval request. While it is open it offers its
-// answers inside the pending card; once answered it becomes a collapsed row.
+// A session's question or approval request. While an approval or task offer
+// is open it offers its answers inside the pending card, where QuestionsForm
+// answers questions; once answered it becomes a collapsed row.
 import {AttentionForm} from './attention-form.tsx';
 import {Disclosure} from './disclosure.tsx';
 import {Markdown} from './markdown.tsx';

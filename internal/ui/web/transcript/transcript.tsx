@@ -21,10 +21,12 @@ import type {Session} from '../sessions/types.ts';
 import {dismissSubmission, retrySubmission} from '../sessions/session-actions.ts';
 import {submissionsOf} from '../sessions/submissions.ts';
 import {AttentionItem} from './attention-item.tsx';
+import {QuestionsForm} from './attention-form.tsx';
 import {ProposalItem} from './proposal-item.tsx';
 import {TranscriptRow} from './transcript-item.tsx';
-import {isPending, transcriptRows} from './transcript-tree.ts';
+import {isPending, isQuestion, pendingGroups, transcriptRows} from './transcript-tree.ts';
 import {displayedTranscript, setExpanded} from './transcripts.ts';
+import type {AttentionItem as Attention} from './types.ts';
 
 interface TranscriptProps {
   session: Pick<Session, 'id' | 'ended'>;
@@ -104,9 +106,13 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
           {pending.length > 0 && (
             <section className="transcript-pending -mb-8 min-h-24 shrink overflow-y-auto px-4" aria-label="Waiting on you">
               <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
-                {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
-                  ? <AttentionItem item={item} session={session} />
-                  : <ProposalItem item={item} session={session} expanded={false} setOpen={setOpen} />}</CardContent>)}
+                {/* A group of questions keeps its place while its answers
+                    are sent and its questions close one by one. */}
+                {pendingGroups(pending).map((group, i) => isQuestion(group[0])
+                  ? <CardContent key={`questions-${i}`} className="px-4"><QuestionsForm session={session.id} items={group as Attention[]} ended={session.ended} /></CardContent>
+                  : <CardContent key={group[0].id} className="px-4">{group[0].kind === 'attention'
+                    ? <AttentionItem item={group[0]} session={session} />
+                    : <ProposalItem item={group[0]} session={session} expanded={false} setOpen={setOpen} />}</CardContent>)}
               </Card>
             </section>
           )}
