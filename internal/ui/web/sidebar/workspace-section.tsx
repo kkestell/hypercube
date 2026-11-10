@@ -3,7 +3,6 @@
 // expand the sessions shows after the name, and New Session takes the place of
 // the count of pull requests that need the user.
 import {expandWorkspace} from '../app/workbench.ts';
-import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {Chevron, Icon} from '../shared/icon.tsx';
 import {IconButton} from '../shared/icon-button.tsx';
@@ -23,6 +22,7 @@ export function WorkspaceSection({workspace, groups}: {workspace: Workspace; gro
   const open = !state.workbench.collapsedWorkspaces[workspace.id];
   const setOpen = (value: boolean) => store.update(s => expandWorkspace(s, workspace.id, value));
   const selected = state.selected === workspaceKey(workspace.id);
+  const select = () => store.update(s => selectWorkspace(s, workspace.id));
   const github = workspace.github;
   const needYou = github ? sortTurns(github.pullRequests, github.account).mine.length : 0;
   const needYouLabel = `${needYou} ${needYou === 1 ? 'pull request needs' : 'pull requests need'} you`;
@@ -30,19 +30,17 @@ export function WorkspaceSection({workspace, groups}: {workspace: Workspace; gro
   const toggleLabel = `${open ? 'Collapse' : 'Expand'} ${workspace.name}`;
   return <Collapsible open={open} onOpenChange={setOpen} asChild>
     <section className={open && groups.length ? 'mb-2 last:mb-0' : ''} data-workspace={workspace.id} aria-labelledby={headingId}>
-      <div className="group/workspace flex items-center gap-1" title={workspace.path} data-workspace-header="">
-        <Button id={headingId} aria-pressed={selected} variant={selected ? 'secondary' : 'ghost'} size="sm"
-          className={`min-w-0 flex-1 justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''}`}
-          onClick={() => store.update(s => selectWorkspace(s, workspace.id))} onKeyDown={e => {
+      <div className={`group/workspace flex h-7 items-center gap-2 rounded-md pr-1 pl-2 ${selected ? 'bg-secondary' : 'hover:bg-accent dark:hover:bg-accent/50'}`}
+        title={workspace.path} data-workspace-header="" onClick={e => { if (e.target === e.currentTarget) select(); }}>
+        <button type="button" id={headingId} aria-pressed={selected} className="min-w-0 truncate rounded-sm text-xs uppercase text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          onClick={select} onKeyDown={e => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault(); setOpen(e.key === 'ArrowRight');
-          }}>
-          <span className="min-w-0 truncate text-xs uppercase text-muted-foreground">{workspace.name}</span>
-        </Button>
+          }}>{workspace.name}</button>
         {groups.length > 0 && <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="icon-xs" className={`invisible text-muted-foreground opacity-0 ${shown}`} aria-label={toggleLabel} title={toggleLabel}><Chevron open={open} /></Button>
+          <button type="button" className={`invisible flex shrink-0 rounded-sm text-muted-foreground opacity-0 outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 ${shown}`} aria-label={toggleLabel} title={toggleLabel}><Chevron open={open} /></button>
         </CollapsibleTrigger>}
-        <div className="grid shrink-0 items-center justify-items-end">
+        <div className="ml-auto grid shrink-0 items-center justify-items-end" onClick={e => { if (e.target === e.currentTarget) select(); }}>
           {needYou > 0 && <span className={`col-start-1 row-start-1 flex items-center gap-1 pr-1 text-xs text-muted-foreground ${hidden}`} title={needYouLabel} aria-label={needYouLabel} role="img">
             {needYou}<Icon name="git-pull-request" className="size-3" />
           </span>}
