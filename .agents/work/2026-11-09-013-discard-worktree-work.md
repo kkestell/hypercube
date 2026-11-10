@@ -37,3 +37,13 @@ None. The Go test for a missing checkout was not added; the plan lists none.
 ## Limitations
 
 - The confirmation and menu are exercised in happy-dom, not a real browser.
+
+## Repair 1
+
+- Findings addressed (work review `.agents/reviews/work/2026-11-09-013-discard-worktree-work.md`):
+  1. `workspace.Discard` runs `git reset --quiet --hard` before the switch, then `git rebase --quit` when `rebase-merge` or `rebase-apply` exists under the worktree's Git path. New `TestDiscardAbandonsAnOperationInProgress` covers a conflicted merge and a conflicted rebase; each ends clean with `Removable` passing.
+  2. `docs/lifecycle.md`: Discard is its own paragraph with one sentence.
+  3. `docs/usage.md`: the destructive effect comes first, then the step and follow-up, linking to `storage.md#session-cleanup` for the details.
+- Code base (unchanged): `90476495aaff42a549a4b7b5d7099b7a5b3c23be`
+- Code head: `8b34d7e41acf75fc1d254eca914d575dd19271d7` (`X-Stage: fix`); previous head `abec2f7fdeb949bed993a080292fe378d36fff70`.
+- Checks at this head: `go test ./internal/workspace -run Discard -v` pass; `go test -race ./internal/workspace ./internal/session` pass. The change touches Go in `internal/workspace` and docs only, so the full `make check` was not rerun.
