@@ -32,7 +32,7 @@ test('a weekly-only report shows its actual window without inventing a five-hour
 
 test('a harness that reports no limits shows nothing', () => {
   const root = mount(createStore(testState({limits: [{harness: 'claude', minutes: 300, used: 4, at: 1}]})), <Limits harness="pi" />);
-  expect(root.querySelector('.limits')).toBeNull();
+  expect(root.querySelector('[aria-label="Subscription usage"]')).toBeNull();
 });
 
 test('Claude keeps its five-hour reading after reset until a new report arrives', () => {

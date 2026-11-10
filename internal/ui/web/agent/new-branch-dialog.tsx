@@ -1,6 +1,6 @@
 // The prompt for a new worktree session's branch name and the branch, commit,
 // or ref it starts from. Nothing is created until the session is sent.
-import {useEffect, useState, type FormEvent} from 'react';
+import {useState, type FormEvent, type RefObject} from 'react';
 import {loadBranches} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Command, CommandGroup, CommandInput, CommandItem, CommandList} from '../components/ui/command';
@@ -10,28 +10,34 @@ import {Label} from '../components/ui/label';
 import {Popover, PopoverContent, PopoverTrigger} from '../components/ui/popover';
 import type {BranchList, NewBranch} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
+import {Message} from '../shared/message.tsx';
+import {useRequest} from '../shared/use-request.ts';
 
 interface NewBranchDialogProps {
+  open: boolean;
   workspace: string;
   // current is the branch already chosen for this session, if any.
   current: NewBranch | null;
+  // opener takes the focus back when the dialog closes.
+  opener: RefObject<HTMLElement | null>;
   onSave: (branch: NewBranch) => void;
   onClose: () => void;
 }
 
-export function NewBranchDialog({workspace, current, onSave, onClose}: NewBranchDialogProps) {
-  const [branches, setBranches] = useState<BranchList | null>(null);
-  const [error, setError] = useState('');
+// The dialog stays mounted so it can animate closed; its form starts afresh
+// each time it opens.
+export function NewBranchDialog({open, workspace, current, opener, onSave, onClose}: NewBranchDialogProps) {
+  return <Dialog open={open} onOpenChange={next => { if (!next) onClose(); }}>
+    <DialogContent aria-describedby={undefined} onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }}>
+      <BranchForm workspace={workspace} current={current} onSave={onSave} onClose={onClose} />
+    </DialogContent>
+  </Dialog>;
+}
+
+function BranchForm({workspace, current, onSave, onClose}: Omit<NewBranchDialogProps, 'open' | 'opener'>) {
+  const {data: branches, error} = useRequest(signal => loadBranches(workspace, signal), [workspace]);
   const [name, setName] = useState(current?.name ?? '');
   const [start, setStart] = useState(current?.start ?? '');
-
-  useEffect(() => {
-    const controller = new AbortController();
-    loadBranches(workspace, controller.signal).then(setBranches, reason => {
-      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));
-    });
-    return () => controller.abort();
-  }, [workspace]);
 
   const trimmed = name.trim();
   const taken = !!branches && branches.local.includes(trimmed);
@@ -42,29 +48,25 @@ export function NewBranchDialog({workspace, current, onSave, onClose}: NewBranch
     onSave({name: trimmed, start: source});
   };
 
-  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-    <DialogContent aria-describedby={undefined}>
-      <form onSubmit={save} className="grid gap-4">
-        <DialogHeader>
-          <DialogTitle>Create a branch</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-2">
-          <Label htmlFor="new-branch-name">New branch name</Label>
-          <Input id="new-branch-name" value={name} autoFocus onChange={event => setName(event.target.value)} />
-          {taken && <p role="alert" className="text-sm text-destructive">A branch named {trimmed} already exists.</p>}
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="new-branch-source">Source</Label>
-          <SourceSelect branches={branches} value={source} onChange={setStart} />
-          {error && <p role="alert" className="text-sm break-words whitespace-pre-wrap text-destructive">{error}</p>}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={!branches || !trimmed || taken}>Save</Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
-  </Dialog>;
+  return <form onSubmit={save} className="grid gap-4">
+    <DialogHeader>
+      <DialogTitle>Create a branch</DialogTitle>
+    </DialogHeader>
+    <div className="grid gap-2">
+      <Label htmlFor="new-branch-name">New branch name</Label>
+      <Input id="new-branch-name" value={name} autoFocus onChange={event => setName(event.target.value)} />
+      {taken && <Message error>A branch named {trimmed} already exists.</Message>}
+    </div>
+    <div className="grid gap-2">
+      <Label htmlFor="new-branch-source">Source</Label>
+      <SourceSelect branches={branches ?? null} value={source} onChange={setStart} />
+      {error && <Message error>{error}</Message>}
+    </div>
+    <DialogFooter>
+      <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+      <Button type="submit" disabled={!branches || !trimmed || taken}>Save</Button>
+    </DialogFooter>
+  </form>;
 }
 
 // SourceSelect picks a listed branch, or any typed commit or ref.

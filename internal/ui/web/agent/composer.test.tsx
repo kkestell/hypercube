@@ -270,6 +270,16 @@ test('the branch dialog refuses an existing branch name and offers a typed commi
   expect(s.get().unsent?.branch).toEqual({name: 'fix', start: 'abc1234'});
 });
 
+test('closing the branch dialog returns the focus to the location menu', async () => {
+  fetches = stubFetch(() => Response.json(branchList));
+  const root = mount(worktreeStore(false), <Composer session={unsentSession} />);
+  await settle();
+  await openBranchDialog(root);
+  clickControl([...document.querySelectorAll('button')].find(b => b.textContent === 'Cancel') as HTMLButtonElement);
+  await settle();
+  expect(document.activeElement).toBe(element(root, '[aria-label="Location"]', HTMLButtonElement));
+});
+
 test.each([false, true])('a default of Worktree applies only in a Git workspace (noGit %p)', async noGit => {
   fetches = stubFetch(() => Response.json({session: 'n'}));
   const s = worktreeStore(noGit);

@@ -1,9 +1,9 @@
-import {firstKeys, shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
 // images, and attach and send buttons, and below them its settings and usage.
 // A new session chooses its settings and worktree there; a running session can
 // change its model and effort. The text takes focus on mount.
 import {useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent} from 'react';
+import {firstKeys, shortcuts} from '../app/shortcuts.ts';
 import {imageSrc, imageTypes} from '../images.ts';
 import {post} from '../api.ts';
 import {sendPrompt} from '../sessions/session-actions.ts';
@@ -17,10 +17,9 @@ import {SessionSelection} from './session-selection.tsx';
 import {Usage} from './usage.tsx';
 import {Limits} from './limits.tsx';
 import {WorktreeSelect} from './worktree-select.tsx';
-import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {Textarea} from '../components/ui/textarea';
-import {Icon} from '../shared/icon.tsx';
+import {IconButton} from '../shared/icon-button.tsx';
 
 export function Composer({session}: {session: Session}) {
   const [state, store] = useStore();
@@ -88,24 +87,23 @@ export function Composer({session}: {session: Session}) {
   return (
     <form className="composer @container/composer relative my-4 shrink-0 px-4" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
       {isUnsent(session.id) && <WorktreeSelect />}
-      {/* One line of text makes the box 50px tall: its border, padding, and the
-          text's line; half that rounds its ends into half circles. */}
-      <Card className="rounded-[16px] py-2 shadow-none dark:bg-[color-mix(in_oklab,var(--card),white_4%)]">
+      {/* The text field draws no focus ring of its own; the box shows focus. */}
+      <Card className="rounded-2xl py-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
-            <div className="composer-images flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {draft.images.map((image, i) => (
-                <div key={i} className="composer-image relative">
+                <div key={i} className="relative">
                   <img className="size-16 object-cover" src={imageSrc(image) ?? undefined} alt="Attached image" />
-                  <Button type="button" variant="secondary" size="icon" className="composer-image-remove absolute right-0 top-0" title="Remove Image" aria-label="Remove Image"
-                    onClick={() => store.update(s => removeImage(s, session.id, image))}><Icon name="close" /></Button>
+                  <IconButton icon="close" label="Remove Image" type="button" variant="secondary" className="absolute right-0 top-0"
+                    onClick={() => store.update(s => removeImage(s, session.id, image))} />
                 </div>
               ))}
             </div>
           )}
           <MentionList mentions={mentions} />
-          <div className="composer-input flex items-end gap-1">
-            <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="attach" /></Button>
+          <div className="flex items-end gap-1">
+            <IconButton icon="attach" label="Attach Image" type="button" className="mb-1 text-muted-foreground" onClick={() => picker.current?.click()} />
             <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${firstKeys('composer')})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
               role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
               aria-controls={suggesting ? mentions.listId : undefined}
@@ -114,19 +112,14 @@ export function Composer({session}: {session: Session}) {
               onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
               onKeyUp={e => mentions.sync(e.currentTarget)} />
             {stop
-              ? <Button type="button" variant="ghost" size="icon-sm" title="Stop" aria-label="Stop" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})}><Icon name="stop" /></Button>
-              // The paper plane's weight sits above its box's center; a pixel
-              // down centers it by eye.
-              : <Button type="submit" variant="ghost" size="icon-sm" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" className="translate-y-px" /></Button>}
+              ? <IconButton icon="stop" label="Stop" type="button" className="mb-1" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})} />
+              : <IconButton icon="send" label="Send" type="submit" className="mb-1" disabled={!canSend(state, session, text)} />}
           </div>
           <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
         </CardContent>
       </Card>
-      {/* The box's icons sit 21px in from its edges: its border, padding, and
-          half the button around each icon. The settings button pads its icon
-          10px and the 14px ring is centered on the send icon. */}
-      <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[11px] pr-[22px]">
-        <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
+        <div className="flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <SessionSelection session={session} />
         </div>
         <div className="flex items-center gap-4">
