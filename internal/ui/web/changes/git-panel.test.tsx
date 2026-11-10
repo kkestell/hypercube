@@ -48,7 +48,7 @@ test('Git rows show status colors and supplied counts and open diffs from the pa
 });
 
 test('Git activation and target changes refresh immediately while retaining cached rows during a read', async () => {
-  const store = createStore(testState({editor: {...emptyEditor({session: 's'}), changes}}));
+  const store = createStore(testState({editor: {...emptyEditor({session: 's'}), changes}, workbench: {...testState().workbench, rightPanel: true}}));
   const replies: Array<(response: Response) => void> = [];
   const fetches = stubFetch(() => new Promise<Response>(resolve => replies.push(resolve)));
   const root = mount(store, <GitPanel />);
@@ -108,7 +108,7 @@ test('the comparison tabs appear only for a session with a worktree', () => {
 test('branch selection loads independent rows and the response target, then opens a matching diff', async () => {
   const fetches = stubFetch(() => Response.json({branch: 'feature', target: 'release', files: [{path: 'committed.go', status: 'added', added: 1, removed: 0}]}));
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 1, committed: true, uncommitted: 4}});
-  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}}, workbench: {...testState().workbench, rightTab: 'git'}}));
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}}, workbench: {...testState().workbench, rightPanel: true, rightTab: 'git'}}));
   const root = mount(store, <GitPanel />);
   await act(async () => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
   expect(fetches.mock.calls.some(([url]) => new URL(url, 'http://x/').searchParams.get('comparison') === 'branch')).toBe(true);

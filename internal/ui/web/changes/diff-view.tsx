@@ -1,7 +1,9 @@
-// A unified whole-file diff with separately highlighted old and new text.
+// A unified whole-file diff with separately highlighted old and new text,
+// under a bar with the file's path, its line counts, and its controls.
 import {useEffect, useMemo, useRef} from 'react';
 import {matches} from '../app/shortcuts.ts';
 import {Button} from '../components/ui/button';
+import {openFileAt} from '../editor/editor.ts';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import type {TabId} from '../editor/types.ts';
 import {language} from '../files/language.ts';
@@ -38,6 +40,8 @@ export function DiffView({id, path, active = true}: {id: TabId; path: string; ac
   const [state, store] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
   const diff = state.editor?.diffs[id];
+  const changes = diffComparison(id) === 'branch' ? state.editor?.branchChanges : state.editor?.changes;
+  const change = changes && 'files' in changes ? changes.files.find(file => file.path === path) : undefined;
   const viewKey = state.editor?.id;
   const ready = diffReady(diff);
   useScrollMemory(view, id, ready);
@@ -66,9 +70,16 @@ export function DiffView({id, path, active = true}: {id: TabId; path: string; ac
   const hasChanges = diff?.text && diffRows(diff.text).some(row => row.kind !== 'context');
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div className="flex justify-end border-b p-1">
-        <Button variant="ghost" size="icon" aria-label="Previous change" title="Previous change (Shift+Option+F5)" disabled={!hasChanges} onClick={() => move(-1)}><Icon name="arrow-up" /></Button>
-        <Button variant="ghost" size="icon" aria-label="Next change" title="Next change (Option+F5)" disabled={!hasChanges} onClick={() => move(1)}><Icon name="arrow-down" /></Button>
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b pr-2 pl-3 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate" title={path}>{path}</span>
+        {change?.added !== undefined && change.removed !== undefined && <span className="flex shrink-0 gap-1 tabular-nums">
+          <span className="text-green-500">+{change.added}</span><span className="text-red-500">−{change.removed}</span>
+        </span>}
+        <div className="ml-auto flex shrink-0 items-center">
+          {change?.status !== 'deleted' && <Button className="size-6" variant="ghost" size="icon" aria-label="Open File" title="Open File" onClick={() => openFileAt(store, path, [])}><Icon name="go-to-file" /></Button>}
+          <Button className="size-6" variant="ghost" size="icon" aria-label="Previous change" title="Previous change (Shift+Option+F5)" disabled={!hasChanges} onClick={() => move(-1)}><Icon name="arrow-up" /></Button>
+          <Button className="size-6" variant="ghost" size="icon" aria-label="Next change" title="Next change (Option+F5)" disabled={!hasChanges} onClick={() => move(1)}><Icon name="arrow-down" /></Button>
+        </div>
       </div>
       <Find list={list} view={view} active={active} label="Find in diff" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />
       <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">

@@ -41,7 +41,7 @@ test('Files keeps file and folder status colors and navigation without inline di
 });
 
 test('a restored tree shows expanded folders from one response', async () => {
-  const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
+  const store = createStore(receivedWorkspaces(testState({selected: 'a', workbench: {...testState().workbench, rightPanel: true}}), [testWorkspace({
     id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
   })]));
   store.update(state => ({...state, editor: {...state.editor!, files: {
@@ -86,7 +86,7 @@ test('a visited session shows its cached tree before refresh completes', async (
 test('a denied root listing is visible, preserves cached entries, and clears on the next successful poll', async () => {
   const session = emptyEditor({session: 's'});
   session.files.listings = {'': [{name: 'cached.go', dir: false}]};
-  const store = createStore(testState({editor: session}));
+  const store = createStore(testState({editor: session, workbench: {...testState().workbench, rightPanel: true}}));
   let denied = true;
   stubFetch(url => {
     if (new URL(url, 'http://x/').pathname !== '/files/tree') return Response.json(null);

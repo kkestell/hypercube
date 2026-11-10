@@ -1,9 +1,8 @@
 // A pane of the tabbed area: its tab strip and its active tab's view, the
-// agent, file, or diff. A dragged tab drops on the strip, before the
+// file or diff. A dragged tab drops on the strip, before the
 // tab under the pointer, or on the body, where an edge within a quarter of the
 // pane splits it.
 import {useRef, useState, type DragEvent} from 'react';
-import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {DiffView} from '../changes/diff-view.tsx';
 import {Card} from '../components/ui/card';
 import {FileView} from '../files/file-view.tsx';
@@ -67,8 +66,7 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} placement={placement} />
       <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
-        {active.kind === 'dashboard' ? <WorkspaceDashboard />
-          : active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
+        {active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
           : <FileView key={active.id} id={active.id} path={active.path} active={isActive} />}
       </div>
     </div>

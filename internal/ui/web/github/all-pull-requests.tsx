@@ -22,7 +22,6 @@ export function AllPullRequests() {
   const failed = accounts.filter(account => account.error);
   const checking = !failed.length && accounts.every(account => !account.updated);
   return <section aria-label="Pull requests across accounts" className="min-h-0 flex-1 overflow-auto p-6">
-    <h1 className="mb-4 text-lg font-medium">Pull Requests</h1>
     {failed.map(({login, error, updated}) => <p key={login} className="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
       <Icon name="warning" className="text-destructive" />
       <span>{failureText(`Could not read pull requests for ${login}`, error!, updated)}</span>
@@ -32,7 +31,7 @@ export function AllPullRequests() {
       : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({account, pr, turn}, implied) => {
         const workspace = tracking(workspaces, pr.repo);
         return <PullRequestRow key={`${account}\n${pr.url}`} pr={pr} turn={turn} account={account} hideReason={implied} place={<>
-          In {pr.repo} for {account}.
+          <Icon name="repo" className="size-3.5" /><span className="truncate">{pr.repo}</span>
         </>} onReview={workspace && review(workspace.id, pr)} trailing={workspace ? null
           : <Button variant="secondary" size="sm" className="self-center" aria-label={`Clone ${pr.repo}`} onClick={() => setCloning({pr, account})}>Clone</Button>} />;
       }} />}

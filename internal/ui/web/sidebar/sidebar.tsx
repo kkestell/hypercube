@@ -67,12 +67,19 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   };
 
   // On a focused row, F2 renames its session, and Shift+F10 or the menu key
-  // opens its menu below the row.
+  // opens its session's or workspace's menu below the row.
   const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
+    const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
+    const header = e.target.closest<HTMLElement>('.workspace-section-header');
+    const workspace = workspaces.find(w => w.id === header?.closest<HTMLElement>('[data-workspace]')?.dataset.workspace);
+    if (menuKey && header && workspace) {
+      e.preventDefault();
+      setMenu({...below(header), items: workspaceMenu(workspace)});
+      return;
+    }
     const row = e.target.closest<HTMLElement>('[data-session]');
     const session = sessionById(row?.dataset.session);
-    const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
     if (!row || !session || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
     if (e.key === 'F2') {
@@ -93,7 +100,6 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}
-        onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
         renaming={renaming} onRenaming={setRenaming}
       />
     ))}

@@ -1,6 +1,6 @@
 // Attaching a view parks only user choices and cached folder listings. Reads
 // and transcripts refresh, and request generations prevent late results crossing views.
-import {emptyTabs, dashboardTabs} from './editor.ts';
+import {emptyTabs} from './editor.ts';
 import {selectionTarget, targetExists, targetKey, type EditorTarget} from './target.ts';
 import type {EditorView} from './types.ts';
 import type {AttachedSession} from '../sessions/types.ts';
@@ -11,7 +11,7 @@ export const emptySession = (id: string): AttachedSession => ({id, transcript: {
 
 export const emptyEditor = (target: EditorTarget): EditorView => ({
   id: targetKey(target), target, activePane: null, panel: false,
-  tabs: 'workspace' in target ? dashboardTabs : emptyTabs, scroll: {}, changes: null, branchChanges: null, gitComparison: 'uncommitted', diffs: {},
+  tabs: emptyTabs, scroll: {}, changes: null, branchChanges: null, gitComparison: 'uncommitted', diffs: {},
   files: {listings: {}, listingErrors: {}, expanded: {}, open: {}},
 });
 

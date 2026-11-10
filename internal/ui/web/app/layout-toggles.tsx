@@ -13,7 +13,7 @@ const toggles: {region: Region; icon: IconName; title: string}[] = [
 export function LayoutToggles() {
   const [state, store] = useStore();
   return <div className="layout-toggles flex items-center">
-    {toggles.map(({region, icon, title}) => <Button key={region} className="size-6" variant="ghost" size="icon"
+    {toggles.map(({region, icon, title}) => <Button key={region} className="size-6 text-muted-foreground aria-pressed:text-foreground" variant="ghost" size="icon"
       aria-label={title} title={`${title} (${firstKeys(region)})`} aria-pressed={region === 'panel' ? state.editor?.panel ?? false : state.workbench[region]} disabled={region === 'panel' && !state.editor}
       onClick={() => store.update(s => toggle(s, region))}><Icon name={icon} /></Button>)}
   </div>;

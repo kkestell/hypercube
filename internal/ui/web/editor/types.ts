@@ -28,7 +28,7 @@ export interface EditorViewState {
   files: Record<string, {source: boolean; lines: LineRange[]}>;
 }
 
-// A tab ID is 'dashboard', 'file:<path>', 'diff:<path>', or 'branch-diff:<path>'.
+// A tab ID is 'file:<path>', 'diff:<path>', or 'branch-diff:<path>'.
 export type TabId = string;
 
 // Pane is a group of tabs with one active tab.
@@ -79,10 +79,6 @@ interface TabEntryBase {
   preview: boolean;
 }
 
-export interface DashboardTabEntry extends TabEntryBase {
-  kind: 'dashboard';
-}
-
 export interface DiffTabEntry extends TabEntryBase {
   kind: 'diff';
   path: string;
@@ -97,7 +93,7 @@ export interface FileTabEntry extends TabEntryBase {
   source: boolean | null;
 }
 
-export type TabEntry = DashboardTabEntry | DiffTabEntry | FileTabEntry;
+export type TabEntry = DiffTabEntry | FileTabEntry;
 
 // ScrollMemory is a view's scroll, and whether it follows its end.
 export interface ScrollMemory {

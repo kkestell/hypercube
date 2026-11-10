@@ -2,7 +2,6 @@
 // order, saying so when nothing needs the account. The caller draws each row;
 // implied says the group's heading already gives the row's reason.
 import type {ReactNode} from 'react';
-import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {Chevron} from '../shared/icon.tsx';
 import {expandPullRequestGroup} from '../app/workbench.ts';
@@ -23,16 +22,16 @@ export function PullRequestGroups({turns, row}: {turns: AccountTurn[]; row: (tur
     {!groups.some(group => group.id !== 'waiting') && <p className="mb-4 text-sm text-muted-foreground">Nothing needs you.</p>}
     {groups.map(group => {
       const open = !workbench.collapsedPullRequestGroups[group.id];
-      return <Collapsible key={group.id} open={open} onOpenChange={value => store.update(s => expandPullRequestGroup(s, group.id, value))} className="mb-4">
+      return <Collapsible key={group.id} open={open} onOpenChange={value => store.update(s => expandPullRequestGroup(s, group.id, value))} className="mb-6">
         <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="-ml-2 mb-1 h-7 gap-1.5 px-2 text-sm font-medium has-[>svg]:px-2">
+          <button type="button" className="mb-3 flex h-8 w-full items-center gap-1.5 border-b text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
             <span>{group.title}</span>
             <span className="text-muted-foreground">{group.turns.length}</span>
             <Chevron open={open} />
-          </Button>
+          </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ul aria-label={group.title} className="space-y-2">
+          <ul aria-label={group.title} className="space-y-4">
             {group.turns.map(turn => row(turn, turn.turn.reason === group.implied))}
           </ul>
         </CollapsibleContent>

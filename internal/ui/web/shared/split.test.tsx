@@ -120,7 +120,7 @@ test('a keyboard collapse of a fixed child hides it without reporting a size', (
   try {
     const sizes: number[] = [];
     let collapses = 0;
-    const store = createStore(testState());
+    const store = createStore(testState({workbench: {...testState().workbench, rightPanel: true}}));
     function View() {
       const [state] = useStore();
       return <Split fixed="end" size={280} minEnd="280px" collapsed={state.workbench.rightPanel ? null : 'end'}

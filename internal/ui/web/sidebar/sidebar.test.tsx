@@ -86,7 +86,7 @@ test('workspace row background selects its dashboard without changing the action
   click(find(header, '[aria-label="New Session"]'));
   expect(store.get().selected).toBeNull();
   expect(store.get().unsent?.workspace).toBe('w');
-  click(find(header, '[aria-label="More Actions"]'));
+  act(() => { header.dispatchEvent(new KeyboardEvent('keydown', {key: 'F10', shiftKey: true, bubbles: true, cancelable: true})); });
   expect(store.get().selected).toBeNull();
   expect(document.querySelector('[role=menu]')).not.toBeNull();
 });

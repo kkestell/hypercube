@@ -49,7 +49,7 @@ export function PullRequestRow({pr, turn, account, onReview, hideReason, place, 
         {!hideReason && <span>{turn.reason}</span>}
         {!own && pr.author && <span>From {pr.author}.</span>}
       </p>}
-      {place && <p className="text-muted-foreground">{place}</p>}
+      {place && <p className="flex min-w-0 items-center gap-1.5 text-muted-foreground">{place}</p>}
     </div>
     {!own && canReview(pr) && <Button variant="secondary" size="sm" className="self-center" disabled={!onReview} onClick={onReview}>Review</Button>}
     {trailing}

@@ -1,4 +1,5 @@
 // Browser storage is an external boundary; runtime state uses these shapes directly.
+import {closeTab} from '../editor/tab-layout.ts';
 import type {EditorViewState, LayoutNode} from '../editor/types.ts';
 import type {SessionViewState} from '../sessions/types.ts';
 import type {Workbench} from './types.ts';
@@ -54,5 +55,7 @@ export function readSavedViews(text: string): SavedViews {
     || !workbench(value.workbench) || !entries(value.sessionViews, sessionView) || !entries(value.workspaceViews, editorView)) throw new Error('Invalid saved view state.');
   const saved = value as unknown as SavedViews;
   saved.workbench.collapsedPullRequestGroups ??= {};
+  // Workspace layouts saved by earlier versions hold the dashboard as a tab.
+  for (const view of Object.values(saved.workspaceViews)) view.tabs = closeTab(view.tabs, 'dashboard');
   return saved;
 }

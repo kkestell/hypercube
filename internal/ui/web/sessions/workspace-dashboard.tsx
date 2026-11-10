@@ -1,6 +1,7 @@
 import {GitHubError, WorkspaceContext} from '../github/github-header.tsx';
 import {PullRequests} from '../github/pull-requests.tsx';
 import {Button} from '../components/ui/button';
+import {MainTabBar} from '../editor/main-tab-bar.tsx';
 import {selectedWorkspace} from '../editor/target.ts';
 import {useStore} from '../store.ts';
 import {StatusDot} from '../shared/status-dot.tsx';
@@ -14,7 +15,8 @@ export function WorkspaceDashboard() {
   if (!workspace) return null;
   const archived = workspace.sessions.filter(session => session.ended)
     .sort((a, b) => (b.archived ?? 0) - (a.archived ?? 0)).slice(0, 10);
-  return <section aria-label="Workspace dashboard" className="@container flex min-h-0 flex-1 flex-col">
+  return <section aria-label="Workspace dashboard" className="@container flex h-full min-h-0 min-w-0 flex-col">
+    <MainTabBar icon="files" title={workspace.name} />
     <WorkspaceContext workspace={workspace} />
     <div className="min-h-0 flex-1 overflow-auto p-6">
       <GitHubError workspace={workspace} />

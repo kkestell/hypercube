@@ -11,12 +11,11 @@ import {SessionTree} from './session-tree.tsx';
 
 interface WorkspaceSectionProps {
   workspace: Workspace;
-  onMenu: (button: HTMLElement) => void;
   renaming: string | null;
   onRenaming: (id: string | null) => void;
 }
 
-export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: WorkspaceSectionProps) {
+export function WorkspaceSection({workspace, renaming, onRenaming}: WorkspaceSectionProps) {
   const [state, store] = useStore();
   const open = !state.workbench.collapsedWorkspaces[workspace.id];
   const setOpen = (value: boolean) => store.update(s => expandWorkspace(s, workspace.id, value));
@@ -43,16 +42,15 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
           }}>
             <span className="workspace-section-name min-w-0 truncate text-[11px] uppercase text-muted-foreground">{workspace.name}</span>
           </Button>
-          {needYou > 0 && <span className="ml-1.5 flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground" title={needYouLabel} aria-label={needYouLabel} role="img">
+          {workspace.sessions.length > 0 && <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="icon-xs" className="invisible ml-2 size-4 text-muted-foreground transition-colors hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible" aria-label={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`} title={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`}><Chevron open={open} /></Button>
+          </CollapsibleTrigger>}
+          {needYou > 0 && <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-2 text-[11px] text-muted-foreground group-hover/workspace:invisible group-has-[:focus-visible]/workspace:invisible" title={needYouLabel} aria-label={needYouLabel} role="img">
             <Icon name="git-pull-request" className="size-3" />{needYou}
           </span>}
-          {workspace.sessions.length > 0 && <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon-xs" className="invisible ml-2 size-4 text-muted-foreground hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible" aria-label={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`} title={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`}><Chevron open={open} /></Button>
-          </CollapsibleTrigger>}
         </div>
         <div className="invisible absolute inset-y-0 right-0 flex items-center rounded-r-md bg-linear-to-r from-transparent via-[var(--workspace-surface)] via-25% to-[var(--workspace-surface)] pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
-          <Button variant="ghost" size="icon-sm" className="size-6" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
-          <Button variant="ghost" size="icon-sm" className="size-6" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>
+          <Button variant="ghost" size="icon-sm" className="size-6 transition-colors" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
         </div>
       </div>
       <CollapsibleContent>

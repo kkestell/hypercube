@@ -30,13 +30,13 @@ test('groups list their counts, own work before reviews, and rows say where they
     account('work', [pr({number: 3, url: 'https://github.com/x/y/pull/3', repo: 'x/y', title: 'Other repo'})]),
   ]);
   expect(headings(root)).toEqual(['Your pull requests to fix1', 'Ready to merge1', 'Reviews to do2', 'Waiting on others1']);
-  expect(rows(root, 'Your pull requests to fix').map(row => row.textContent)).toEqual(['#4 ConflictedHas merge conflicts.In o/r for kkestell.Clone']);
-  expect(rows(root, 'Ready to merge').map(row => row.textContent)).toEqual(['#1 Add itIn o/r for kkestell.Clone']);
+  expect(rows(root, 'Your pull requests to fix').map(row => row.textContent)).toEqual(['#4 ConflictedHas merge conflicts.o/rClone']);
+  expect(rows(root, 'Ready to merge').map(row => row.textContent)).toEqual(['#1 Add ito/rClone']);
   expect(rows(root, 'Reviews to do').map(row => row.textContent)).toEqual([
-    '#2 TheirsFrom bob.In o/r for kkestell.ReviewClone',
-    '#3 Other repoFrom bob.In x/y for work.ReviewClone',
+    '#2 TheirsFrom bob.o/rReviewClone',
+    '#3 Other repoFrom bob.x/yReviewClone',
   ]);
-  expect(rows(root, 'Waiting on others').map(row => row.textContent)).toEqual(['#5 BlockedBlocked from merging.In o/r for kkestell.Clone']);
+  expect(rows(root, 'Waiting on others').map(row => row.textContent)).toEqual(['#5 BlockedBlocked from merging.o/rClone']);
 });
 
 test('Review is disabled and Clone shown only where no workspace tracks the repository', () => {
@@ -61,7 +61,7 @@ test('collapsing a group hides its rows and is remembered', () => {
 test('one pull request under two accounts is two rows', () => {
   const shared = pr({url: 'https://github.com/o/r/pull/9', repo: 'o/r'});
   const root = view([account('a', [shared]), account('b', [shared])]);
-  expect(rows(root, 'Reviews to do').map(row => row.querySelector('p:last-of-type')?.textContent)).toEqual(['In o/r for a.', 'In o/r for b.']);
+  expect(rows(root, 'Reviews to do').map(row => row.querySelector('p:last-of-type')?.textContent)).toEqual(['o/r', 'o/r']);
 });
 
 test('with only waits it says nothing needs the account and lists the waits', () => {

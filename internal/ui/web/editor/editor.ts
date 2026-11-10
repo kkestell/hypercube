@@ -6,7 +6,7 @@ export {diffTabId, isDiffTab} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
 import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
 import type {EditorView} from './types.ts';
-import {selectedWorkspace, selectionTarget} from './target.ts';
+import {selectionTarget} from './target.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {ownsScroll} from './view-state.ts';
@@ -14,9 +14,6 @@ import * as layout from './tab-layout.ts';
 import type {Edge, FileOpenRequest, ScrollMemory, TabEntry, TabId, TabLayout} from './types.ts';
 
 export const emptyTabs: TabLayout = {root: null, preview: null, dragging: null, nextId: 1};
-
-export const dashboardTabId = 'dashboard';
-export const dashboardTabs: TabLayout = {...emptyTabs, root: {id: 1, tabs: [dashboardTabId], active: dashboardTabId}, nextId: 2};
 
 export const fileTabId = (path: string): TabId => 'file:' + path;
 
@@ -31,10 +28,6 @@ const withTabs = (state: State, change: (tabs: TabLayout) => TabLayout) =>
   withEditor(state, editor => ({...editor, tabs: change(editor.tabs)}));
 
 export function tabEntry(state: State, id: TabId): TabEntry {
-  if (id === dashboardTabId) {
-    const title = selectedWorkspace(state)?.name ?? 'Workspace';
-    return {kind: 'dashboard', id, label: title, title, preview: false};
-  }
   const {editor} = state;
   if (!editor) throw new Error(`Tab ${id} has no attached editor.`);
   const path = tabPath(id);

@@ -1,5 +1,5 @@
-// The center: permanent chat beside file tabs, a workspace's editor area, or
-// the pull requests that need the user when nothing is selected, or a
+// The center: a session's chat or a workspace's dashboard, with file tabs to
+// its right, or the pull requests that need the user when nothing is selected, or a
 // workspace invitation when none exists. While the page is visible, a
 // shown session's unseen reply is seen.
 import {useEffect} from 'react';
@@ -9,11 +9,13 @@ import {ChatPane} from '../agent/chat-pane.tsx';
 import {resizeRegion} from '../app/workbench.ts';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {EditorTabs} from '../editor/editor-tabs.tsx';
+import {MainTabBar} from '../editor/main-tab-bar.tsx';
 import {useStore} from '../store.ts';
 import {Icon} from '../shared/icon.tsx';
 import {Split} from '../shared/split.tsx';
 import {addWorkspace, markSeen} from './session-actions.ts';
 import {AllPullRequests} from '../github/all-pull-requests.tsx';
+import {WorkspaceDashboard} from './workspace-dashboard.tsx';
 import {currentSession, homeShown, shownSession} from './selection.ts';
 
 export function SessionView() {
@@ -25,17 +27,16 @@ export function SessionView() {
   }, [session?.id, session?.unseen, state.visible]);
 
   const shown = shownSession(state);
-  if (shown) {
+  if (shown || state.editor) {
     const hasFiles = !!state.editor?.tabs.root;
     return <Split fixed="end" size={state.workbench.sizes.editor} minStart="20%" minEnd="20%"
       collapsed={hasFiles ? null : 'end'} onResize={size => store.update(s => resizeRegion(s, 'editor', size))}>
-      <ChatPane key={shown.id} session={shown} />
-      {hasFiles ? <EditorArea besideChat /> : null}
+      {shown ? <ChatPane key={shown.id} session={shown} /> : <WorkspaceDashboard />}
+      {hasFiles ? <EditorArea besideMain /> : null}
     </Split>;
   }
-  if (state.editor) return <EditorArea />;
   if (state.workspaces.length > 0 && state.accounts.length > 0 && homeShown(state)) return <>
-    <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
+    <MainTabBar icon="git-pull-request" title="Pull Requests" />
     <AllPullRequests />
   </>;
   return <>

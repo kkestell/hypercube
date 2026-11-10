@@ -18,3 +18,10 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Failure messages show a page node as its opening tag. A node's own
+// properties reach React's whole component tree, which takes seconds to print.
+Object.defineProperty(Node.prototype, Bun.inspect.custom, {value(this: Node) {
+  if (!(this instanceof Element)) return this.nodeName;
+  return `<${this.localName}${[...this.attributes].map(({name, value}) => ` ${name}="${value}"`).join('')}>`;
+}});

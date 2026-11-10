@@ -38,10 +38,10 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
           <TabsTrigger {...(entry.kind === 'file' ? menu.handlers(entry.path) : {})} className="min-w-0" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
-            {entry.kind === 'dashboard' ? <Icon name="files" /> : <FileIcon name={entry.name} />}
+            <FileIcon name={entry.name} />
             <span className={`editor-tabs-label min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.kind === 'file' && entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
-          {entry.kind !== 'dashboard' && <Button className="editor-tabs-close" variant="ghost" size="icon-xs" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>}
+          <Button className="editor-tabs-close" variant="ghost" size="icon-xs" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>
         </div>)}
       </TabsList>
     </Tabs> : <div className="flex-1" />}

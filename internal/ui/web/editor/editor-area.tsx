@@ -1,5 +1,5 @@
-// File tabs and workspace dashboards, drawn as nested splits around panes.
-// Chat stays outside this area; only editor tabs accept tab moves and splits.
+// File and diff tabs, drawn as nested splits around panes. Chat and workspace
+// dashboards stay outside this area, to its left.
 import {useRef} from 'react';
 import {Split} from '../shared/split.tsx';
 import {usePaneFocus} from '../shared/use-pane-focus.ts';
@@ -29,12 +29,12 @@ function PaneTree({node, focused, placement}: {node: LayoutNode; focused: boolea
   );
 }
 
-export function EditorArea({besideChat = false}: {besideChat?: boolean}) {
+export function EditorArea({besideMain = false}: {besideMain?: boolean}) {
   const [state] = useStore();
   const area = useRef<HTMLDivElement>(null);
-  const focused = usePaneFocus(area, !besideChat);
+  const focused = usePaneFocus(area, !besideMain);
   const {root} = state.editor?.tabs ?? emptyTabs;
-  const placement = {...whole, left: !besideChat, right: !besideChat};
+  const placement = {...whole, left: !besideMain, right: !besideMain};
   return <div ref={area} className="editor-area h-full min-h-0 min-w-0">
     {root ? <PaneTree node={root} focused={focused} placement={placement} /> : <EditorTabs pane={null} entries={[]} placement={placement} />}
   </div>;

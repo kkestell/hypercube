@@ -29,7 +29,10 @@ function Tracking({status}: {status: GitHubStatus}) {
 function Repository({workspace, status}: {workspace: Workspace; status: GitHubStatus}) {
   const [, store] = useStore();
   return <>
-    <a href={status.url} target="_blank" rel="noopener noreferrer" className="min-w-0 shrink truncate hover:text-foreground hover:underline">{status.repo}</a>
+    <a href={status.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 shrink items-center gap-1.5 hover:text-foreground">
+      <Icon name="repo" className="size-3.5" />
+      <span className="truncate hover:underline">{status.repo}</span>
+    </a>
     {status.choices
       ? <Select value={status.account} onValueChange={account => chooseAccount(store, workspace.id, account)}>
         <SelectTrigger aria-label="GitHub account" title={accountTitle} size="sm" className="h-6 text-xs"><Icon name="user" className="size-3.5" /><SelectValue placeholder="Choose an account" /></SelectTrigger>

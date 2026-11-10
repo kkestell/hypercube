@@ -120,7 +120,8 @@ test('chat stays mounted outside file tabs while files open, split, and close', 
   const composer = element(root, '.composer textarea', HTMLTextAreaElement);
   expect(chat.closest('.editor-area')).toBeNull();
   expect(chat.textContent).toContain('Always-visible reply');
-  expect(chat.querySelector('[role=tab]')).toBeNull();
+  expect(findAll(chat, '[role=tab]').map(tab => tab.textContent)).toEqual(['Visible chat']);
+  expect(chat.querySelector('[aria-label^="Close"]')).toBeNull();
   expect(chat.querySelector('[aria-label="Fixed Width"]')).toBeNull();
   expect(find(chat, '.transcript-list').className).not.toContain('max-w-');
   expect(find(chat, '.composer').className).not.toContain('max-w-');
@@ -261,12 +262,13 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
     return new Response('source\nneedle');
   });
   const sessions = Array.from({length: 12}, (_, i) => testSession({id: `s${i}`, title: `Session ${i}`, ended: i === 1}));
-  const store = appStore({selected: 's0'}, ...sessions);
+  const store = appStore({selected: 's0', workbench: workbench({rightPanel: true})}, ...sessions);
   const root = mount(store, <App store={store} />);
   await act(async () => clickControl(find(root, '.workspace-section-toggle')));
   const dashboard = find(root, '[aria-label="Workspace dashboard"]');
   expect(dashboard.className).not.toContain('max-w-');
-  expect([...dashboard.querySelectorAll('[class*="max-w-"]')].filter(e => !e.closest('[aria-label="Working directory and branch"]'))).toEqual([]);
+  expect([...dashboard.querySelectorAll('[class*="max-w-"]')].filter(e => !e.closest('[aria-label="Working directory and branch"]'))
+    .map(e => e.className).filter(name => /max-w-(?!full\b)/.test(name))).toEqual([]);
   expect([...dashboard.querySelectorAll('[aria-label="Archived sessions"] li')].map(li => li.textContent)).toEqual(['Session 1']);
   expect(store.get().session).toBeNull();
   expect(document.title).toBe('repo — Hypercube');
@@ -293,8 +295,6 @@ test('workspace heading opens archived sessions and shared tools; its chevron co
   expect(store.get().editor?.files.open['main.go'].lines).toEqual([{start: 3, end: 3}]);
   expect(calls.find(url => url.pathname === '/search-files')?.searchParams.get('workspace')).toBe('w');
   act(() => store.update(state => selectWorkspace(state, 'w')));
-  const dashboardTab = [...root.querySelectorAll<HTMLElement>('[role=tab]')].find(tab => tab.textContent === 'repo')!;
-  await act(async () => clickControl(dashboardTab));
   await act(async () => clickControl(buttonNamed(find(root, '[aria-label="Workspace dashboard"]'), 'Session 1')));
   expect(store.get().selected).toBe('s1');
   expect(store.get().session?.id).toBe('s1');
