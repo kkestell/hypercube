@@ -55,91 +55,59 @@ Open the PNG to check labels and arrows. Commit both source and rendered image.
 
 Run `make screenshots` only when captures need changing. It regenerates
 `docs/images/<scene>-light.png` and `-dark.png` from scenes in
-`docs/screenshots/`.
+`docs/screenshots/` in seconds, with no backend, display, or permissions.
 
 In guides, show each screenshot with `<picture>`: a `<source
 media="(prefers-color-scheme: dark)">` pointing to `images/<scene>-dark.png`
 and an `<img>` pointing to `images/<scene>-light.png`. Do not regenerate
 screenshots just for prose changes.
 
-The [capture driver](../../scripts/screenshots/main.js) runs a real backend with
-the [scripted plugin](../../plugins/scripted/main.go), opens the desktop app,
-and captures that window, including its native buttons and rounded corners,
-then adds a transparent margin with a drop shadow.
-Temporary resources are deleted afterward.
-
-The driver puts a stand-in `gh` first on the backend's `PATH`. In a scene with
-`github: true` it is signed in, and the backend reads GitHub from the driver's
-own GraphQL server through `HYPERCUBE_GITHUB_API`; in other scenes it has no
-accounts. `docs/screenshots/repos/github.json` names the account and
-gives each fixture repository its `github.com` name, how many commits its
-`main` is `behind`, and its open `pullRequests`; `elsewhere` holds pull
-requests, each with its `repo`, in repositories no workspace holds. Each
-workspace's `origin` is that `github.com` address; Git fetches it from a local
-bare repository through `url.insteadOf`.
-
-A pull request declares its `number`, `title`, and head `branch`, and
-optionally its `author` (the account by default), `draft`, `review` (GitHub's
-review decision), `checks`, `merge` (GitHub's merge state, `BLOCKED` by
-default), `pendingReviews`, `requested` (`user` or `team`), the account's own
-`reviewed` state, `unanswered` review threads and the `replier` who spoke last
-in them, and `requiredFailed`.
+The [capture driver](../../scripts/screenshots/main.js) serves the built page
+from a server in its own process that answers from the scene. It renders the
+desktop window off screen at twice the scene's size, then draws the macOS
+window frame: rounded corners, a hairline edge, the window buttons, and a drop
+shadow on a transparent margin. A request the scene does not answer, or a step
+that does not finish within five seconds, fails the run.
 
 ### Scene contents
 
-Each scene declares:
+A scene holds what the backend sends the page, and what the driver does in the
+page before capturing it:
 
-- Workspaces copied from fixture repositories in `docs/screenshots/repos/`,
-  with optional patches of uncommitted changes.
-- Session settings as shown in the app: harness, model, and effort.
-- Turn prompts, transcript items in plugin-protocol JSON, and ending state
-  (`idle`, `working`, or `ask`). A turn's `usage` and `limits` arrive with its
-  end; each limit gives a window's `minutes`, percent `used`, and minutes
-  `left` until it resets.
-- Children, task offers, and agent-initiated suggestions.
-- `openModelPicker: true` opens the composer's model picker before capture.
-  `openSettings` opens Settings at the named section, and `openSearch` opens
-  session search with the given query.
-- `newSession: true` opens a new, unsent session in the selected session's
-  workspace. `newBranch` then opens the composer's **Create a branch** dialog
-  from its location control and types the given branch name.
-- `sessionMenu` chooses the named item from the selected session's sidebar
-  menu, such as `Discard All Changes` to show its confirmation.
-- `terminal` opens the selected session's terminal panel and runs the given
-  command there. The shell is zsh with a prompt naming only its directory.
-- `waiting: true` captures the waiting page offering **Set Up Background
-  Service** instead of a backend's page; such a scene declares only `size`.
-- Optional fixture-file writes and Git steps; `worktree` gives a top-level
-  session its own branch.
-- `parked: true` parks a top-level session and its children: they play first,
-  then the backend quits and restarts before the other sessions play.
-  `unseen: true` leaves a session's reply unread, which shows a notification.
-- Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
-  to expand in a saved turn. `select` chooses the session as a workspace and
-  session index, a workspace's dashboard as a workspace index alone, or, empty,
-  the Pull Requests view; `size` sets window dimensions in points.
-- A workspace's `pullRequests` adds open pull requests to its repository's.
-  `session` names a worktree session by its first prompt, and the pull request
-  comes from that session's branch.
-- `workbench.rightPanel: false` hides the right panel; `workbench.rightTab`
-  chooses Files or Git (`files` or `git`); `comparison: "branch"` selects Git's
-  Committed view for a worktree. The driver sizes the editor panes so the
-  conversation takes two fifths of the width beside the sidebar and right panel.
+- `size`: the window's dimensions in points.
+- `now`: the page's clock, in milliseconds since the epoch, so relative times
+  stay as written.
+- `address`: the page's hash: a session ID, `workspace:<ID>` for a workspace's
+  dashboard, or empty for the Pull Requests view.
+- `views`: the saved workbench, tabs, splits, and expanded items, as the page
+  keeps them in local storage under `hypercube.views`. Editor panes give the
+  conversation two fifths of the width beside the sidebar and right panel.
+- `sockets`: each socket's messages by path and query. `/state` sends `state`
+  and `transcript` messages as `json`; a terminal socket sends shell output as
+  base64 `binary`.
+- `responses`: HTTP responses by method, path, query, and any request body,
+  each with `status` and `json`, or `type` and `body` or `base64`. POST
+  requests the scene does not list succeed with no body. The driver sets the
+  config response's theme.
+- `actions`: `openModelPicker` opens the composer's model picker;
+  `openSettings` opens Settings at the named section; `openSearch` opens
+  session search with the given query; `newSession` opens a new session in the
+  workspace with that ID, and `newBranch` then opens **Create a branch** and
+  types the branch name; `sessionMenu` chooses `item` from the menu of
+  `session`; `comparison: "branch"` selects Git's Committed view; `terminal`
+  waits for the terminal to show the given command.
+- `waiting: true` with only `size` captures the waiting page offering **Set Up
+  Background Service**.
 
-### Capture requirements
+Message and response fields follow the types in `internal/ui/web`, and paths
+are under `/Users/demo`. Start a new scene from the closest existing one.
 
-Use a Retina display large enough for the scene's window. Native window capture
-requires macOS Screen Recording permission for the app running the command.
-If permission is denied, stop and wait for the user to resolve it; do not change
-permissions automatically. Run one capture at a time and keep the screenshot
-window in front: a covered window can stop painting, and the driver rejects a
-capture that differs from the rendered page.
+### Checking captures
 
-Open every generated image and check theme, content, toolbar layout, and native
-window buttons.
-Use the app's default panel sizes. Keep toolbars fully visible and session
-labels readable. Use several sessions across workspaces, a
-transcript filling its column, and the right panel open unless a scene has file tabs
-and does not need the file tree or Git changes; the sidebar, conversation, file
-tabs, and right panel together leave too little room. Commit new captures
+Open every generated image and check theme, content, toolbar layout, and
+window buttons. Use the app's default panel sizes. Keep toolbars fully visible
+and session labels readable. Use several sessions across workspaces, a
+transcript filling its column, and the right panel open unless a scene has file
+tabs and does not need the file tree or Git changes; the sidebar, conversation,
+file tabs, and right panel together leave too little room. Commit new captures
 with their scene changes.

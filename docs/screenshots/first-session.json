@@ -1,46 +1,367 @@
 {
-  "size": {"width": 1440, "height": 900},
-  "workspaces": [
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [{
-            "prompt": "Check the links in the Field Notes homepage without changing files",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The homepage links to the getting-started guide and the sync guide. Both source pages are present. No files changed.", "done": true}]
-          }]
-        }
-      ]
+  "size": {
+    "width": 1440,
+    "height": 900
+  },
+  "now": 1794318665625,
+  "address": "#e16f6ff7",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": true,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 498
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "turns": [{
-            "prompt": "Review the page template for missing metadata; report only",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The page template includes a title and viewport metadata. A description would need a corresponding field in the page data. I have not changed the template.", "done": true}]
-          }]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [{
-            "prompt": "Explain what this project does. Identify its main entry point and how to run its tests, based on the files you find. Do not edit files, install anything, or run the tests.",
-            "end": "idle",
-            "usage": {"context": 12480, "window": 272000},
-            "items": [
-              {"id": "read", "kind": "tool", "tool": "shell", "input": {"command": "cat README.md main.go build_test.go"}, "output": "README.md describes a static site generator. main.go handles the build and serve commands. build_test.go contains TestBuildRendersPages.", "done": true},
-              {"id": "answer", "kind": "text", "text": "## What this project does\n\n**harbor** is a small static site generator. It turns Markdown pages into HTML using Go templates.\n\n| Folder | Purpose |\n| --- | --- |\n| `content/` | Markdown pages and their front matter |\n| `templates/` | Go templates used to render pages |\n| `public/` | Generated output, replaced by each build |\n\n## Main entry point\n\n`main.go` contains `main()`. It dispatches the `build` command to `Site.Build()` in `build.go`, or the `serve` command to a local preview of the generated output.\n\nStart with `main.go` for command handling and `build.go` for page rendering.\n\n## Tests\n\n`build_test.go` contains `TestBuildRendersPages`. It creates a temporary page and template, builds the site, and checks the generated HTML.\n\nThe test command, from the repository root, is:\n\n```sh\ngo test ./...\n```\n\nI only read the files. **No tests were run, no dependencies were installed, and no files were changed.**", "done": true}
-            ]
-          }]
+    "sessionViews": {},
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "f7d823aa",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "1eaf6587",
+                  "parent": "",
+                  "title": "Check the links in the Field Notes homepage wit\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "b78a0f26",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "e16f6ff7",
+                  "parent": "",
+                  "title": "Explain what this project does. Identify its ma\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {
+                    "context": 12480,
+                    "window": 272000
+                  },
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "d0c0c151",
+                  "parent": "",
+                  "title": "Review the page template for missing metadata; \u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": []
         }
-      ]
+      },
+      {
+        "json": {
+          "type": "transcript",
+          "session": "e16f6ff7",
+          "reset": true,
+          "items": [
+            {
+              "at": 1794318665256,
+              "id": "6f7ab11f:host-3c7b0a9c",
+              "kind": "user",
+              "done": true,
+              "text": "Explain what this project does. Identify its main entry point and how to run its tests, based on the files you find. Do not edit files, install anything, or run the tests.",
+              "seq": 1
+            },
+            {
+              "at": 1794318665282,
+              "id": "6f7ab11f:state-68",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 2
+            },
+            {
+              "at": 1794318665283,
+              "id": "6f7ab11f:read",
+              "kind": "tool",
+              "done": true,
+              "tool": "shell",
+              "input": {
+                "command": "cat README.md main.go build_test.go"
+              },
+              "output": "README.md describes a static site generator. main.go handles the build and serve commands. build_test.go contains TestBuildRendersPages.",
+              "seq": 3
+            },
+            {
+              "at": 1794318665283,
+              "id": "6f7ab11f:answer",
+              "kind": "text",
+              "done": true,
+              "text": "## What this project does\n\n**harbor** is a small static site generator. It turns Markdown pages into HTML using Go templates.\n\n| Folder | Purpose |\n| --- | --- |\n| `content/` | Markdown pages and their front matter |\n| `templates/` | Go templates used to render pages |\n| `public/` | Generated output, replaced by each build |\n\n## Main entry point\n\n`main.go` contains `main()`. It dispatches the `build` command to `Site.Build()` in `build.go`, or the `serve` command to a local preview of the generated output.\n\nStart with `main.go` for command handling and `build.go` for page rendering.\n\n## Tests\n\n`build_test.go` contains `TestBuildRendersPages`. It creates a temporary page and template, builds the site, and checks the generated HTML.\n\nThe test command, from the repository root, is:\n\n```sh\ngo test ./...\n```\n\nI only read the files. **No tests were run, no dependencies were installed, and no files were changed.**",
+              "seq": 4
+            },
+            {
+              "at": 1794318665283,
+              "id": "6f7ab11f:state-1447",
+              "kind": "state",
+              "done": true,
+              "state": "idle",
+              "final": [
+                "6f7ab11f:answer"
+              ],
+              "seq": 5
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "responses": {
+    "GET /changes?session=e16f6ff7": {
+      "status": 200,
+      "json": {
+        "branch": "main",
+        "files": []
+      }
+    },
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
+    },
+    "POST /files/tree?session=e16f6ff7 [\"\"]": {
+      "status": 200,
+      "json": {
+        "": [
+          {
+            "name": "go.mod",
+            "dir": false
+          },
+          {
+            "name": "build.go",
+            "dir": false
+          },
+          {
+            "name": "content",
+            "dir": true
+          },
+          {
+            "name": "build_test.go",
+            "dir": false
+          },
+          {
+            "name": "README.md",
+            "dir": false
+          },
+          {
+            "name": ".gitignore",
+            "dir": false
+          },
+          {
+            "name": "templates",
+            "dir": true
+          },
+          {
+            "name": "main.go",
+            "dir": false
+          }
+        ]
+      }
     }
-  ],
-  "select": [1, 1]
+  }
 }

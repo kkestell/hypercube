@@ -1,64 +1,445 @@
 {
-  "size": {"width": 1680, "height": 1020},
-  "workspaces": [
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [{
-            "prompt": "Summarize the sync guide without editing it",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "Sign in with the same account on each device. The guide explains how notebooks sync. No files changed.", "done": true}]
-          }]
-        }
-      ]
+  "size": {
+    "width": 1680,
+    "height": 1020
+  },
+  "now": 1794318664932,
+  "address": "#0984b819",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": true,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 642
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "turns": [{
-            "prompt": "Check what the build test covers; do not run it",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The test builds a single Markdown page with a Go template and checks the output HTML. I did not run it or modify files.", "done": true}]
-          }]
+    "sessionViews": {
+      "0984b819": {
+        "panel": false,
+        "tabs": {
+          "root": {
+            "id": 3,
+            "tabs": [
+              "file:main.go"
+            ],
+            "active": "file:main.go"
+          },
+          "preview": null,
+          "dragging": null,
+          "nextId": 4
         },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [
+        "activePane": 3,
+        "expanded": {},
+        "scroll": {},
+        "folders": {},
+        "files": {
+          "main.go": {
+            "source": false,
+            "lines": []
+          }
+        }
+      }
+    },
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
             {
-              "prompt": "Explain what harbor does and identify its entry point. Do not edit files or run commands other than reading files.",
-              "end": "idle",
-              "items": [
-                {"id": "read1", "kind": "tool", "tool": "shell", "input": {"command": "cat README.md main.go"}, "output": "harbor renders Markdown into HTML. main.go handles the build and serve commands.", "done": true},
-                {"id": "answer1", "kind": "text", "text": "**harbor** turns Markdown pages in `content/` into HTML using Go templates from `templates/`. The generated files go into `public/`.\n\nThe entry point is `main.go`. Its `main()` function chooses between building the site and serving the generated output. I only read files; nothing changed.", "done": true}
+              "id": "e5580f22",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "1149204e",
+                  "parent": "",
+                  "title": "Summarize the sync guide without editing it",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
               ]
             },
             {
-              "prompt": "Explain the entry point in more detail. Keep this read-only.",
-              "end": "idle",
-              "usage": {"context": 16840, "window": 272000},
-              "items": [
-                {"id": "read2", "kind": "tool", "tool": "shell", "input": {"command": "cat main.go"}, "output": "main() switches on os.Args[1]. build calls Site.Build(); serve uses http.FileServer for public/.", "done": true},
-                {"id": "answer2", "kind": "text", "text": "`main()` dispatches on the first command-line argument:\n\n- **`build`** creates a `Site` with the content, template, and output directories, then calls `Build()`. It prints how many pages were built.\n- **`serve`** parses the preview address and serves `public/`.\n- A missing or unknown command prints a usage message or error and exits.\n\nThe rendering work lives in `build.go`, not in this command dispatcher. Notice the call to `site.Build()` in the file beside this conversation.\n\n**No files changed and no tests were run.**", "done": true}
+              "id": "9b2af7f8",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "0984b819",
+                  "parent": "",
+                  "title": "Explain what harbor does and identify its entry\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {
+                    "context": 16840,
+                    "window": 272000
+                  },
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "16d73705",
+                  "parent": "",
+                  "title": "Check what the build test covers; do not run it",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
               ]
             }
           ],
-          "view": {
-            "tabs": {
-              "root": {"id": 3, "tabs": ["file:main.go"], "active": "file:main.go"},
-              "preview": null, "dragging": null, "nextId": 4
-            },
-            "activePane": 3, "expanded": {}, "scroll": {}, "folders": {},
-            "files": {"main.go": {"source": false, "lines": []}}
-          }
+          "requests": [],
+          "limits": [],
+          "accounts": []
         }
-      ]
+      },
+      {
+        "json": {
+          "type": "transcript",
+          "session": "0984b819",
+          "reset": true,
+          "items": [
+            {
+              "at": 1794318664475,
+              "id": "14e8881b:host-5af7a40c",
+              "kind": "user",
+              "done": true,
+              "text": "Explain what harbor does and identify its entry point. Do not edit files or run commands other than reading files.",
+              "seq": 1
+            },
+            {
+              "at": 1794318664502,
+              "id": "14e8881b:state-68",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 2
+            },
+            {
+              "at": 1794318664502,
+              "id": "14e8881b:read1",
+              "kind": "tool",
+              "done": true,
+              "tool": "shell",
+              "input": {
+                "command": "cat README.md main.go"
+              },
+              "output": "harbor renders Markdown into HTML. main.go handles the build and serve commands.",
+              "seq": 3
+            },
+            {
+              "at": 1794318664503,
+              "id": "14e8881b:answer1",
+              "kind": "text",
+              "done": true,
+              "text": "**harbor** turns Markdown pages in `content/` into HTML using Go templates from `templates/`. The generated files go into `public/`.\n\nThe entry point is `main.go`. Its `main()` function chooses between building the site and serving the generated output. I only read files; nothing changed.",
+              "seq": 4
+            },
+            {
+              "at": 1794318664503,
+              "id": "14e8881b:state-683",
+              "kind": "state",
+              "done": true,
+              "state": "idle",
+              "final": [
+                "14e8881b:answer1"
+              ],
+              "seq": 5
+            },
+            {
+              "at": 1794318664519,
+              "id": "14e8881b:host-f3b3ad87",
+              "kind": "user",
+              "done": true,
+              "text": "Explain the entry point in more detail. Keep this read-only.",
+              "seq": 6
+            },
+            {
+              "at": 1794318664530,
+              "id": "14e8881b:state-732",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 7
+            },
+            {
+              "at": 1794318664530,
+              "id": "14e8881b:read2",
+              "kind": "tool",
+              "done": true,
+              "tool": "shell",
+              "input": {
+                "command": "cat main.go"
+              },
+              "output": "main() switches on os.Args[1]. build calls Site.Build(); serve uses http.FileServer for public/.",
+              "seq": 8
+            },
+            {
+              "at": 1794318664531,
+              "id": "14e8881b:answer2",
+              "kind": "text",
+              "done": true,
+              "text": "`main()` dispatches on the first command-line argument:\n\n- **`build`** creates a `Site` with the content, template, and output directories, then calls `Build()`. It prints how many pages were built.\n- **`serve`** parses the preview address and serves `public/`.\n- A missing or unknown command prints a usage message or error and exits.\n\nThe rendering work lives in `build.go`, not in this command dispatcher. Notice the call to `site.Build()` in the file beside this conversation.\n\n**No files changed and no tests were run.**",
+              "seq": 9
+            },
+            {
+              "at": 1794318664531,
+              "id": "14e8881b:state-1637",
+              "kind": "state",
+              "done": true,
+              "state": "idle",
+              "final": [
+                "14e8881b:answer2"
+              ],
+              "seq": 10
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "responses": {
+    "GET /changes?session=0984b819": {
+      "status": 200,
+      "json": {
+        "branch": "main",
+        "files": []
+      }
+    },
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
+    },
+    "GET /file?session=0984b819&path=main.go": {
+      "status": 200,
+      "type": "text/plain",
+      "body": "// Command harbor builds a static site from Markdown pages.\npackage main\n\nimport (\n\t\"flag\"\n\t\"fmt\"\n\t\"log\"\n\t\"net/http\"\n\t\"os\"\n)\n\nfunc main() {\n\tif len(os.Args) < 2 {\n\t\tfmt.Fprintln(os.Stderr, \"usage: harbor build | serve [-addr :8080]\")\n\t\tos.Exit(2)\n\t}\n\tswitch os.Args[1] {\n\tcase \"build\":\n\t\tsite := Site{Content: \"content\", Templates: \"templates\", Out: \"public\"}\n\t\tn, err := site.Build()\n\t\tif err != nil {\n\t\t\tlog.Fatal(err)\n\t\t}\n\t\tfmt.Printf(\"built %d pages\\n\", n)\n\tcase \"serve\":\n\t\tfs := flag.NewFlagSet(\"serve\", flag.ExitOnError)\n\t\taddr := fs.String(\"addr\", \":8080\", \"address to listen on\")\n\t\tfs.Parse(os.Args[2:])\n\t\tlog.Printf(\"serving public/ on %s\", *addr)\n\t\tlog.Fatal(http.ListenAndServe(*addr, http.FileServer(http.Dir(\"public\"))))\n\tdefault:\n\t\tfmt.Fprintf(os.Stderr, \"harbor: unknown command %q\\n\", os.Args[1])\n\t\tos.Exit(2)\n\t}\n}\n"
+    },
+    "POST /files/tree?session=0984b819 [\"\"]": {
+      "status": 200,
+      "json": {
+        "": [
+          {
+            "name": "go.mod",
+            "dir": false
+          },
+          {
+            "name": "build.go",
+            "dir": false
+          },
+          {
+            "name": "content",
+            "dir": true
+          },
+          {
+            "name": "build_test.go",
+            "dir": false
+          },
+          {
+            "name": "README.md",
+            "dir": false
+          },
+          {
+            "name": ".gitignore",
+            "dir": false
+          },
+          {
+            "name": "templates",
+            "dir": true
+          },
+          {
+            "name": "main.go",
+            "dir": false
+          }
+        ]
+      }
     }
-  ],
-  "select": [1, 1]
+  }
 }

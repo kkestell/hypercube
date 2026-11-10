@@ -1,70 +1,910 @@
 {
-  "github": true,
-  "size": {"width": 1440, "height": 900},
-  "workspaces": [
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "turns": [{
-            "prompt": "Add a contributing guide",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "CONTRIBUTING.md covers building, testing, and the commit style.", "done": true}]
-          }]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "turns": [{
-            "prompt": "Explain how harbor picks a template for each page",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "Every page uses `templates/page.html`. I only read files; nothing changed.", "done": true}]
-          }]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [{
-            "prompt": "Check what the build test covers; do not run it",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The test builds a single Markdown page with a Go template and checks the output HTML. I did not run it or modify files.", "done": true}]
-          }]
-        },
-        {
-          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
-          "turns": [{
-            "prompt": "Prepare the next release: changelog, version bump, and tag",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "CHANGELOG.md lists the build cache and `-force`, the version is 0.4.0, and the tag v0.4.0 is on the release commit.", "done": true}]
-          }]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [{
-            "prompt": "Highlight code blocks in rendered pages",
-            "end": "working",
-            "items": [
-              {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension.", "done": true},
-              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}}
-            ]
-          }]
-        }
-      ]
+  "size": {
+    "width": 1440,
+    "height": 900
+  },
+  "now": 1794318662324,
+  "address": "#workspace%3Afa7a1739",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": true,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 498
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [{
-            "prompt": "Write a guide to sharing notebooks",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The sharing guide explains invitations, read-only links, and how to stop sharing.", "done": true}]
-          }]
+    "sessionViews": {},
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "4b5a70c1",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  }
+                ],
+                "updated": 1794318661525
+              },
+              "sessions": [
+                {
+                  "id": "80fa5cda",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "fa7a1739",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318661525
+              },
+              "sessions": [
+                {
+                  "id": "edfdcc79",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "0a863da4",
+                  "parent": "",
+                  "title": "Prepare the next release: changelog, version bu\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "6bfdc8f7",
+                  "parent": "",
+                  "title": "Check what the build test covers; do not run it",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "3166e5b9",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "92b8f64a",
+                  "parent": "",
+                  "title": "Add a contributing guide",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": [
+            {
+              "login": "ines-moreau-dev",
+              "pullRequests": [
+                {
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                }
+              ],
+              "updated": 1794318661525
+            }
+          ]
         }
-      ]
+      },
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "4b5a70c1",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  }
+                ],
+                "updated": 1794318662017
+              },
+              "sessions": [
+                {
+                  "id": "80fa5cda",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "fa7a1739",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318662017
+              },
+              "sessions": [
+                {
+                  "id": "edfdcc79",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "0a863da4",
+                  "parent": "",
+                  "title": "Prepare the next release: changelog, version bu\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "6bfdc8f7",
+                  "parent": "",
+                  "title": "Check what the build test covers; do not run it",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "3166e5b9",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "92b8f64a",
+                  "parent": "",
+                  "title": "Add a contributing guide",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": [
+            {
+              "login": "ines-moreau-dev",
+              "pullRequests": [
+                {
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                }
+              ],
+              "updated": 1794318662017
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "responses": {
+    "GET /changes?workspace=fa7a1739": {
+      "status": 200,
+      "json": {
+        "branch": "main",
+        "files": []
+      }
+    },
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
+    },
+    "POST /files/tree?workspace=fa7a1739 [\"\"]": {
+      "status": 200,
+      "json": {
+        "": [
+          {
+            "name": "go.mod",
+            "dir": false
+          },
+          {
+            "name": "build.go",
+            "dir": false
+          },
+          {
+            "name": "content",
+            "dir": true
+          },
+          {
+            "name": "build_test.go",
+            "dir": false
+          },
+          {
+            "name": "README.md",
+            "dir": false
+          },
+          {
+            "name": ".gitignore",
+            "dir": false
+          },
+          {
+            "name": "templates",
+            "dir": true
+          },
+          {
+            "name": "main.go",
+            "dir": false
+          }
+        ]
+      }
     }
-  ],
-  "select": [0]
+  }
 }

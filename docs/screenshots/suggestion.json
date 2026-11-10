@@ -3,209 +3,457 @@
     "width": 1680,
     "height": 1020
   },
-  "workspaces": [
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [
-            {
-              "prompt": "Check the page template for missing metadata",
-              "end": "idle",
-              "items": [
-                {
-                  "id": "t1",
-                  "kind": "text",
-                  "text": "The default template includes the page title and viewport metadata.",
-                  "done": true
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [
-            {
-              "prompt": "Review the harbor command examples",
-              "end": "idle",
-              "items": [
-                {
-                  "id": "t1",
-                  "kind": "text",
-                  "text": "The README examples match the build and serve commands.",
-                  "done": true
-                }
-              ]
-            }
-          ]
-        }
-      ]
+  "now": 1794318677200,
+  "address": "#781f53e8",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": true,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 642
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [
+    "sessionViews": {},
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
             {
-              "prompt": "Review the field notes guide, check its links, and improve the first-run instructions",
-              "end": "working",
-              "items": [
+              "id": "6d91bbb8",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "sessions": [
                 {
-                  "id": "c1",
-                  "kind": "tool",
-                  "tool": "read",
-                  "input": {
-                    "path": "content/guide/getting-started.md"
-                  },
-                  "output": "The guide covers installation, notebooks, and sync.",
-                  "done": true
+                  "id": "d925fa7d",
+                  "parent": "",
+                  "title": "Review the field notes homepage",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
                 },
                 {
-                  "id": "c2",
-                  "kind": "tool",
-                  "server": "hypercube",
-                  "tool": "create_session",
-                  "input": {
-                    "title": "Check relative links",
-                    "initiation": "user_asked"
-                  },
-                  "output": "Started links.",
-                  "done": true
+                  "id": "8255a9b4",
+                  "parent": "",
+                  "title": "Improve the sync troubleshooting guide",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
                 },
                 {
-                  "id": "t1",
-                  "kind": "text",
-                  "text": "**links** is checking the rendered paths while I review the first-run instructions. The guide mentions sync but does not say how to confirm that the first notebook is available on another device.",
-                  "done": true
-                },
-                {
-                  "id": "c3",
-                  "kind": "tool",
-                  "tool": "read",
-                  "input": {
-                    "path": "content/guide/sync.md"
-                  },
-                  "output": "Sign in with the same account on each device.",
-                  "done": true
-                },
-                {
-                  "id": "t2",
-                  "kind": "text",
-                  "text": "I will add a verification step after enabling sync and link to the sync guide. I also found that offline reading is undocumented, so I suggested it as a separate task.",
-                  "done": true
-                },
-                {
-                  "id": "c4",
-                  "kind": "tool",
-                  "tool": "edit",
-                  "input": {
-                    "path": "content/guide/getting-started.md"
-                  },
-                  "output": "Updated the first-run checklist.",
-                  "done": true
-                },
-                {
-                  "id": "c5",
-                  "kind": "tool",
-                  "tool": "bash",
-                  "input": {
-                    "command": "git diff -- content/guide/getting-started.md"
-                  },
-                  "done": false
-                }
-              ],
-              "children": [
-                {
-                  "title": "Check relative links",
-                  "name": "links",
-                  "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-                  "dir": ".",
-                  "turns": [
+                  "id": "781f53e8",
+                  "parent": "",
+                  "title": "Review the field notes guide, check its links, \u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": [
                     {
-                      "prompt": "Find broken relative links in the guide",
-                      "end": "working",
-                      "items": [
-                        {
-                          "id": "c1",
-                          "kind": "tool",
-                          "tool": "shell",
-                          "input": {
-                            "command": "rg \"\\]\\(\" content"
-                          },
-                          "output": "content/guide/getting-started.md:8: [sync](sync.md)",
-                          "done": true
-                        },
-                        {
-                          "id": "t1",
-                          "kind": "text",
-                          "text": "Checking the rendered paths now.",
-                          "done": true
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ],
-              "suggestions": [
-                {
-                  "title": "Add an offline reading guide",
-                  "name": "offline-guide",
-                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-                  "dir": ".",
-                  "turns": [
-                    {
-                      "prompt": "Write a guide to reading field notes offline"
+                      "id": "ffd8d703",
+                      "parent": "781f53e8",
+                      "title": "Check relative links",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "opencode",
+                      "model": "openai/gpt-6.1-terra",
+                      "effort": "high",
+                      "dir": "/Users/demo/field-notes",
+                      "activity": "busy",
+                      "attention": false,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
                     }
                   ]
                 }
               ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "turns": [
+            },
             {
-              "prompt": "Improve the sync troubleshooting guide",
-              "end": "idle",
-              "items": [
+              "id": "5ac78c2b",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "sessions": [
                 {
-                  "id": "t1",
-                  "kind": "text",
-                  "text": "Added steps for checking account and connection settings.",
-                  "done": true
+                  "id": "35bc2ead",
+                  "parent": "",
+                  "title": "Review the harbor command examples",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "cf0133f9",
+                  "parent": "",
+                  "title": "Check the page template for missing metadata",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
                 }
               ]
             }
-          ]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "turns": [
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": []
+        }
+      },
+      {
+        "json": {
+          "type": "transcript",
+          "session": "781f53e8",
+          "reset": true,
+          "items": [
             {
-              "prompt": "Review the field notes homepage",
-              "end": "idle",
-              "items": [
-                {
-                  "id": "t1",
-                  "kind": "text",
-                  "text": "The homepage introduces notebooks and links to the getting-started guide.",
-                  "done": true
-                }
-              ]
+              "at": 1794318676593,
+              "id": "42fa94db:host-fa34c498",
+              "kind": "user",
+              "done": true,
+              "text": "Review the field notes guide, check its links, and improve the first-run instructions",
+              "seq": 1
+            },
+            {
+              "at": 1794318676619,
+              "id": "42fa94db:state-68",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 2
+            },
+            {
+              "at": 1794318676695,
+              "id": "42fa94db:host-c037276b",
+              "kind": "proposal",
+              "text": "Add an offline reading guide",
+              "input": {
+                "name": "offline-guide",
+                "title": "Add an offline reading guide",
+                "settings": {
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high"
+                },
+                "dir": ".",
+                "message": "Write a guide to reading field notes offline"
+              },
+              "seq": 3
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:c1",
+              "kind": "tool",
+              "done": true,
+              "tool": "read",
+              "input": {
+                "path": "content/guide/getting-started.md"
+              },
+              "output": "The guide covers installation, notebooks, and sync.",
+              "seq": 4
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:c2",
+              "kind": "tool",
+              "done": true,
+              "server": "hypercube",
+              "tool": "create_session",
+              "input": {
+                "title": "Check relative links",
+                "initiation": "user_asked"
+              },
+              "output": "Started links.",
+              "seq": 5
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:t1",
+              "kind": "text",
+              "done": true,
+              "text": "**links** is checking the rendered paths while I review the first-run instructions. The guide mentions sync but does not say how to confirm that the first notebook is available on another device.",
+              "seq": 6
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:c3",
+              "kind": "tool",
+              "done": true,
+              "tool": "read",
+              "input": {
+                "path": "content/guide/sync.md"
+              },
+              "output": "Sign in with the same account on each device.",
+              "seq": 7
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:t2",
+              "kind": "text",
+              "done": true,
+              "text": "I will add a verification step after enabling sync and link to the sync guide. I also found that offline reading is undocumented, so I suggested it as a separate task.",
+              "seq": 8
+            },
+            {
+              "at": 1794318676697,
+              "id": "42fa94db:c4",
+              "kind": "tool",
+              "done": true,
+              "tool": "edit",
+              "input": {
+                "path": "content/guide/getting-started.md"
+              },
+              "output": "Updated the first-run checklist.",
+              "seq": 9
+            },
+            {
+              "at": 1794318676698,
+              "id": "42fa94db:c5",
+              "kind": "tool",
+              "tool": "bash",
+              "input": {
+                "command": "git diff -- content/guide/getting-started.md"
+              },
+              "seq": 10
             }
           ]
         }
-      ]
+      }
+    ]
+  },
+  "responses": {
+    "GET /changes?session=781f53e8": {
+      "status": 200,
+      "json": {
+        "branch": "main",
+        "files": []
+      }
+    },
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
+    },
+    "POST /files/tree?session=781f53e8 [\"\"]": {
+      "status": 200,
+      "json": {
+        "": [
+          {
+            "name": "content",
+            "dir": true
+          },
+          {
+            "name": "README.md",
+            "dir": false
+          },
+          {
+            "name": "templates",
+            "dir": true
+          }
+        ]
+      }
     }
-  ],
-  "select": [
-    1,
-    0
-  ]
+  }
 }

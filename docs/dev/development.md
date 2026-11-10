@@ -17,8 +17,8 @@ Documentation procedures are in [documentation](documentation.md).
   `github`, `harness`, `harnessclient`, `hold`, `mcp`, `mcpbridge`, `report`,
   `session`, `store`, `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, and Pi harness plugins. The
-  core names no harness. `plugins/scripted` plays documentation screenshot
-  scenes and never ships; `plugins/internal/plugin` holds shared plugin code.
+  core names no harness. `plugins/scripted` plays scripted sessions for
+  the Linux tests and never ships; `plugins/internal/plugin` holds shared plugin code.
 - `make/` — the macOS and Linux packaging rules the `Makefile` includes.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
@@ -212,7 +212,7 @@ The command runs as the user `tester`, which has a systemd user manager, under
 Xvfb. The image has Go and Bun at the versions the repository declares,
 a C compiler, `rsvg-convert`, SQLite, the Electron runtime libraries,
 Node, and Playwright. It has no harness CLIs, so tests that start sessions use
-the scripted plugin as `make screenshots` does.
+the scripted plugin.
 
 The container gets a copy of the tracked and untracked files that Git does not
 ignore, without `.git`, so builds report version `devel` and nothing in the

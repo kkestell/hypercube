@@ -1,59 +1,385 @@
 {
-  "size": {"width": 1440, "height": 900},
-  "workspaces": [
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "worktree": true,
-          "turns": [
-            {
-              "prompt": "Add an RSS feed for blog posts",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "feed.go"}, "output": "File created successfully at: feed.go", "done": true},
-                {"id": "t1", "kind": "text", "text": "`harbor build` now writes `public/feed.xml` with the ten newest posts.", "done": true}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [
-            {
-              "prompt": "Explain how harbor picks a template for each page",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -n template build.go"}, "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))", "done": true},
-                {"id": "t1", "kind": "text", "text": "Every page renders with `page.html` unless its front matter sets `template:`.", "done": true}
-              ]
-            }
-          ]
-        }
-      ]
+  "size": {
+    "width": 1440,
+    "height": 900
+  },
+  "now": 1794318671663,
+  "address": "#7ac1d37d",
+  "actions": {
+    "newBranch": "fix-login-timeout",
+    "newSession": "ff56e37c"
+  },
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": true,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 498
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [
+    "sessionViews": {},
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
             {
-              "prompt": "Clarify how notebooks sync between devices",
-              "end": "idle",
-              "items": [
-                {"id": "t1", "kind": "text", "text": "The sync guide now explains when changes appear on a second device.", "done": true}
+              "id": "f864a31c",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "be3b5d78",
+                  "parent": "",
+                  "title": "Clarify how notebooks sync between devices",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
               ]
+            },
+            {
+              "id": "ff56e37c",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "sessions": [
+                {
+                  "id": "7ac1d37d",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "bf762a29",
+                  "parent": "",
+                  "title": "Add an RSS feed for blog posts",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor/.hypercube/bf762a29",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-bf762a29",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": false,
+                    "uncommitted": 0
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": []
+        }
+      },
+      {
+        "json": {
+          "type": "transcript",
+          "session": "7ac1d37d",
+          "reset": true,
+          "items": [
+            {
+              "at": 1794318671123,
+              "id": "b561ea6d:host-b0aa8422",
+              "kind": "user",
+              "done": true,
+              "text": "Explain how harbor picks a template for each page",
+              "seq": 1
+            },
+            {
+              "at": 1794318671153,
+              "id": "b561ea6d:state-68",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 2
+            },
+            {
+              "at": 1794318671154,
+              "id": "b561ea6d:c1",
+              "kind": "tool",
+              "done": true,
+              "tool": "shell",
+              "input": {
+                "command": "grep -n template build.go"
+              },
+              "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))",
+              "seq": 3
+            },
+            {
+              "at": 1794318671154,
+              "id": "b561ea6d:t1",
+              "kind": "text",
+              "done": true,
+              "text": "Every page renders with `page.html` unless its front matter sets `template:`.",
+              "seq": 4
+            },
+            {
+              "at": 1794318671154,
+              "id": "b561ea6d:state-465",
+              "kind": "state",
+              "done": true,
+              "state": "idle",
+              "final": [
+                "b561ea6d:t1"
+              ],
+              "seq": 5
             }
           ]
         }
-      ]
+      }
+    ]
+  },
+  "responses": {
+    "GET /branches?workspace=ff56e37c": {
+      "status": 200,
+      "json": {
+        "current": "main",
+        "local": [
+          "hypercube/session-bf762a29",
+          "main"
+        ],
+        "remote": []
+      }
+    },
+    "GET /changes?session=7ac1d37d": {
+      "status": 200,
+      "json": {
+        "branch": "main",
+        "files": []
+      }
+    },
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
+    },
+    "POST /files/tree?session=7ac1d37d [\"\"]": {
+      "status": 200,
+      "json": {
+        "": [
+          {
+            "name": "go.mod",
+            "dir": false
+          },
+          {
+            "name": "build.go",
+            "dir": false
+          },
+          {
+            "name": "content",
+            "dir": true
+          },
+          {
+            "name": "build_test.go",
+            "dir": false
+          },
+          {
+            "name": "README.md",
+            "dir": false
+          },
+          {
+            "name": ".gitignore",
+            "dir": false
+          },
+          {
+            "name": "templates",
+            "dir": true
+          },
+          {
+            "name": "main.go",
+            "dir": false
+          }
+        ]
+      }
     }
-  ],
-  "select": [0, 1],
-  "newSession": true,
-  "newBranch": "fix-login-timeout"
+  }
 }

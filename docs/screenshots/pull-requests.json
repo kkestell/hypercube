@@ -1,72 +1,1110 @@
 {
-  "github": true,
-  "size": {"width": 1440, "height": 900},
-  "workspaces": [
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "sessions": [
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "turns": [{
-            "prompt": "Write a guide to sharing notebooks",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "The sharing guide explains invitations, read-only links, and how to stop sharing.", "done": true}]
-          }]
-        }
-      ]
+  "size": {
+    "width": 1440,
+    "height": 900
+  },
+  "now": 1794318674750,
+  "address": "",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": false,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 690
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
     },
-    {
-      "name": "field-sync",
-      "repo": "field-sync",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
-          "turns": [{
-            "prompt": "Rotate sync tokens without signing devices out",
-            "end": "working",
-            "items": [
-              {"id": "r1", "kind": "reasoning", "text": "Devices can keep their previous token for a grace period, so a write in flight during rotation still succeeds.", "done": true},
-              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "tokens.go"}}
-            ]
-          }]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "turns": [{
-            "prompt": "Why do conflict retries spike after midnight UTC?",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "Every device token expires at midnight UTC, so clients reconnect at once and retry the writes they queued. I only read files; nothing changed.", "done": true}]
-          }]
+    "sessionViews": {},
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "6257cc5f",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  }
+                ],
+                "updated": 1794318673977
+              },
+              "sessions": [
+                {
+                  "id": "9445baa3",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "1d770a38",
+              "path": "/Users/demo/field-sync",
+              "name": "field-sync",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-sync",
+                "url": "https://github.com/fieldnote-app/field-sync",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 2,
+                "pullRequests": [
+                  {
+                    "number": 118,
+                    "title": "Retry conflicted writes with backoff",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "conflict-backoff",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "FAILURE",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": true,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 119,
+                    "title": "Compress sync payloads with zstd",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "kenji-ota-dev",
+                    "branch": "zstd-payloads",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 121,
+                    "title": "Add device names to the sync log",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "tomas-hallberg-dev",
+                    "branch": "device-names",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "team",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318673977
+              },
+              "sessions": [
+                {
+                  "id": "bcca2c8e",
+                  "parent": "",
+                  "title": "Why do conflict retries spike after midnight UT\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "1fe64a8f",
+                  "parent": "",
+                  "title": "Rotate sync tokens without signing devices out",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "4c72e13b",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318673977
+              },
+              "sessions": [
+                {
+                  "id": "4d990fcf",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "37303f45",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": [
+            {
+              "login": "ines-moreau-dev",
+              "pullRequests": [
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 118,
+                  "title": "Retry conflicted writes with backoff",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "conflict-backoff",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "FAILURE",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": true,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 119,
+                  "title": "Compress sync payloads with zstd",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "kenji-ota-dev",
+                  "branch": "zstd-payloads",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 121,
+                  "title": "Add device names to the sync log",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "tomas-hallberg-dev",
+                  "branch": "device-names",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "team",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                }
+              ],
+              "updated": 1794318673977
+            }
+          ]
         }
-      ]
-    },
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "sessions": [
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "turns": [{
-            "prompt": "Highlight code blocks in rendered pages",
-            "end": "working",
-            "items": [
-              {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension.", "done": true},
-              {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}}
-            ]
-          }]
-        },
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "turns": [{
-            "prompt": "Explain how harbor picks a template for each page",
-            "end": "idle",
-            "items": [{"id": "answer", "kind": "text", "text": "Every page uses `templates/page.html`. I only read files; nothing changed.", "done": true}]
-          }]
+      },
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "6257cc5f",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  }
+                ],
+                "updated": 1794318674405
+              },
+              "sessions": [
+                {
+                  "id": "9445baa3",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "1d770a38",
+              "path": "/Users/demo/field-sync",
+              "name": "field-sync",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-sync",
+                "url": "https://github.com/fieldnote-app/field-sync",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 2,
+                "pullRequests": [
+                  {
+                    "number": 118,
+                    "title": "Retry conflicted writes with backoff",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "conflict-backoff",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "FAILURE",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": true,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 119,
+                    "title": "Compress sync payloads with zstd",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "kenji-ota-dev",
+                    "branch": "zstd-payloads",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 121,
+                    "title": "Add device names to the sync log",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "tomas-hallberg-dev",
+                    "branch": "device-names",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "team",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318674405
+              },
+              "sessions": [
+                {
+                  "id": "bcca2c8e",
+                  "parent": "",
+                  "title": "Why do conflict retries spike after midnight UT\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "1fe64a8f",
+                  "parent": "",
+                  "title": "Rotate sync tokens without signing devices out",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "4c72e13b",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 0,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318674405
+              },
+              "sessions": [
+                {
+                  "id": "4d990fcf",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "37303f45",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [],
+          "limits": [],
+          "accounts": [
+            {
+              "login": "ines-moreau-dev",
+              "pullRequests": [
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 118,
+                  "title": "Retry conflicted writes with backoff",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "conflict-backoff",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "FAILURE",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": true,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 119,
+                  "title": "Compress sync payloads with zstd",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "kenji-ota-dev",
+                  "branch": "zstd-payloads",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 121,
+                  "title": "Add device names to the sync log",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "tomas-hallberg-dev",
+                  "branch": "device-names",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "team",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                }
+              ],
+              "updated": 1794318674405
+            }
+          ]
         }
-      ]
+      }
+    ]
+  },
+  "responses": {
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
     }
-  ],
-  "select": [],
-  "workbench": {"rightPanel": false}
+  }
 }

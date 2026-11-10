@@ -1,6 +1,6 @@
-// Command hypercube-harness-scripted plays a documentation screenshot scene.
-// `make screenshots` installs it under each real harness name, so the app runs
-// it in place of the native harnesses. It reads the scene file named by
+// Command hypercube-harness-scripted plays a scripted scene for the Linux
+// desktop tests. They install it under a real harness name, so the app runs
+// it in place of the native harness. It reads the scene file named by
 // HYPERCUBE_SCENE and answers each input with the turn whose prompt the input
 // contains: a child's brief arrives wrapped in its parent's message. A turn
 // may start child sessions and offer tasks through Hypercube's create_session
@@ -39,8 +39,7 @@ const (
 	endAsk     = "ask"
 )
 
-// The parts of a scene file the plugin plays. The screenshot driver reads the
-// rest.
+// The parts of a scene file the plugin plays.
 type scene struct {
 	Workspaces []struct {
 		Sessions []session `json:"sessions"`

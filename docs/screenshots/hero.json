@@ -1,391 +1,2710 @@
 {
-  "github": true,
-  "size": {"width": 1680, "height": 1020},
-  "workspaces": [
-    {
-      "name": "harbor",
-      "repo": "harbor",
-      "pullRequests": [
-        {"number": 55, "title": "Highlight code blocks in rendered pages", "session": "Highlight code blocks in rendered pages", "draft": true, "checks": "PENDING"},
-        {"number": 53, "title": "Add a contributing guide", "session": "Add a contributing guide", "review": "REVIEW_REQUIRED", "checks": "SUCCESS", "pendingReviews": 1}
-      ],
-      "changes": "harbor.patch",
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "worktree": true,
-          "parked": true,
-          "turns": [
-            {
-              "prompt": "Add a contributing guide",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "CONTRIBUTING.md"}, "output": "File created successfully at: CONTRIBUTING.md", "done": true},
-                {"id": "t1", "kind": "text", "text": "Added **CONTRIBUTING.md** with the test command and commit style, and merged it into `main`.", "done": true}
-              ],
-              "git": [
-                {"file": "CONTRIBUTING.md", "content": "# Contributing\n\nRun `go test ./...` before you send a change. Keep commit subjects short and in the imperative.\n"},
-                {"args": ["add", "CONTRIBUTING.md"]},
-                {"args": ["commit", "-q", "-m", "Add a contributing guide"]},
-                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Add a contributing guide"]}
-              ]
-            }
-          ]
+  "size": {
+    "width": 1680,
+    "height": 1020
+  },
+  "now": 1794318670319,
+  "address": "#fce8617c",
+  "actions": {},
+  "views": {
+    "selected": null,
+    "workbench": {
+      "sidebar": true,
+      "rightPanel": false,
+      "rightTab": "files",
+      "wrap": false,
+      "fixedWidth": true,
+      "sizes": {
+        "sidebar": 290,
+        "rightPanel": 320,
+        "panel": 240,
+        "editor": 834
+      },
+      "sidebarTab": "sessions",
+      "collapsedWorkspaces": {},
+      "collapsedSessions": {},
+      "collapsedPullRequestGroups": {},
+      "sidebarScroll": {
+        "sessions": 0,
+        "archived": 0
+      }
+    },
+    "sessionViews": {
+      "fce8617c": {
+        "panel": false,
+        "tabs": {
+          "root": {
+            "id": 3,
+            "tabs": [
+              "file:cache.go",
+              "diff:build.go"
+            ],
+            "active": "diff:build.go"
+          },
+          "preview": null,
+          "dragging": null,
+          "nextId": 4
         },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "parked": true,
-          "turns": [
+        "activePane": 3,
+        "expanded": {},
+        "scroll": {},
+        "folders": {},
+        "files": {
+          "cache.go": {
+            "source": false,
+            "lines": []
+          }
+        }
+      }
+    },
+    "workspaceViews": {}
+  },
+  "sockets": {
+    "/state": [
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
             {
-              "prompt": "Explain how harbor picks a template for each page",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -n template build.go"}, "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))", "done": true},
-                {"id": "t1", "kind": "text", "text": "Every page renders with `page.html` unless its front matter sets `template:`.", "done": true}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "worktree": true,
-          "turns": [
-            {
-              "prompt": "Highlight code blocks in rendered pages",
-              "end": "working",
-              "usage": {"context": 22310, "window": 272000},
-              "items": [
-                {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting plugs into goldmark as an extension.", "done": true},
-                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "build.go"}, "output": "Success. Updated build.go", "done": true},
-                {"id": "c2", "kind": "tool", "tool": "shell", "input": {"command": "go test ./..."}}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
-          "turns": [
-            {
-              "prompt": "Make harbor build skip pages whose source hasn't changed since the last build",
-              "end": "idle",
-              "usage": {"context": 48210, "window": 200000, "cost": 0.84},
-              "items": [
-                {"id": "r1", "kind": "reasoning", "text": "Build deletes public/ and renders everything. To skip unchanged pages it needs a record of what each output was built from: the page source and the templates.", "done": true},
-                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}, "output": "     1\tpackage main\n...", "done": true},
-                {"id": "c2", "kind": "tool", "tool": "Write", "input": {"file_path": "cache.go"}, "output": "File created successfully at: cache.go", "done": true},
-                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
-                {"id": "c4", "kind": "tool", "tool": "Edit", "input": {"file_path": "main.go"}, "output": "The file main.go has been updated.", "done": true},
-                {"id": "c5", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./... && go run . build && go run . build", "description": "Run the tests and build twice"}, "output": "ok  \tgithub.com/harbor-ssg/harbor\t0.412s\nbuilt 3 pages\nbuilt 0 pages", "done": true},
-                {"id": "t1", "kind": "text", "text": "`harbor build` now skips pages that haven't changed: on the sample site a second build reports `built 0 pages`.\n\n- **`cache.go`** stores a SHA-256 of each page's source and the templates in `public/.harbor-cache.json`.\n- **`build.go`** renders a page only when its hash changed. Editing any template rebuilds every page.\n- **`main.go`** adds `harbor build -force`, which ignores the cache.\n\nDeleting a source page still leaves its old HTML in `public/`. Want me to remove those outputs?", "done": true}
+              "id": "026c94e2",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 36,
+                    "title": "Write a guide to sharing notebooks",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-fccf96bd",
+                    "fork": false,
+                    "draft": false,
+                    "review": "CHANGES_REQUESTED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": true,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669439
+              },
+              "sessions": [
+                {
+                  "id": "fccf96bd",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes/.hypercube/fccf96bd",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-fccf96bd",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": false,
+                    "uncommitted": 1
+                  },
+                  "pullRequest": {
+                    "number": 36,
+                    "title": "Write a guide to sharing notebooks",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-fccf96bd",
+                    "fork": false,
+                    "draft": false,
+                    "review": "CHANGES_REQUESTED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": true,
+                    "unanswered": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "88d61fa3",
+                  "parent": "",
+                  "title": "Explain sync conflicts in the sync guide",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes/.hypercube/88d61fa3",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-88d61fa3",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "7f32f860",
+                  "parent": "",
+                  "title": "Fix the broken links in the getting-started gui\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
               ]
             },
             {
-              "prompt": "Yes, remove them. Meanwhile, have one agent write tests for the cache and one document -force here, and benchmark the cache on a large site in a worktree.",
-              "end": "working",
-              "usage": {"context": 61930, "window": 200000, "cost": 1.12},
-              "children": [
+              "id": "f1c07ed1",
+              "path": "/Users/demo/field-sync",
+              "name": "field-sync",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-sync",
+                "url": "https://github.com/fieldnote-app/field-sync",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 2,
+                "pullRequests": [
+                  {
+                    "number": 118,
+                    "title": "Retry conflicted writes with backoff",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "conflict-backoff",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "FAILURE",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": true,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 119,
+                    "title": "Compress sync payloads with zstd",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "kenji-ota-dev",
+                    "branch": "zstd-payloads",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 121,
+                    "title": "Add device names to the sync log",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "tomas-hallberg-dev",
+                    "branch": "device-names",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "team",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 120,
+                    "title": "Paginate the /changes endpoint",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-b8e4287f",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669439
+              },
+              "sessions": [
                 {
-                  "title": "Write build cache tests",
-                  "name": "cache-tests",
-                  "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-                  "dir": ".",
-                  "turns": [
+                  "id": "cf8132be",
+                  "parent": "",
+                  "title": "Rotate sync tokens without signing devices out",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 41270,
+                    "window": 200000,
+                    "cost": 0.63
+                  },
+                  "worktree": false,
+                  "children": [
                     {
-                      "prompt": "Add table tests for the build cache to build_test.go: an unchanged page is skipped, an edited page is rebuilt, a template change rebuilds every page, and Force ignores the cache. Run go test ./... before you finish.",
-                      "end": "working",
-                      "items": [
-                        {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "sed -n '1,80p' build.go cache.go"}, "output": "package main\n...", "done": true},
-                        {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "build_test.go"}, "output": "Success. Updated build_test.go", "done": true},
-                        {"id": "c3", "kind": "tool", "tool": "shell", "input": {"command": "go test ./..."}}
-                      ]
+                      "id": "32f49efb",
+                      "parent": "cf8132be",
+                      "title": "Audit token expiry paths",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "opencode",
+                      "model": "openai/gpt-6.1-terra",
+                      "effort": "high",
+                      "dir": "/Users/demo/field-sync",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "00f23165",
+                      "parent": "cf8132be",
+                      "title": "Add the previous-token migration",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "claude",
+                      "model": "sonnet",
+                      "effort": "high",
+                      "dir": "/Users/demo/field-sync/.hypercube/cf8132be-token-migration",
+                      "activity": "busy",
+                      "attention": true,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
                     }
                   ]
                 },
                 {
-                  "title": "Benchmark the build cache",
-                  "name": "cache-bench",
-                  "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-                  "turns": [
-                    {
-                      "prompt": "Write a benchmark that builds a generated 5,000-page site twice, once cold and once warm, and commit it. Report both timings.",
-                      "end": "idle",
-                      "usage": {"context": 15200, "window": 400000},
-                      "items": [
-                        {"id": "c1", "kind": "tool", "tool": "write", "input": {"path": "bench_test.go"}, "output": "Wrote bench_test.go", "done": true},
-                        {"id": "c2", "kind": "tool", "tool": "bash", "input": {"command": "go test -run '^$' -bench Build"}, "output": "BenchmarkBuildCold-12    1    2814ms/op\nBenchmarkBuildWarm-12   38      31ms/op", "done": true},
-                        {"id": "t1", "kind": "text", "text": "Committed `bench_test.go`. A cold build of 5,000 pages takes 2.8 s; a warm one takes 31 ms.", "done": true}
-                      ],
-                      "git": [
-                        {"file": "bench_test.go", "content": "package main\n\nimport \"testing\"\n\nfunc BenchmarkBuildCold(b *testing.B) {}\n\nfunc BenchmarkBuildWarm(b *testing.B) {}\n"},
-                        {"args": ["add", "bench_test.go"]},
-                        {"args": ["commit", "-q", "-m", "Benchmark cold and warm builds"]}
-                      ]
-                    }
-                  ]
+                  "id": "b8e4287f",
+                  "parent": "",
+                  "title": "Paginate the /changes endpoint",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": true,
+                  "reply": "`GET /changes` now returns at most 500 changes and a `next` cursor. Committed on this branch; ready to merge.",
+                  "replySeq": 5,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync/.hypercube/b8e4287f",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {
+                    "context": 19800,
+                    "window": 400000
+                  },
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-b8e4287f",
+                    "target": "main",
+                    "unmerged": 1,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 120,
+                    "title": "Paginate the /changes endpoint",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-b8e4287f",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
                 },
                 {
-                  "title": "Document build -force",
-                  "name": "readme-force",
-                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-                  "dir": ".",
-                  "turns": [
-                    {
-                      "prompt": "Document harbor build -force and the build cache in README.md, in the README's style: short sentences and no new sections.",
-                      "end": "idle",
-                      "usage": {"context": 18400, "window": 200000, "cost": 0.06},
-                      "items": [
-                        {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "README.md"}, "output": "The file README.md has been updated.", "done": true},
-                        {"id": "t1", "kind": "text", "text": "Added `harbor build -force` to the usage block and noted under Layout that `public/.harbor-cache.json` lets builds skip unchanged pages.", "done": true}
-                      ],
-                      "git": [
-                        {"file": "README.md", "content": "# harbor\n\nA small static site generator. harbor turns a folder of Markdown pages into\nHTML using Go templates.\n\n```sh\nharbor build            # render changed pages in content/ into public/\nharbor build -force     # render every page\nharbor serve -addr :8080\n```\n\n## Layout\n\n- `content/` holds Markdown pages. A page's front matter sets its title and\n  template.\n- `templates/` holds the Go templates pages render with.\n- `public/` is the output. `public/.harbor-cache.json` records what each page\n  was built from, so builds skip unchanged pages.\n"}
-                      ]
-                    }
-                  ]
+                  "id": "a69b1318",
+                  "parent": "",
+                  "title": "Why do conflict retries spike after midnight UT\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "c3367c0d",
+                  "parent": "",
+                  "title": "Add request logging middleware",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync/.hypercube/c3367c0d",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-c3367c0d",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "children": []
                 }
-              ],
-              "items": [
-                {"id": "c7", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Write build cache tests", "name": "cache-tests", "harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created cache-tests in harbor.", "done": true},
-                {"id": "c8", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Benchmark the build cache", "name": "cache-bench", "harness": "pi", "model": "openai/gpt-5.2", "effort": "high", "initiation": "user_asked"}, "output": "Created cache-bench in harbor, in its own worktree.", "done": true},
-                {"id": "c9", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Document build -force", "name": "readme-force", "harness": "claude", "model": "sonnet", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created readme-force in harbor.", "done": true},
-                {"id": "t2", "kind": "text", "text": "**cache-tests** and **readme-force** are working in this checkout, and **cache-bench** has its own worktree so the generated site stays out of yours. Meanwhile I'll remove stale outputs: a page listed in the cache but missing from `content/` was deleted.", "done": true},
-                {"id": "c10", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
-                {"id": "c11", "kind": "tool", "tool": "Bash", "input": {"command": "rm content/posts/templates.md && go run . build && ls public/posts", "description": "Check that a deleted page's output is removed"}}
+              ]
+            },
+            {
+              "id": "2db07e7e",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 55,
+                    "title": "Highlight code blocks in rendered pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/55",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-ea57afe6",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 53,
+                    "title": "Add a contributing guide",
+                    "url": "https://github.com/quayside-tools/harbor/pull/53",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-e872a540",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669439
+              },
+              "sessions": [
+                {
+                  "id": "fce8617c",
+                  "parent": "",
+                  "title": "Make harbor build skip pages whose source hasn'\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 61930,
+                    "window": 200000,
+                    "cost": 1.12
+                  },
+                  "worktree": false,
+                  "children": [
+                    {
+                      "id": "6a2c0475",
+                      "parent": "fce8617c",
+                      "title": "Write build cache tests",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "opencode",
+                      "model": "openai/gpt-6.1-terra",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor",
+                      "activity": "busy",
+                      "attention": false,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "890d1ae5",
+                      "parent": "fce8617c",
+                      "title": "Benchmark the build cache",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "pi",
+                      "model": "openai/gpt-5.2",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor/.hypercube/fce8617c-cache-bench",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {
+                        "context": 15200,
+                        "window": 400000
+                      },
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "4a571f95",
+                      "parent": "fce8617c",
+                      "title": "Document build -force",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "claude",
+                      "model": "sonnet",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {
+                        "context": 18400,
+                        "window": 200000,
+                        "cost": 0.06
+                      },
+                      "worktree": false,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "id": "ea57afe6",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor/.hypercube/ea57afe6",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 22310,
+                    "window": 272000
+                  },
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-ea57afe6",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": false,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 55,
+                    "title": "Highlight code blocks in rendered pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/55",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-ea57afe6",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "2eb4c8fb",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "e872a540",
+                  "parent": "",
+                  "title": "Add a contributing guide",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor/.hypercube/e872a540",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-e872a540",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 53,
+                    "title": "Add a contributing guide",
+                    "url": "https://github.com/quayside-tools/harbor/pull/53",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-e872a540",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "8b9da907",
+              "path": "/Users/demo/harbor-themes",
+              "name": "harbor-themes",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor-themes",
+                "url": "https://github.com/quayside-tools/harbor-themes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 12,
+                    "title": "Add a print stylesheet to the plain theme",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/12",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "print-styles",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 13,
+                    "title": "Move the plain theme's colors into CSS custom properties",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-211a5b5d",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669439
+              },
+              "sessions": [
+                {
+                  "id": "8835d2a1",
+                  "parent": "",
+                  "title": "Add a dark variant of the journal theme",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor-themes",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 12900,
+                    "window": 128000
+                  },
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "211a5b5d",
+                  "parent": "",
+                  "title": "Move the plain theme's colors into CSS custom p\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor-themes/.hypercube/211a5b5d",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-211a5b5d",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 13,
+                    "title": "Move the plain theme's colors into CSS custom properties",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-211a5b5d",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                }
               ]
             }
           ],
-          "view": {
-            "tabs": {
-              "root": {"id": 3, "tabs": ["file:cache.go", "diff:build.go"], "active": "diff:build.go"},
-              "preview": null, "dragging": null, "nextId": 4
-            },
-            "activePane": 3, "expanded": {}, "scroll": {}, "folders": {},
-            "files": {"cache.go": {"source": false, "lines": []}}
-          }
-        }
-      ]
-    },
-    {
-      "name": "field-sync",
-      "repo": "field-sync",
-      "pullRequests": [
-        {"number": 120, "title": "Paginate the /changes endpoint", "session": "Paginate the /changes endpoint", "review": "APPROVED", "checks": "SUCCESS", "merge": "CLEAN"}
-      ],
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "worktree": true,
-          "parked": true,
-          "turns": [
+          "requests": [
             {
-              "prompt": "Add request logging middleware",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "logging.go"}, "output": "File created successfully at: logging.go", "done": true},
-                {"id": "t1", "kind": "text", "text": "Requests are now logged with their method, path, status, and duration. Merged into `main`.", "done": true}
-              ],
-              "git": [
-                {"file": "logging.go", "content": "package main\n\n// logRequests logs each request's method, path, status, and duration.\n"},
-                {"args": ["add", "logging.go"]},
-                {"args": ["commit", "-q", "-m", "Log each request"]},
-                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Log each request"]}
-              ]
+              "session": "00f23165",
+              "item": {
+                "at": 1794318669070,
+                "id": "b89a4d39:q1",
+                "kind": "attention",
+                "text": "The staging copy is 4 GB. Which database should I test migration 0007 against?",
+                "choices": [
+                  "Staging copy",
+                  "Local fixture"
+                ],
+                "notes": [
+                  "Takes about 10 minutes.",
+                  "Finishes in seconds, with 200 devices."
+                ]
+              }
             }
-          ]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "parked": true,
-          "turns": [
+          ],
+          "limits": [],
+          "accounts": [
             {
-              "prompt": "Why do conflict retries spike after midnight UTC?",
-              "end": "idle",
-              "items": [
-                {"id": "t1", "kind": "text", "text": "Every device's daily backup starts at midnight UTC and pushes at once, so their changes collide.", "done": true}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "worktree": true,
-          "unseen": true,
-          "turns": [
-            {
-              "prompt": "Paginate the /changes endpoint",
-              "end": "idle",
-              "usage": {"context": 19800, "window": 400000},
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "store.go"}, "output": "Updated store.go", "done": true},
-                {"id": "c2", "kind": "tool", "tool": "bash", "input": {"command": "go test ./..."}, "output": "ok  \tgithub.com/field-notes/field-sync\t0.208s", "done": true},
-                {"id": "t1", "kind": "text", "text": "`GET /changes` now returns at most 500 changes and a `next` cursor. Committed on this branch; ready to merge.", "done": true}
-              ],
-              "git": [
-                {"file": "pagination.go", "content": "package main\n\n// pageSize is the most changes one GET /changes returns.\nconst pageSize = 500\n"},
-                {"args": ["add", "pagination.go"]},
-                {"args": ["commit", "-q", "-m", "Paginate GET /changes"]}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
-          "turns": [
-            {
-              "prompt": "Rotate sync tokens without signing devices out",
-              "end": "working",
-              "usage": {"context": 41270, "window": 200000, "cost": 0.63},
-              "children": [
+              "login": "ines-moreau-dev",
+              "pullRequests": [
                 {
-                  "title": "Audit token expiry paths",
-                  "name": "token-audit",
-                  "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-                  "dir": ".",
-                  "turns": [
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 55,
+                  "title": "Highlight code blocks in rendered pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/55",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-ea57afe6",
+                  "fork": false,
+                  "draft": true,
+                  "review": "",
+                  "checks": "PENDING",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 53,
+                  "title": "Add a contributing guide",
+                  "url": "https://github.com/quayside-tools/harbor/pull/53",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-e872a540",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 118,
+                  "title": "Retry conflicted writes with backoff",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "conflict-backoff",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "FAILURE",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": true,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 119,
+                  "title": "Compress sync payloads with zstd",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "kenji-ota-dev",
+                  "branch": "zstd-payloads",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 121,
+                  "title": "Add device names to the sync log",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "tomas-hallberg-dev",
+                  "branch": "device-names",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "team",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 120,
+                  "title": "Paginate the /changes endpoint",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-b8e4287f",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 36,
+                  "title": "Write a guide to sharing notebooks",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-fccf96bd",
+                  "fork": false,
+                  "draft": false,
+                  "review": "CHANGES_REQUESTED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": true,
+                  "unanswered": 0
+                },
+                {
+                  "number": 12,
+                  "title": "Add a print stylesheet to the plain theme",
+                  "url": "https://github.com/quayside-tools/harbor-themes/pull/12",
+                  "repo": "quayside-tools/harbor-themes",
+                  "author": "ines-moreau-dev",
+                  "branch": "print-styles",
+                  "fork": false,
+                  "draft": true,
+                  "review": "",
+                  "checks": "PENDING",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 13,
+                  "title": "Move the plain theme's colors into CSS custom properties",
+                  "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                  "repo": "quayside-tools/harbor-themes",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-211a5b5d",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                }
+              ],
+              "updated": 1794318669439
+            }
+          ]
+        }
+      },
+      {
+        "json": {
+          "type": "transcript",
+          "session": "fce8617c",
+          "reset": true,
+          "items": [
+            {
+              "at": 1794318667852,
+              "id": "7c654f68:host-e2e1ecfc",
+              "kind": "user",
+              "done": true,
+              "text": "Make harbor build skip pages whose source hasn't changed since the last build",
+              "seq": 1
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:state-70",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 2
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:r1",
+              "kind": "reasoning",
+              "done": true,
+              "text": "Build deletes public/ and renders everything. To skip unchanged pages it needs a record of what each output was built from: the page source and the templates.",
+              "seq": 3
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:c1",
+              "kind": "tool",
+              "done": true,
+              "tool": "Read",
+              "input": {
+                "file_path": "build.go"
+              },
+              "output": "     1\tpackage main\n...",
+              "seq": 4
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:c2",
+              "kind": "tool",
+              "done": true,
+              "tool": "Write",
+              "input": {
+                "file_path": "cache.go"
+              },
+              "output": "File created successfully at: cache.go",
+              "seq": 5
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:c3",
+              "kind": "tool",
+              "done": true,
+              "tool": "Edit",
+              "input": {
+                "file_path": "build.go"
+              },
+              "output": "The file build.go has been updated.",
+              "seq": 6
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:c4",
+              "kind": "tool",
+              "done": true,
+              "tool": "Edit",
+              "input": {
+                "file_path": "main.go"
+              },
+              "output": "The file main.go has been updated.",
+              "seq": 7
+            },
+            {
+              "at": 1794318667879,
+              "id": "7c654f68:c5",
+              "kind": "tool",
+              "done": true,
+              "tool": "Bash",
+              "input": {
+                "command": "go test ./... && go run . build && go run . build",
+                "description": "Run the tests and build twice"
+              },
+              "output": "ok  \tgithub.com/harbor-ssg/harbor\t0.412s\nbuilt 3 pages\nbuilt 0 pages",
+              "seq": 8
+            },
+            {
+              "at": 1794318667880,
+              "id": "7c654f68:t1",
+              "kind": "text",
+              "done": true,
+              "text": "`harbor build` now skips pages that haven't changed: on the sample site a second build reports `built 0 pages`.\n\n- **`cache.go`** stores a SHA-256 of each page's source and the templates in `public/.harbor-cache.json`.\n- **`build.go`** renders a page only when its hash changed. Editing any template rebuilds every page.\n- **`main.go`** adds `harbor build -force`, which ignores the cache.\n\nDeleting a source page still leaves its old HTML in `public/`. Want me to remove those outputs?",
+              "seq": 9
+            },
+            {
+              "at": 1794318667880,
+              "id": "7c654f68:state-1743",
+              "kind": "state",
+              "done": true,
+              "state": "idle",
+              "final": [
+                "7c654f68:t1"
+              ],
+              "seq": 10
+            },
+            {
+              "at": 1794318667896,
+              "id": "7c654f68:host-ab1dac6a",
+              "kind": "user",
+              "done": true,
+              "text": "Yes, remove them. Meanwhile, have one agent write tests for the cache and one document -force here, and benchmark the cache on a large site in a worktree.",
+              "seq": 11
+            },
+            {
+              "at": 1794318667939,
+              "id": "7c654f68:state-1793",
+              "kind": "state",
+              "done": true,
+              "state": "working",
+              "seq": 12
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:c7",
+              "kind": "tool",
+              "done": true,
+              "server": "hypercube",
+              "tool": "create_session",
+              "input": {
+                "title": "Write build cache tests",
+                "name": "cache-tests",
+                "harness": "opencode",
+                "model": "openai/gpt-6.1-terra",
+                "effort": "high",
+                "dir": ".",
+                "initiation": "user_asked"
+              },
+              "output": "Created cache-tests in harbor.",
+              "seq": 13
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:c8",
+              "kind": "tool",
+              "done": true,
+              "server": "hypercube",
+              "tool": "create_session",
+              "input": {
+                "title": "Benchmark the build cache",
+                "name": "cache-bench",
+                "harness": "pi",
+                "model": "openai/gpt-5.2",
+                "effort": "high",
+                "initiation": "user_asked"
+              },
+              "output": "Created cache-bench in harbor, in its own worktree.",
+              "seq": 14
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:c9",
+              "kind": "tool",
+              "done": true,
+              "server": "hypercube",
+              "tool": "create_session",
+              "input": {
+                "title": "Document build -force",
+                "name": "readme-force",
+                "harness": "claude",
+                "model": "sonnet",
+                "effort": "high",
+                "dir": ".",
+                "initiation": "user_asked"
+              },
+              "output": "Created readme-force in harbor.",
+              "seq": 15
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:t2",
+              "kind": "text",
+              "done": true,
+              "text": "**cache-tests** and **readme-force** are working in this checkout, and **cache-bench** has its own worktree so the generated site stays out of yours. Meanwhile I'll remove stale outputs: a page listed in the cache but missing from `content/` was deleted.",
+              "seq": 16
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:c10",
+              "kind": "tool",
+              "done": true,
+              "tool": "Edit",
+              "input": {
+                "file_path": "build.go"
+              },
+              "output": "The file build.go has been updated.",
+              "seq": 17
+            },
+            {
+              "at": 1794318668588,
+              "id": "7c654f68:c11",
+              "kind": "tool",
+              "tool": "Bash",
+              "input": {
+                "command": "rm content/posts/templates.md && go run . build && ls public/posts",
+                "description": "Check that a deleted page's output is removed"
+              },
+              "seq": 18
+            }
+          ]
+        }
+      },
+      {
+        "json": {
+          "type": "state",
+          "build": "37779e9c1ec14991762c3eb26cf1f5e0fc608bee18cbf6adb604cbb332b7b375",
+          "workspaces": [
+            {
+              "id": "026c94e2",
+              "path": "/Users/demo/field-notes",
+              "name": "field-notes",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-notes",
+                "url": "https://github.com/fieldnote-app/field-notes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 34,
+                    "title": "Document offline editing",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "offline-editing",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 36,
+                    "title": "Write a guide to sharing notebooks",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-fccf96bd",
+                    "fork": false,
+                    "draft": false,
+                    "review": "CHANGES_REQUESTED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": true,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669769
+              },
+              "sessions": [
+                {
+                  "id": "fccf96bd",
+                  "parent": "",
+                  "title": "Write a guide to sharing notebooks",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes/.hypercube/fccf96bd",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-fccf96bd",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": false,
+                    "uncommitted": 1
+                  },
+                  "pullRequest": {
+                    "number": 36,
+                    "title": "Write a guide to sharing notebooks",
+                    "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                    "repo": "fieldnote-app/field-notes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-fccf96bd",
+                    "fork": false,
+                    "draft": false,
+                    "review": "CHANGES_REQUESTED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": true,
+                    "unanswered": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "88d61fa3",
+                  "parent": "",
+                  "title": "Explain sync conflicts in the sync guide",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes/.hypercube/88d61fa3",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-88d61fa3",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "7f32f860",
+                  "parent": "",
+                  "title": "Fix the broken links in the getting-started gui\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-notes",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "f1c07ed1",
+              "path": "/Users/demo/field-sync",
+              "name": "field-sync",
+              "noGit": false,
+              "github": {
+                "repo": "fieldnote-app/field-sync",
+                "url": "https://github.com/fieldnote-app/field-sync",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 2,
+                "pullRequests": [
+                  {
+                    "number": 118,
+                    "title": "Retry conflicted writes with backoff",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "conflict-backoff",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "FAILURE",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": true,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 119,
+                    "title": "Compress sync payloads with zstd",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "kenji-ota-dev",
+                    "branch": "zstd-payloads",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 1
+                  },
+                  {
+                    "number": 121,
+                    "title": "Add device names to the sync log",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "tomas-hallberg-dev",
+                    "branch": "device-names",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "team",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 120,
+                    "title": "Paginate the /changes endpoint",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-b8e4287f",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669769
+              },
+              "sessions": [
+                {
+                  "id": "cf8132be",
+                  "parent": "",
+                  "title": "Rotate sync tokens without signing devices out",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 41270,
+                    "window": 200000,
+                    "cost": 0.63
+                  },
+                  "worktree": false,
+                  "children": [
                     {
-                      "prompt": "List every place that reads or expires a device token, without changing files.",
-                      "end": "idle",
-                      "items": [
-                        {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -rn -i token --include=*.go ."}, "output": "./tokens.go:11:const tokenLifetime = 30 * 24 * time.Hour\n./store.go:29:func (s *Store) Device(token string) (Device, error) {", "done": true},
-                        {"id": "t1", "kind": "text", "text": "Tokens are read only in `requireToken` and `Store.Device`; nothing revokes them.", "done": true}
-                      ]
+                      "id": "32f49efb",
+                      "parent": "cf8132be",
+                      "title": "Audit token expiry paths",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "opencode",
+                      "model": "openai/gpt-6.1-terra",
+                      "effort": "high",
+                      "dir": "/Users/demo/field-sync",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "00f23165",
+                      "parent": "cf8132be",
+                      "title": "Add the previous-token migration",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "claude",
+                      "model": "sonnet",
+                      "effort": "high",
+                      "dir": "/Users/demo/field-sync/.hypercube/cf8132be-token-migration",
+                      "activity": "busy",
+                      "attention": true,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
                     }
                   ]
                 },
                 {
-                  "title": "Add the previous-token migration",
-                  "name": "token-migration",
-                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-                  "turns": [
+                  "id": "b8e4287f",
+                  "parent": "",
+                  "title": "Paginate the /changes endpoint",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": true,
+                  "reply": "`GET /changes` now returns at most 500 changes and a `next` cursor. Committed on this branch; ready to merge.",
+                  "replySeq": 5,
+                  "harness": "pi",
+                  "model": "openai/gpt-5.2",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync/.hypercube/b8e4287f",
+                  "activity": "idle",
+                  "attention": false,
+                  "usage": {
+                    "context": 19800,
+                    "window": 400000
+                  },
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-b8e4287f",
+                    "target": "main",
+                    "unmerged": 1,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 120,
+                    "title": "Paginate the /changes endpoint",
+                    "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                    "repo": "fieldnote-app/field-sync",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-b8e4287f",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "a69b1318",
+                  "parent": "",
+                  "title": "Why do conflict retries spike after midnight UT\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/field-sync",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "c3367c0d",
+                  "parent": "",
+                  "title": "Add request logging middleware",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/field-sync/.hypercube/c3367c0d",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-c3367c0d",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "2db07e7e",
+              "path": "/Users/demo/harbor",
+              "name": "harbor",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor",
+                "url": "https://github.com/quayside-tools/harbor",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 52,
+                    "title": "Support TOML front matter",
+                    "url": "https://github.com/quayside-tools/harbor/pull/52",
+                    "repo": "quayside-tools/harbor",
+                    "author": "kenji-ota-dev",
+                    "branch": "toml-front-matter",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "user",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 49,
+                    "title": "Fix relative links in nested pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/49",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "nested-links",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 47,
+                    "title": "Add a --drafts flag to harbor serve",
+                    "url": "https://github.com/quayside-tools/harbor/pull/47",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "serve-drafts",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 55,
+                    "title": "Highlight code blocks in rendered pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/55",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-ea57afe6",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 53,
+                    "title": "Add a contributing guide",
+                    "url": "https://github.com/quayside-tools/harbor/pull/53",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-e872a540",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669769
+              },
+              "sessions": [
+                {
+                  "id": "fce8617c",
+                  "parent": "",
+                  "title": "Make harbor build skip pages whose source hasn'\u2026",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 61930,
+                    "window": 200000,
+                    "cost": 1.12
+                  },
+                  "worktree": false,
+                  "children": [
                     {
-                      "prompt": "Write migration 0007, which adds a previous_token column to devices, and test it against a copy of the staging database.",
-                      "end": "ask",
-                      "items": [
-                        {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "migrations/0007_previous_token.sql"}, "output": "File created successfully at: migrations/0007_previous_token.sql", "done": true},
-                        {"id": "q1", "kind": "attention", "text": "The staging copy is 4 GB. Which database should I test migration 0007 against?", "choices": ["Staging copy", "Local fixture"], "notes": ["Takes about 10 minutes.", "Finishes in seconds, with 200 devices."]}
-                      ]
+                      "id": "6a2c0475",
+                      "parent": "fce8617c",
+                      "title": "Write build cache tests",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "opencode",
+                      "model": "openai/gpt-6.1-terra",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor",
+                      "activity": "busy",
+                      "attention": false,
+                      "usage": {},
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "890d1ae5",
+                      "parent": "fce8617c",
+                      "title": "Benchmark the build cache",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "pi",
+                      "model": "openai/gpt-5.2",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor/.hypercube/fce8617c-cache-bench",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {
+                        "context": 15200,
+                        "window": 400000
+                      },
+                      "worktree": false,
+                      "children": []
+                    },
+                    {
+                      "id": "4a571f95",
+                      "parent": "fce8617c",
+                      "title": "Document build -force",
+                      "ready": true,
+                      "ended": false,
+                      "unseen": false,
+                      "harness": "claude",
+                      "model": "sonnet",
+                      "effort": "high",
+                      "dir": "/Users/demo/harbor",
+                      "activity": "idle",
+                      "attention": false,
+                      "usage": {
+                        "context": 18400,
+                        "window": 200000,
+                        "cost": 0.06
+                      },
+                      "worktree": false,
+                      "children": []
                     }
                   ]
+                },
+                {
+                  "id": "ea57afe6",
+                  "parent": "",
+                  "title": "Highlight code blocks in rendered pages",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "openai/gpt-6.1-terra",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor/.hypercube/ea57afe6",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 22310,
+                    "window": 272000
+                  },
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-ea57afe6",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": false,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 55,
+                    "title": "Highlight code blocks in rendered pages",
+                    "url": "https://github.com/quayside-tools/harbor/pull/55",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-ea57afe6",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                },
+                {
+                  "id": "2eb4c8fb",
+                  "parent": "",
+                  "title": "Explain how harbor picks a template for each pa\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "e872a540",
+                  "parent": "",
+                  "title": "Add a contributing guide",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "sonnet",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor/.hypercube/e872a540",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-e872a540",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 53,
+                    "title": "Add a contributing guide",
+                    "url": "https://github.com/quayside-tools/harbor/pull/53",
+                    "repo": "quayside-tools/harbor",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-e872a540",
+                    "fork": false,
+                    "draft": false,
+                    "review": "REVIEW_REQUIRED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 1,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "8b9da907",
+              "path": "/Users/demo/harbor-themes",
+              "name": "harbor-themes",
+              "noGit": false,
+              "github": {
+                "repo": "quayside-tools/harbor-themes",
+                "url": "https://github.com/quayside-tools/harbor-themes",
+                "account": "ines-moreau-dev",
+                "branch": "main",
+                "upstream": "origin/main",
+                "ahead": 1,
+                "behind": 0,
+                "pullRequests": [
+                  {
+                    "number": 12,
+                    "title": "Add a print stylesheet to the plain theme",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/12",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "print-styles",
+                    "fork": false,
+                    "draft": true,
+                    "review": "",
+                    "checks": "PENDING",
+                    "updated": 0,
+                    "merge": "BLOCKED",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  {
+                    "number": 13,
+                    "title": "Move the plain theme's colors into CSS custom properties",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-211a5b5d",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  }
+                ],
+                "updated": 1794318669769
+              },
+              "sessions": [
+                {
+                  "id": "8835d2a1",
+                  "parent": "",
+                  "title": "Add a dark variant of the journal theme",
+                  "ready": true,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "opencode",
+                  "model": "opencode-go/deepseek-v4.1-flash",
+                  "effort": "max",
+                  "dir": "/Users/demo/harbor-themes",
+                  "activity": "busy",
+                  "attention": false,
+                  "usage": {
+                    "context": 12900,
+                    "window": 128000
+                  },
+                  "worktree": false,
+                  "children": []
+                },
+                {
+                  "id": "211a5b5d",
+                  "parent": "",
+                  "title": "Move the plain theme's colors into CSS custom p\u2026",
+                  "ready": false,
+                  "ended": false,
+                  "unseen": false,
+                  "harness": "claude",
+                  "model": "opus",
+                  "effort": "high",
+                  "dir": "/Users/demo/harbor-themes/.hypercube/211a5b5d",
+                  "activity": "exited",
+                  "attention": false,
+                  "usage": {},
+                  "worktree": true,
+                  "merge": {
+                    "branch": "hypercube/session-211a5b5d",
+                    "target": "main",
+                    "unmerged": 0,
+                    "committed": true,
+                    "uncommitted": 0
+                  },
+                  "pullRequest": {
+                    "number": 13,
+                    "title": "Move the plain theme's colors into CSS custom properties",
+                    "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                    "repo": "quayside-tools/harbor-themes",
+                    "author": "ines-moreau-dev",
+                    "branch": "hypercube/session-211a5b5d",
+                    "fork": false,
+                    "draft": false,
+                    "review": "APPROVED",
+                    "checks": "SUCCESS",
+                    "updated": 0,
+                    "merge": "CLEAN",
+                    "requiredFailed": false,
+                    "requested": "",
+                    "reviewed": "",
+                    "pendingReviews": 0,
+                    "responded": false,
+                    "unanswered": 0
+                  },
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "requests": [
+            {
+              "session": "00f23165",
+              "item": {
+                "at": 1794318669070,
+                "id": "b89a4d39:q1",
+                "kind": "attention",
+                "text": "The staging copy is 4 GB. Which database should I test migration 0007 against?",
+                "choices": [
+                  "Staging copy",
+                  "Local fixture"
+                ],
+                "notes": [
+                  "Takes about 10 minutes.",
+                  "Finishes in seconds, with 200 devices."
+                ]
+              }
+            }
+          ],
+          "limits": [],
+          "accounts": [
+            {
+              "login": "ines-moreau-dev",
+              "pullRequests": [
+                {
+                  "number": 52,
+                  "title": "Support TOML front matter",
+                  "url": "https://github.com/quayside-tools/harbor/pull/52",
+                  "repo": "quayside-tools/harbor",
+                  "author": "kenji-ota-dev",
+                  "branch": "toml-front-matter",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 49,
+                  "title": "Fix relative links in nested pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/49",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "nested-links",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 47,
+                  "title": "Add a --drafts flag to harbor serve",
+                  "url": "https://github.com/quayside-tools/harbor/pull/47",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "serve-drafts",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 55,
+                  "title": "Highlight code blocks in rendered pages",
+                  "url": "https://github.com/quayside-tools/harbor/pull/55",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-ea57afe6",
+                  "fork": false,
+                  "draft": true,
+                  "review": "",
+                  "checks": "PENDING",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 53,
+                  "title": "Add a contributing guide",
+                  "url": "https://github.com/quayside-tools/harbor/pull/53",
+                  "repo": "quayside-tools/harbor",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-e872a540",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 118,
+                  "title": "Retry conflicted writes with backoff",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/118",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "conflict-backoff",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "FAILURE",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": true,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 119,
+                  "title": "Compress sync payloads with zstd",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/119",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "kenji-ota-dev",
+                  "branch": "zstd-payloads",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 121,
+                  "title": "Add device names to the sync log",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/121",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "tomas-hallberg-dev",
+                  "branch": "device-names",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "team",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 120,
+                  "title": "Paginate the /changes endpoint",
+                  "url": "https://github.com/fieldnote-app/field-sync/pull/120",
+                  "repo": "fieldnote-app/field-sync",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-b8e4287f",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 34,
+                  "title": "Document offline editing",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/34",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "offline-editing",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 1
+                },
+                {
+                  "number": 36,
+                  "title": "Write a guide to sharing notebooks",
+                  "url": "https://github.com/fieldnote-app/field-notes/pull/36",
+                  "repo": "fieldnote-app/field-notes",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-fccf96bd",
+                  "fork": false,
+                  "draft": false,
+                  "review": "CHANGES_REQUESTED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": true,
+                  "unanswered": 0
+                },
+                {
+                  "number": 12,
+                  "title": "Add a print stylesheet to the plain theme",
+                  "url": "https://github.com/quayside-tools/harbor-themes/pull/12",
+                  "repo": "quayside-tools/harbor-themes",
+                  "author": "ines-moreau-dev",
+                  "branch": "print-styles",
+                  "fork": false,
+                  "draft": true,
+                  "review": "",
+                  "checks": "PENDING",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 13,
+                  "title": "Move the plain theme's colors into CSS custom properties",
+                  "url": "https://github.com/quayside-tools/harbor-themes/pull/13",
+                  "repo": "quayside-tools/harbor-themes",
+                  "author": "ines-moreau-dev",
+                  "branch": "hypercube/session-211a5b5d",
+                  "fork": false,
+                  "draft": false,
+                  "review": "APPROVED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "CLEAN",
+                  "requiredFailed": false,
+                  "requested": "",
+                  "reviewed": "",
+                  "pendingReviews": 0,
+                  "responded": false,
+                  "unanswered": 0
+                },
+                {
+                  "number": 8,
+                  "title": "Explain the build cache in the user guide",
+                  "url": "https://github.com/quayside-tools/harbor-docs/pull/8",
+                  "repo": "quayside-tools/harbor-docs",
+                  "author": "kenji-ota-dev",
+                  "branch": "build-cache-docs",
+                  "fork": false,
+                  "draft": false,
+                  "review": "REVIEW_REQUIRED",
+                  "checks": "SUCCESS",
+                  "updated": 0,
+                  "merge": "BLOCKED",
+                  "requiredFailed": false,
+                  "requested": "user",
+                  "reviewed": "",
+                  "pendingReviews": 1,
+                  "responded": false,
+                  "unanswered": 0
                 }
               ],
-              "items": [
-                {"id": "r1", "kind": "reasoning", "text": "A device that misses the rotation would be signed out. Accepting the previous token for a grace period avoids that.", "done": true},
-                {"id": "c1", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Audit token expiry paths", "name": "token-audit", "dir": ".", "initiation": "user_asked"}, "output": "Created token-audit in field-sync.", "done": true},
-                {"id": "c2", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Add the previous-token migration", "name": "token-migration", "initiation": "user_asked"}, "output": "Created token-migration in field-sync, in its own worktree.", "done": true},
-                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "tokens.go"}, "output": "The file tokens.go has been updated.", "done": true},
-                {"id": "c4", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./...", "description": "Run the tests"}}
-              ]
+              "updated": 1794318669769
             }
           ]
         }
-      ]
+      }
+    ]
+  },
+  "responses": {
+    "GET /config": {
+      "status": 200,
+      "json": {
+        "default_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "medium"
+        },
+        "child_model_guidance": "",
+        "default_worktree": false,
+        "review_selection": {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+        "theme": "light",
+        "terminal_font_size": 13,
+        "notifications": {
+          "requests": true,
+          "replies": true,
+          "desktop": true,
+          "sound": true
+        },
+        "models": [
+          {
+            "harness": "claude",
+            "model": "haiku",
+            "title": "Haiku 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "opus",
+            "title": "Opus 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "claude",
+            "model": "sonnet",
+            "title": "Sonnet 5.5",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6-luna",
+            "title": "GPT-6 Luna",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-sol",
+            "title": "GPT-6.1 Sol",
+            "efforts": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "openai/gpt-6.1-terra",
+            "title": "GPT-6.1 Terra",
+            "efforts": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "default_effort": "high"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/deepseek-v4.1-flash",
+            "title": "DeepSeek V4.1 Flash",
+            "efforts": [
+              "low",
+              "high",
+              "max"
+            ],
+            "default_effort": "max"
+          },
+          {
+            "harness": "opencode",
+            "model": "opencode-go/muse-spark-1.3-contributor",
+            "title": "Muse Spark 1.3 Contributor",
+            "efforts": [
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "default_effort": "medium"
+          },
+          {
+            "harness": "pi",
+            "model": "openai/gpt-5.2",
+            "title": "GPT-5.2",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default_effort": "high"
+          }
+        ]
+      }
     },
-    {
-      "name": "field-notes",
-      "repo": "field-notes",
-      "pullRequests": [
-        {"number": 36, "title": "Write a guide to sharing notebooks", "session": "Write a guide to sharing notebooks", "review": "CHANGES_REQUESTED", "checks": "SUCCESS"}
-      ],
-      "sessions": [
-        {
-          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
-          "parked": true,
-          "turns": [
-            {
-              "prompt": "Fix the broken links in the getting-started guide",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "content/guide/getting-started.md"}, "output": "Success. Updated content/guide/getting-started.md", "done": true},
-                {"id": "t1", "kind": "text", "text": "The sync link now points at `sync.html`.", "done": true}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
-          "worktree": true,
-          "parked": true,
-          "turns": [
-            {
-              "prompt": "Explain sync conflicts in the sync guide",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "write", "input": {"path": "content/guide/conflicts.md"}, "output": "Wrote content/guide/conflicts.md", "done": true},
-                {"id": "t1", "kind": "text", "text": "Added a page on sync conflicts and merged it into `main`.", "done": true}
-              ],
-              "git": [
-                {"file": "content/guide/conflicts.md", "content": "# Sync conflicts\n\nWhen two devices change the same note, Field Notes keeps both versions.\n"},
-                {"args": ["add", "content/guide/conflicts.md"]},
-                {"args": ["commit", "-q", "-m", "Explain sync conflicts"]},
-                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Explain sync conflicts"]}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
-          "worktree": true,
-          "turns": [
-            {
-              "prompt": "Write a guide to sharing notebooks",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "content/guide/sharing.md"}, "output": "File created successfully at: content/guide/sharing.md", "done": true},
-                {"id": "t1", "kind": "text", "text": "Drafted **content/guide/sharing.md**. It's uncommitted so you can review it first.", "done": true}
-              ],
-              "git": [
-                {"file": "content/guide/sharing.md", "content": "# Sharing notebooks\n\nShare a notebook from its menu, then choose who can edit it.\n"}
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "harbor-themes",
-      "repo": "harbor-themes",
-      "pullRequests": [
-        {"number": 13, "title": "Move the plain theme's colors into CSS custom properties", "session": "Move the plain theme's colors into CSS custom properties", "review": "APPROVED", "checks": "SUCCESS", "merge": "CLEAN"}
-      ],
-      "sessions": [
-        {
-          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
-          "worktree": true,
-          "parked": true,
-          "turns": [
-            {
-              "prompt": "Move the plain theme's colors into CSS custom properties",
-              "end": "idle",
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "themes/plain/page.html"}, "output": "The file themes/plain/page.html has been updated.", "done": true},
-                {"id": "t1", "kind": "text", "text": "The plain theme's colors are custom properties now. Merged into `main`.", "done": true}
-              ],
-              "git": [
-                {"file": "themes/plain/page.html", "content": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>{{.Title}}</title>\n  <style>\n    :root { --text: #222; }\n    body { max-width: 40rem; margin: 2rem auto; font-family: system-ui, sans-serif; color: var(--text); }\n  </style>\n</head>\n<body>\n  <h1>{{.Title}}</h1>\n  {{.Body}}\n</body>\n</html>\n"},
-                {"args": ["add", "themes/plain/page.html"]},
-                {"args": ["commit", "-q", "-m", "Use custom properties for plain colors"]},
-                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Use custom properties for plain colors"]}
-              ]
-            }
-          ]
-        },
-        {
-          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
-          "turns": [
-            {
-              "prompt": "Add a dark variant of the journal theme",
-              "end": "working",
-              "usage": {"context": 12900, "window": 128000},
-              "items": [
-                {"id": "c1", "kind": "tool", "tool": "read", "input": {"path": "themes/journal/style.css"}, "output": "body { margin: 0; background: #fdfaf4; ... }", "done": true},
-                {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "themes/journal/style.css"}}
-              ]
-            }
-          ]
-        }
-      ]
+    "GET /diff?session=fce8617c&path=build.go": {
+      "status": 200,
+      "type": "text/plain",
+      "body": "diff --git a/build.go b/build.go\nindex 8f92c3d..c21470a 100644\n--- a/build.go\n+++ b/build.go\n@@ -1,97 +1,133 @@\n package main\n \n import (\n \t\"bytes\"\n \t\"html/template\"\n \t\"io/fs\"\n \t\"os\"\n \t\"path/filepath\"\n \t\"strings\"\n \n \t\"github.com/yuin/goldmark\"\n )\n \n // Site is a folder of Markdown pages, the templates they render with, and\n // the folder the HTML goes to.\n type Site struct {\n \tContent   string\n \tTemplates string\n \tOut       string\n+\t// Force rebuilds every page, ignoring the build cache.\n+\tForce bool\n }\n \n // Page is one rendered page.\n type Page struct {\n \tTitle string\n \tBody  template.HTML\n }\n \n-// Build renders every page under Content into Out and returns how many it\n-// wrote.\n+// Build renders the pages under Content that changed since the last build\n+// into Out and returns how many it wrote.\n func (s Site) Build() (int, error) {\n \ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))\n \tif err != nil {\n \t\treturn 0, err\n \t}\n-\tif err := os.RemoveAll(s.Out); err != nil {\n+\ttemplates, err := hashTemplates(s.Templates)\n+\tif err != nil {\n \t\treturn 0, err\n \t}\n+\tcachePath := filepath.Join(s.Out, cacheFile)\n+\tcache := buildCache{}\n+\tif !s.Force {\n+\t\tif cache, err = loadCache(cachePath); err != nil {\n+\t\t\treturn 0, err\n+\t\t}\n+\t}\n \tn := 0\n \terr = filepath.WalkDir(s.Content, func(path string, d fs.DirEntry, err error) error {\n \t\tif err != nil || d.IsDir() || filepath.Ext(path) != \".md\" {\n \t\t\treturn err\n \t\t}\n-\t\tif err := s.render(tmpl, path); err != nil {\n+\t\tsrc, err := os.ReadFile(path)\n+\t\tif err != nil {\n \t\t\treturn err\n \t\t}\n+\t\tk := key(src, templates)\n+\t\tif cache[path] == k {\n+\t\t\treturn nil\n+\t\t}\n+\t\tif err := s.render(tmpl, path, src); err != nil {\n+\t\t\treturn err\n+\t\t}\n+\t\tcache[path] = k\n \t\tn++\n \t\treturn nil\n \t})\n-\treturn n, err\n+\tif err != nil {\n+\t\treturn n, err\n+\t}\n+\treturn n, cache.save(cachePath)\n }\n \n-func (s Site) render(tmpl *template.Template, path string) error {\n-\tsrc, err := os.ReadFile(path)\n+// hashTemplates hashes every template, so a template change rebuilds every\n+// page.\n+func hashTemplates(dir string) (string, error) {\n+\tpaths, err := filepath.Glob(filepath.Join(dir, \"*.html\"))\n \tif err != nil {\n-\t\treturn err\n+\t\treturn \"\", err\n+\t}\n+\tvar all []byte\n+\tfor _, p := range paths {\n+\t\tb, err := os.ReadFile(p)\n+\t\tif err != nil {\n+\t\t\treturn \"\", err\n+\t\t}\n+\t\tall = append(all, b...)\n \t}\n+\treturn key(all, \"\"), nil\n+}\n+\n+func (s Site) render(tmpl *template.Template, path string, src []byte) error {\n \tmeta, body := frontMatter(src)\n \tvar html bytes.Buffer\n \tif err := goldmark.Convert(body, &html); err != nil {\n \t\treturn err\n \t}\n \trel, _ := filepath.Rel(s.Content, path)\n \tout := filepath.Join(s.Out, strings.TrimSuffix(rel, \".md\")+\".html\")\n \tif err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {\n \t\treturn err\n \t}\n \tf, err := os.Create(out)\n \tif err != nil {\n \t\treturn err\n \t}\n \tdefer f.Close()\n \tname := meta[\"template\"]\n \tif name == \"\" {\n \t\tname = \"page.html\"\n \t}\n \treturn tmpl.ExecuteTemplate(f, name, Page{Title: meta[\"title\"], Body: template.HTML(html.String())})\n }\n \n // frontMatter splits \"key: value\" lines between --- fences from the page's\n // body.\n func frontMatter(src []byte) (map[string]string, []byte) {\n \tmeta := map[string]string{}\n \trest, ok := bytes.CutPrefix(src, []byte(\"---\\n\"))\n \tif !ok {\n \t\treturn meta, src\n \t}\n \thead, body, ok := bytes.Cut(rest, []byte(\"\\n---\\n\"))\n \tif !ok {\n \t\treturn meta, src\n \t}\n \tfor _, line := range strings.Split(string(head), \"\\n\") {\n \t\tif k, v, ok := strings.Cut(line, \":\"); ok {\n \t\t\tmeta[strings.TrimSpace(k)] = strings.TrimSpace(v)\n \t\t}\n \t}\n \treturn meta, body\n }\n"
     }
-  ],
-  "select": [0, 3],
-  "workbench": {"rightPanel": false}
+  }
 }

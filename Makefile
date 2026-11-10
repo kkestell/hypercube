@@ -46,15 +46,10 @@ ui:
 	cd internal/ui && bun install --frozen-lockfile && bun build.ts dist
 
 # screenshots regenerates docs/images from the scenes in docs/screenshots,
-# running the real backend and desktop window with the scripted harness plugin
-# installed under each harness name. The first run downloads Electron.
+# rendering the desktop window off screen. The first run downloads Electron.
 screenshots: ui
 	cd desktop && bun install --frozen-lockfile && node node_modules/electron/install.js
-	@tmp=$$(mktemp -d /tmp/hc-XXXXXX) && trap 'rm -rf "$$tmp"' EXIT && \
-		for c in hypercube hypercube-mcp hypercube-hold; do go build -o $$tmp/$$c ./cmd/$$c || exit 1; done && \
-		go build -o $$tmp/hypercube-harness-scripted ./plugins/scripted && \
-		for p in $(PLUGINS); do ln -s hypercube-harness-scripted $$tmp/hypercube-harness-$$p || exit 1; done && \
-		desktop/node_modules/.bin/electron scripts/screenshots/main.js --dir=$$tmp docs/screenshots/*.json
+	desktop/node_modules/.bin/electron scripts/screenshots/main.js docs/screenshots/*.json
 
 dev:
 	scripts/dev up

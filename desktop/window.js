@@ -36,8 +36,9 @@ function savedBounds(file) {
 // until its first page is ready. The backend page is at origin; the waiting
 // page and its sibling pages are in pagesDir. The window answers the page's
 // title bar and theme messages and passes the page's other messages to
-// onMessage.
-function createMainWindow({platform, origin, pagesDir, userData, onMessage}) {
+// onMessage. Given offscreen, the window's offscreen web preference, the page
+// renders off screen and the window never shows.
+function createMainWindow({platform, origin, pagesDir, userData, onMessage, offscreen}) {
   const mac = platform === 'darwin';
   const titleBar = mac ? macTitleBar : noTitleBar;
   const act = createActions({dialog, shell, platform});
@@ -52,7 +53,7 @@ function createMainWindow({platform, origin, pagesDir, userData, onMessage}) {
     ...(mac
       ? {titleBarStyle: 'hidden', trafficLightPosition}
       : {icon: path.join(process.resourcesPath, 'com.github.kkestell.hypercube.png')}),
-    webPreferences: {preload: path.join(__dirname, 'preload.js')},
+    webPreferences: {preload: path.join(__dirname, 'preload.js'), ...(offscreen && {offscreen})},
   });
   const contents = win.webContents;
 
@@ -69,7 +70,7 @@ function createMainWindow({platform, origin, pagesDir, userData, onMessage}) {
   });
   win.on('resized', save);
   win.on('moved', save);
-  win.once('ready-to-show', () => show());
+  if (!offscreen) win.once('ready-to-show', () => show());
 
   const send = (name, detail) => contents.send('event', name, detail);
   // reportTitleBar tells the page the title bar's size in its own pixels. A
