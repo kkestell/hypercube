@@ -23,7 +23,8 @@ const sidebar = (store: ReturnType<typeof createStore>) => mount(store, <Sidebar
 const click = (element: HTMLElement) => act(() => clickControl(element));
 const tab = (root: HTMLElement, name: string) => find(root, `[role=tab][aria-label="${name}"]`);
 // body is a sidebar tab's scrolling list, inside the panel its tab controls.
-const body = (root: HTMLElement, name: string) => find(root, '#' + CSS.escape(tab(root, name === 'archived' ? 'Archived' : 'Sessions').getAttribute('aria-controls')!)).firstElementChild as HTMLElement;
+// body is the named tab's scroller, inside the container its padding measures.
+const body = (root: HTMLElement, name: string) => find(root, '#' + CSS.escape(tab(root, name === 'archived' ? 'Archived' : 'Sessions').getAttribute('aria-controls')!)).firstElementChild!.firstElementChild as HTMLElement;
 const scroll = (element: HTMLElement, top: number) => act(() => {
   element.scrollTop = top;
   element.dispatchEvent(new Event('scroll'));

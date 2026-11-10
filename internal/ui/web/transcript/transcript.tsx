@@ -4,6 +4,10 @@
 // following; the end allows for fractional scroll positions. The footer sits
 // below the scrolling view, so the scrollbar stops above it.
 // The list, the pending card, and the composer share one padded column.
+// The list's content lines up with the outer edges of the composer's buttons:
+// the composer's 16px margin, its card's 1px border, and its 12px padding.
+// The right padding gives up the scrollbar's width, the difference between the
+// chat pane's width (100cqw) and the list's (100%).
 // Expanding or collapsing an item keeps its heading where it was on screen,
 // and the list follows its end again only if that leaves it there. A running
 // turn that has sent nothing for a while ends the list with a working row.
@@ -77,7 +81,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     <div className="relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" inline />
       <div ref={view} className="flex min-h-0 flex-1 flex-col overflow-auto">
-        <section ref={list} aria-label="Transcript" onClickCapture={holdTrigger} className="flex w-full flex-1 flex-col gap-3 px-4 py-4">
+        <section ref={list} aria-label="Transcript" onClickCapture={holdTrigger} className="flex w-full flex-1 flex-col gap-3 py-4 pl-[calc(--spacing(7)+1px)] pr-[calc(--spacing(7)+1px-(100cqw-100%))]">
           {rows.map(row => {
             const id = row.type === 'activity' ? row.key : row.item.id;
             const submission = submissions.find(entry => entry.id === id);

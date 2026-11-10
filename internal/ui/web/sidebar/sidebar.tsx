@@ -138,8 +138,13 @@ function SidebarBody({tab, active, onContextMenu, onKeyDown, children}: {
       window.removeEventListener('pagehide', save);
     };
   }, [save]);
-  return <div ref={ref} className="h-full min-h-0 overflow-auto p-2 pt-1"
-    onContextMenu={onContextMenu} onKeyDown={onKeyDown} onScroll={event => {
-      if (active) top.current = event.currentTarget.scrollTop;
-    }}>{children}</div>;
+  // The rows keep 8px from both edges of the sidebar. The right padding gives
+  // up the width of a scrollbar that takes space, the difference between the
+  // sidebar's width (100cqw) and the scroller's content (100%).
+  return <div className="@container h-full min-h-0">
+    <div ref={ref} className="h-full overflow-auto pb-2 pt-1"
+      onContextMenu={onContextMenu} onKeyDown={onKeyDown} onScroll={event => {
+        if (active) top.current = event.currentTarget.scrollTop;
+      }}><div className="pl-2 pr-[calc(--spacing(2)-(100cqw-100%))]">{children}</div></div>
+  </div>;
 }
