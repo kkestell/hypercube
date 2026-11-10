@@ -32,7 +32,7 @@ export function AllPullRequests() {
       : <PullRequestGroups turns={[...yourMoves(accounts), ...othersMoves(accounts)]} row={({account, pr, turn}, implied) => {
         const workspace = tracking(workspaces, pr.repo);
         return <PullRequestRow key={`${account}\n${pr.url}`} pr={pr} turn={turn} account={account} hideReason={implied} place={<>
-          In {pr.repo}<a href={`https://github.com/${pr.repo}`} target="_blank" rel="noopener noreferrer" aria-label={`Open ${pr.repo} on GitHub`} title="Open on GitHub" className="ml-1 inline-flex align-middle opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 hover:text-foreground"><Icon name="link-external" /></a> for {account}.
+          In {pr.repo} for {account}.
         </>} onReview={workspace && review(workspace.id, pr)} trailing={workspace ? null
           : <Button variant="secondary" size="sm" className="self-center" aria-label={`Clone ${pr.repo}`} onClick={() => setCloning({pr, account})}>Clone</Button>} />;
       }} />}

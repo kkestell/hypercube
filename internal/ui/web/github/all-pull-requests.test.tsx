@@ -37,7 +37,6 @@ test('groups list their counts, own work before reviews, and rows say where they
     '#3 Other repoFrom bob.In x/y for work.ReviewClone',
   ]);
   expect(rows(root, 'Waiting on others').map(row => row.textContent)).toEqual(['#5 BlockedBlocked from merging.In o/r for kkestell.Clone']);
-  expect(find(rows(root, 'Reviews to do')[1], 'p:last-of-type a').getAttribute('href')).toBe('https://github.com/x/y');
 });
 
 test('Review is disabled and Clone shown only where no workspace tracks the repository', () => {
