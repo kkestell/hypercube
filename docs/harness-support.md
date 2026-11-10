@@ -51,7 +51,9 @@ A partially failed change can leave the model changed but the effort unchanged.
 The selector shows accepted settings; the error stays visible in chat.
 
 Interrupting leaves output in the conversation. OpenCode and Pi also give up
-pending questions or dialogs when interrupted.
+pending questions or dialogs when interrupted. Claude Code drops messages it
+has received but not yet read, including corrections and messages from other
+sessions, so no new turn starts from them.
 
 ## Permissions
 
