@@ -61,8 +61,8 @@ export function Limits({harness}: {harness: string}) {
     {first === last
       ? <LimitRow harness={harness} limit={first} />
       : <>
-        <LimitRow harness={harness} limit={first} className="group-hover/limits:invisible group-focus/limits:invisible" />
-        <LimitRow harness={harness} limit={last} className="invisible group-hover/limits:visible group-focus/limits:visible" />
+        <LimitRow harness={harness} limit={first} className="transition-[opacity,visibility] group-hover/limits:invisible group-hover/limits:opacity-0 group-focus/limits:invisible group-focus/limits:opacity-0" />
+        <LimitRow harness={harness} limit={last} className="invisible opacity-0 transition-[opacity,visibility] group-hover/limits:visible group-hover/limits:opacity-100 group-focus/limits:visible group-focus/limits:opacity-100" />
       </>}
   </span>;
 }

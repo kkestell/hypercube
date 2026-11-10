@@ -1,5 +1,6 @@
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
+import {slide} from '../shared/motion.ts';
 import type {ReactNode} from 'react';
 import {Chevron} from '../shared/icon.tsx';
 import {MarkdownText} from './markdown.tsx';
@@ -27,6 +28,6 @@ export function Disclosure({className = '', open, onToggle, title, summary, prev
         {!open && preview && <span className="disclosure-preview block truncate leading-6 text-muted-foreground"><MarkdownText text={preview} /></span>}
       </span>
     </Button></CollapsibleTrigger>
-    <CollapsibleContent className={marker ? 'pl-(--disclosure-indent)' : ''}>{children}</CollapsibleContent>
+    <CollapsibleContent className={`${slide} ${marker ? 'pl-(--disclosure-indent)' : ''}`}>{children}</CollapsibleContent>
   </Collapsible>;
 }

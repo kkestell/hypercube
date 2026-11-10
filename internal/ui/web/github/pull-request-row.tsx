@@ -41,7 +41,7 @@ export function PullRequestRow({pr, turn, account, onReview, hideReason, place, 
     <div className="min-w-0 flex-1">
       <p className="flex items-center gap-1.5">
         <span className="truncate">#{pr.number} {pr.title}</span>
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" aria-label={`Open #${pr.number} on GitHub`} title="Open on GitHub" className="shrink-0 text-muted-foreground opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100 hover:text-foreground">
+        <a href={pr.url} target="_blank" rel="noopener noreferrer" aria-label={`Open #${pr.number} on GitHub`} title="Open on GitHub" className="shrink-0 text-muted-foreground opacity-0 transition-[color,opacity] focus-visible:opacity-100 group-hover/row:opacity-100 hover:text-foreground">
           <Icon name="link-external" />
         </a>
       </p>

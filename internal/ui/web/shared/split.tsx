@@ -1,5 +1,5 @@
 // Shadcn resizable panels keep hidden views mounted and restore their sizes.
-import {Children, useId, useLayoutEffect, useRef, type ReactNode} from 'react';
+import {Children, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode} from 'react';
 import type {PanelImperativeHandle} from 'react-resizable-panels';
 import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '../components/ui/resizable';
 
@@ -9,6 +9,9 @@ import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '../component
 // neither is fixed. minStart and minEnd are CSS sizes. collapsed hides one
 // child. Dragging or a key can collapse a fixed child; onCollapse then hides
 // it, and its size is not reported.
+// A change to collapsed slides the child in or out over 200ms. While it
+// slides, the child keeps its full size and the panel's edge uncovers or
+// covers it, so its content does not reflow on every frame.
 interface SplitProps {
   split?: 'vertical' | 'horizontal';
   fixed?: 'start' | 'end' | 'none';
@@ -28,7 +31,9 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
   const first = useRef<PanelImperativeHandle>(null), last = useRef<PanelImperativeHandle>(null);
   const kept = useRef<number | string>(size);
   const previous = useRef(collapsed);
+  const [sliding, setSliding] = useState<'start' | 'end' | null>(null);
   useLayoutEffect(() => {
+    if (collapsed !== previous.current && fixed !== 'none') setSliding(collapsed ?? previous.current);
     if (collapsed) (collapsed === 'start' ? first : last).current?.collapse();
     else if (previous.current) {
       const pane = previous.current === 'start' ? first : last;
@@ -36,9 +41,22 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
     }
     previous.current = collapsed;
   }, [collapsed]);
+  useEffect(() => {
+    if (!sliding) return;
+    const timer = setTimeout(() => setSliding(null), 200);
+    return () => clearTimeout(timer);
+  }, [sliding, collapsed]);
+  // A sliding child keeps its full size. A start child beside the other stays
+  // against the panel's moving edge.
+  const held = (side: 'start' | 'end'): CSSProperties | undefined => {
+    if (sliding !== side) return undefined;
+    const full = `${kept.current}px`;
+    if (split === 'horizontal') return {height: full};
+    return side === 'start' ? {width: full, marginLeft: `calc(100% - ${full})`} : {width: full};
+  };
   const startSize = fixed === 'end' ? undefined : fixed === 'start' ? size : `${size}%`;
   return <ResizablePanelGroup orientation={split === 'vertical' ? 'horizontal' : 'vertical'}
-    className={`split ${collapsed ? 'split-collapsed' : ''}`} disabled={!!collapsed}
+    className={`split ${collapsed ? 'split-collapsed' : ''} ${sliding ? '[&>[data-panel]]:transition-[flex-grow] [&>[data-panel]]:duration-200 [&>[data-panel]]:ease-out' : ''}`} disabled={!!collapsed}
     onLayoutChanged={(layout, meta) => {
       if (!meta.isUserInteraction || collapsed) return;
       if (fixed === 'none') onResize?.(layout[id + '-start']);
@@ -50,18 +68,18 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
         if (available > 0) onResize?.(available * layout[id + '-' + fixed] / 100);
       }
     }}>
-    <ResizablePanel id={id + '-start'} panelRef={first} defaultSize={startSize}
+    <ResizablePanel id={id + '-start'} panelRef={first} className="overflow-hidden!" defaultSize={startSize}
       groupResizeBehavior={fixed === 'start' ? 'preserve-pixel-size' : 'preserve-relative-size'}
       collapsible={fixed === 'start'} minSize={minStart}
       onResize={value => { if (fixed === 'start' && !collapsed && value.inPixels > 0) kept.current = value.inPixels; }}>
-      <div className="split-pane h-full min-h-0 min-w-0 overflow-hidden" data-side="start" inert={collapsed === 'start'}>{start}</div>
+      <div className="split-pane h-full min-h-0 min-w-0 overflow-hidden" style={held('start')} data-side="start" inert={collapsed === 'start'}>{start}</div>
     </ResizablePanel>
     <ResizableHandle hidden={!!collapsed} />
-    <ResizablePanel id={id + '-end'} panelRef={last} defaultSize={fixed === 'end' ? size : undefined}
+    <ResizablePanel id={id + '-end'} panelRef={last} className="overflow-hidden!" defaultSize={fixed === 'end' ? size : undefined}
       groupResizeBehavior={fixed === 'end' ? 'preserve-pixel-size' : 'preserve-relative-size'}
       collapsible={fixed === 'end'} minSize={minEnd}
       onResize={value => { if (fixed === 'end' && !collapsed && value.inPixels > 0) kept.current = value.inPixels; }}>
-      <div className="split-pane h-full min-h-0 min-w-0 overflow-hidden" data-side="end" inert={collapsed === 'end'}>{end}</div>
+      <div className="split-pane h-full min-h-0 min-w-0 overflow-hidden" style={held('end')} data-side="end" inert={collapsed === 'end'}>{end}</div>
     </ResizablePanel>
   </ResizablePanelGroup>;
 }

@@ -97,3 +97,21 @@
   *:hover { scrollbar-color: color-mix(in oklab, var(--muted-foreground) 50%, transparent) transparent; }
   ::highlight(find) { background-color: Highlight; color: HighlightText; }
 }
+
+/* Motion. Anything that appears on hover or focus fades over 150ms, the
+   default transition duration. Anything that opens, closes, or changes size
+   slides over 200ms: collapsible content (slide in shared/motion.ts) and
+   panels shown or hidden (shared/split.tsx). Menus and dialogs
+   fade and zoom over 150ms. A reduced-motion setting turns it all off. */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0s !important;
+      transition-duration: 0s !important;
+    }
+  }
+}
+
+/* A session title's fade moves aside smoothly for the chevron. */
+@property --fade-end { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --fade-width { syntax: '<length>'; inherits: true; initial-value: 1.5rem; }

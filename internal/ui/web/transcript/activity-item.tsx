@@ -4,6 +4,7 @@
 // rule.
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
+import {slide} from '../shared/motion.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {formatDuration} from './duration.ts';
 import {TranscriptRow, type RowControls} from './transcript-item.tsx';
@@ -20,7 +21,7 @@ export function ActivityItem({row, session, expanded, setOpen}: RowControls & {r
         </Button>
       </CollapsibleTrigger>
       <div className="mt-1 border-t" />
-      <CollapsibleContent className="activity-item-rows mt-4 flex flex-col gap-3">
+      <CollapsibleContent className={`activity-item-rows flex flex-col gap-3 pt-4 ${slide}`}>
         {open && row.rows.map(inner => <TranscriptRow key={inner.item.id} row={inner} session={session} expanded={expanded} setOpen={setOpen} />)}
       </CollapsibleContent>
     </Collapsible>

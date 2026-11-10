@@ -117,8 +117,8 @@ function Title({title, small, chevron, padded, onToggle}: TitleProps) {
   return (
     <span ref={room} className="flex min-w-0 flex-1 items-center">
       <span className="relative flex min-w-0 items-center">
-        <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left ${small ? 'text-xs' : ''} ${overflows || covered ? fade : ''} ${covered ? padded ? fadeBeforePaddedChevron : fadeBeforeChevron : ''} ${covered && !overflows ? fadeOnlyBeforeChevron : ''}`}>{title}</span>
-        {chevron && <span className={`session-item-twistie invisible absolute top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-visible/session:visible ${chevronFits ? 'left-full ml-1' : padded ? 'right-2' : 'right-0'}`} onClick={onToggle}>
+        <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left transition-[--fade-end,--fade-width] ${small ? 'text-xs' : ''} ${overflows || covered ? fade : ''} ${covered ? padded ? fadeBeforePaddedChevron : fadeBeforeChevron : ''} ${covered && !overflows ? fadeOnlyBeforeChevron : ''}`}>{title}</span>
+        {chevron && <span className={`session-item-twistie invisible absolute top-1/2 flex size-4 -translate-y-1/2 items-center opacity-0 transition-[opacity,visibility] group-hover/session:visible group-hover/session:opacity-100 group-focus-visible/session:visible group-focus-visible/session:opacity-100 ${chevronFits ? 'left-full ml-1' : padded ? 'right-2' : 'right-0'}`} onClick={onToggle}>
           {chevron}
         </span>}
       </span>

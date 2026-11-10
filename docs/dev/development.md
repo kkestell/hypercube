@@ -79,6 +79,12 @@ Documentation procedures are in [documentation](documentation.md).
   repeated status indicators use icons with accessible names and hover text.
   Write interface text as plain phrases and sentences, with facts joined by
   words or given their own lines rather than separator characters.
+- Animate every change a person can see happen. Controls that appear on hover
+  or focus fade with Tailwind's default transition on opacity and visibility;
+  content that opens or closes slides with `slide` from
+  `internal/ui/web/shared/motion.ts`; menus and dialogs keep shadcn's
+  animations. `internal/ui/web/base.css` holds the timings and turns motion off
+  for a reduced-motion setting.
 - Provide semantic elements, labels, correct focus order and returned focus.
   Add accessibility handling where native semantics fall short. Each module
   owns one concern, named for its behavior; remove duplication and split files

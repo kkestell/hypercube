@@ -1,6 +1,7 @@
 import {expandWorkspace} from '../app/workbench.ts';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
+import {slide} from '../shared/motion.ts';
 import {Chevron, Icon} from '../shared/icon.tsx';
 import {workspaceKey} from '../editor/target.ts';
 import {sortTurns} from '../github/turns.ts';
@@ -43,17 +44,17 @@ export function WorkspaceSection({workspace, renaming, onRenaming}: WorkspaceSec
             <span className="workspace-section-name min-w-0 truncate text-[11px] uppercase text-muted-foreground">{workspace.name}</span>
           </Button>
           {workspace.sessions.length > 0 && <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon-xs" className="invisible ml-2 size-4 text-muted-foreground transition-colors hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible" aria-label={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`} title={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`}><Chevron open={open} /></Button>
+            <Button variant="ghost" size="icon-xs" className="invisible ml-2 size-4 text-muted-foreground opacity-0 transition-[color,opacity,visibility] hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:visible group-hover/workspace:opacity-100 group-has-[:focus-visible]/workspace:visible group-has-[:focus-visible]/workspace:opacity-100" aria-label={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`} title={`${open ? 'Collapse' : 'Expand'} ${workspace.name}`}><Chevron open={open} /></Button>
           </CollapsibleTrigger>}
-          {needYou > 0 && <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-2 text-[11px] text-muted-foreground group-hover/workspace:invisible group-has-[:focus-visible]/workspace:invisible" title={needYouLabel} aria-label={needYouLabel} role="img">
-            <Icon name="git-pull-request" className="size-3" />{needYou}
+          {needYou > 0 && <span className="ml-auto flex shrink-0 items-center gap-1 pl-2 pr-0.5 text-[11px] text-muted-foreground transition-[opacity,visibility] group-hover/workspace:invisible group-hover/workspace:opacity-0 group-has-[:focus-visible]/workspace:invisible group-has-[:focus-visible]/workspace:opacity-0" title={needYouLabel} aria-label={needYouLabel} role="img">
+            {needYou}<Icon name="git-pull-request" className="size-3" />
           </span>}
         </div>
-        <div className="invisible absolute inset-y-0 right-0 flex items-center rounded-r-md bg-linear-to-r from-transparent via-[var(--workspace-surface)] via-25% to-[var(--workspace-surface)] pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
+        <div className="invisible absolute inset-y-0 right-0 flex items-center rounded-r-md bg-linear-to-r from-transparent via-[var(--workspace-surface)] via-25% to-[var(--workspace-surface)] pl-4 pr-1 opacity-0 transition-[opacity,visibility] group-hover/workspace:visible group-hover/workspace:opacity-100 group-has-[:focus-visible]/workspace:visible group-has-[:focus-visible]/workspace:opacity-100">
           <Button variant="ghost" size="icon-sm" className="size-6 transition-colors" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
         </div>
       </div>
-      <CollapsibleContent>
+      <CollapsibleContent className={slide}>
         <SessionTree label={workspace.name} sessions={workspace.sessions} renaming={renaming} onRenaming={onRenaming} />
       </CollapsibleContent>
     </section>
