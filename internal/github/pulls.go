@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -160,7 +161,12 @@ func (w *Watcher) accountPullRequests(ctx context.Context, token, login string) 
 			} `json:"nodes"`
 		} `json:"direct"`
 	}
-	const search = "is:pr is:open "
+	search := "is:pr is:open "
+	// TODO: Remove once kkestell/hypercube-pr-lab is no longer needed. It
+	// holds test pull requests, so only the dev session lists them.
+	if os.Getenv("HYPERCUBE_DEV_UI") == "" {
+		search += "-repo:kkestell/hypercube-pr-lab "
+	}
 	variables := map[string]any{"login": login,
 		"involved":  search + "sort:updated-desc (involves:@me OR review-requested:@me OR reviewed-by:@me)",
 		"requested": search + "review-requested:@me",
