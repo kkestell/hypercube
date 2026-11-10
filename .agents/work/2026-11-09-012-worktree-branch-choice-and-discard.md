@@ -60,3 +60,12 @@
 ## Limitations
 
 - The dialog is exercised in happy-dom, not a real browser; no screenshot was taken.
+
+## Repair 1
+
+- Findings addressed (work review `.agents/reviews/work/2026-11-09-012-worktree-branch-choice-and-discard.md`):
+  1. Removed the unarchive-refusal lines from `docs/lifecycle.md`; the fact remains in the `docs/storage.md` Unarchive row.
+  2. `new-branch-dialog.tsx`: `<DialogContent aria-describedby={undefined}>`.
+- Code base (unchanged): `5d44211ddb094d39580a2f08b6158a7c228fd19f`
+- Code head: `10894555e725a880c0616f1e05e0ca341c4bb663` (`X-Stage: fix`); previous head `2e1e005e7e1bd41de48282fece8c1a275a2ccc16`.
+- Checks at this head: `cd internal/ui && bunx tsc -p .` clean; `bun test agent` 59 pass, 0 fail. The Go code is unchanged since the earlier `make check` pass.
