@@ -140,6 +140,11 @@ Write a plan for changes to architecture, system boundaries, state or lifecycle
 ownership, new subsystems or major features, and work spanning concerns that
 need coordinated design. Localized fixes, copy, styling, documentation, and
 small refactors may be done directly. Reassess if a contained change grows.
+A change to the browser interface's styling or markup, including one done
+directly, gets an independent review before it is committed. The review covers
+the touched files whole: an existing component or hook the change repeats,
+which component owns each piece of state and each effect, status colors from
+`tones.ts`, motion, and tests that check what users see and do.
 
 Before planning, inspect related code for existing behavior, duplicate paths,
 and the right owner for the change. Revise a flawed boundary when needed, and

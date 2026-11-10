@@ -92,8 +92,7 @@ export function Composer({session}: {session: Session}) {
   return (
     <form className="@container/composer relative my-4 shrink-0 px-4" onSubmit={e => { e.preventDefault(); send(); }}>
       {isUnsent(session.id) && <WorktreeSelect />}
-      {/* The text field draws no focus ring of its own; the box shows focus. */}
-      <Card className="rounded-2xl py-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+      <Card className="rounded-2xl py-2">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
             <div className="flex flex-wrap gap-2">
