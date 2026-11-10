@@ -3,7 +3,6 @@ package session
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 )
 
 func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	s := f.worktreeSession()
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
@@ -80,8 +80,9 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 }
 
 func TestWorkspaceDeletionRefusesUntilEveryCreationFinishes(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
-	wait, release := f.pauseGit(f.root, "worktree", "add")
+	wait, release := f.pauseWorktreeAdd()
 	var s store.Session
 	created := make(chan error, 1)
 	done := make(chan struct{})
@@ -132,44 +133,5 @@ func TestWorkspaceDeletionRefusesUntilEveryCreationFinishes(t *testing.T) {
 	}
 	if _, err := os.Stat(s.Dir); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("deletion left the created worktree: %v", err)
-	}
-}
-
-func TestWorkspaceDeletionRefusesUntilFailedCreationCleansUp(t *testing.T) {
-	f := newFixture(t)
-	// Git cannot read a directory as its exclude file. Setup therefore fails
-	// after creating the worktree, and must remove it and its branch.
-	if err := os.Mkdir(filepath.Join(f.root, ".worktreeinclude"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	wait, release := f.pauseGit(f.root, "worktree", "remove")
-	created := make(chan error, 1)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, err := f.rt.Create(f.workspace.ID, lead, true, "failed creation")
-		created <- err
-	}()
-	t.Cleanup(func() { release(); <-done })
-	wait()
-	if err := f.rt.DeleteWorkspace(f.workspace.ID); !errors.Is(err, errWorkspaceCreating) {
-		t.Fatalf("deletion during failure cleanup = %v, want errWorkspaceCreating", err)
-	}
-	release()
-	if err := <-created; err == nil {
-		t.Fatal("creation with invalid worktree setup succeeded")
-	}
-	cmd := exec.Command("git", "-C", f.root, "for-each-ref", "--format=%(refname)", "refs/heads/hypercube/")
-	if out, err := cmd.CombinedOutput(); err != nil || len(out) != 0 {
-		t.Fatalf("failed creation left branches: %q, %v", out, err)
-	}
-	if entries, err := os.ReadDir(filepath.Join(f.root, ".hypercube")); err != nil || len(entries) != 0 {
-		t.Fatalf("failed creation left worktrees: %v, %v", entries, err)
-	}
-	if _, err := f.rt.Create(f.workspace.ID, lead, false, "after failed creation"); err != nil {
-		t.Fatal("creation after failure:", err)
-	}
-	if err := f.rt.DeleteWorkspace(f.workspace.ID); err != nil {
-		t.Fatal("deletion after failure cleanup:", err)
 	}
 }

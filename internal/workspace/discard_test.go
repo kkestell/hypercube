@@ -9,10 +9,7 @@ import (
 )
 
 func TestDiscard(t *testing.T) {
-	// Git refuses local submodule URLs unless file transport is allowed.
-	t.Setenv("GIT_CONFIG_COUNT", "1")
-	t.Setenv("GIT_CONFIG_KEY_0", "protocol.file.allow")
-	t.Setenv("GIT_CONFIG_VALUE_0", "always")
+	t.Parallel()
 	sub, run := gitRepo(t)
 	write(t, filepath.Join(sub, "lib"), "lib")
 	run(sub, "add", "lib")
@@ -79,6 +76,7 @@ func TestDiscard(t *testing.T) {
 
 // The session's branch is reset even when the agent left it for another one.
 func TestDiscardReturnsToTheSessionBranch(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	base, err := Head(root)
 	if err != nil {
@@ -116,6 +114,7 @@ func TestDiscardReturnsToTheSessionBranch(t *testing.T) {
 // A folder under .hypercube/ that is not a worktree belongs to the checkout
 // that encloses it, which Discard must leave alone.
 func TestDiscardRefusesAFolderThatIsNotAWorktree(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	base, err := Head(root)
 	if err != nil {
@@ -145,6 +144,7 @@ func TestDiscardRefusesAFolderThatIsNotAWorktree(t *testing.T) {
 // An agent stopped in the middle of a conflicted merge or rebase leaves Git's
 // operation state in the worktree.
 func TestDiscardAbandonsAnOperationInProgress(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"merge", "rebase"} {
 		t.Run(operation, func(t *testing.T) {
 			root, run := gitRepo(t)

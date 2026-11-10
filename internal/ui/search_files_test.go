@@ -14,6 +14,7 @@ import (
 )
 
 func TestSearchFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %s: %v", out, err)
@@ -45,6 +46,7 @@ func TestSearchFiles(t *testing.T) {
 }
 
 func TestSearchFilesLimitsPreviewAndSkipsLargeFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	line := strings.Repeat("界", 300) + strings.Repeat("needle", 1000)
 	for name, content := range map[string]string{
@@ -81,6 +83,7 @@ func TestSearchFilesLimitsPreviewAndSkipsLargeFiles(t *testing.T) {
 }
 
 func TestSearchFilesKeepsPathOrderAndLineLimit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, name := range []string{"a", "b", "c", "d", "e"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("needle\n", 300)), 0644); err != nil {

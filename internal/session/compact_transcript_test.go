@@ -7,14 +7,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func compactRuntime(t *testing.T) (*store.DB, *Runtime) {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	db, err := store.Open()
+	dir := t.TempDir()
+	preferences := config.File(filepath.Join(dir, "config.json"))
+	db, err := store.Open(filepath.Join(dir, "state"), preferences)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +29,7 @@ func compactRuntime(t *testing.T) (*store.DB, *Runtime) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return db, New(db, "", Programs{})
+	return db, New(db, preferences, "", Programs{})
 }
 
 func putCompactItem(tx *store.Tx, seq int64, it harness.Item) error {
@@ -40,6 +42,7 @@ func putCompactItem(tx *store.Tx, seq int64, it harness.Item) error {
 }
 
 func TestCompactTranscriptMergesPendingAcrossSnapshot(t *testing.T) {
+	t.Parallel()
 	db, rt := compactRuntime(t)
 	if err := db.Tx(func(tx *store.Tx) error {
 		for seq := int64(1); seq <= 140; seq++ {
@@ -133,6 +136,7 @@ func TestCompactTranscriptMergesPendingAcrossSnapshot(t *testing.T) {
 }
 
 func TestCompactTranscriptWithOnlyPendingEntries(t *testing.T) {
+	t.Parallel()
 	_, rt := compactRuntime(t)
 	rt.live["s"] = &live{pending: map[string]*pendingItem{
 		"1": {seq: 1, item: harness.Item{ID: "1", Kind: harness.KindUser, Text: "first"}},
@@ -156,6 +160,7 @@ func TestCompactTranscriptWithOnlyPendingEntries(t *testing.T) {
 }
 
 func TestCompactTranscriptStopsBeforeOlderBatches(t *testing.T) {
+	t.Parallel()
 	db, rt := compactRuntime(t)
 	if err := db.Tx(func(tx *store.Tx) error {
 		if _, err := tx.PutEntry("s", store.Entry{Seq: 1, Item: "invalid", Data: []byte(`{"kind":"state","automatic":"invalid boolean"}`)}); err != nil {

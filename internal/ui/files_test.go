@@ -15,6 +15,7 @@ import (
 )
 
 func TestFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, text string) {
 		t.Helper()
@@ -211,6 +212,7 @@ func TestFiles(t *testing.T) {
 }
 
 func TestChildFilesUseItsDirectory(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	child := a.child("files")
 	dir := t.TempDir()
@@ -236,6 +238,7 @@ func TestChildFilesUseItsDirectory(t *testing.T) {
 }
 
 func TestMentionFiles(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
@@ -294,6 +297,7 @@ func TestMentionFiles(t *testing.T) {
 }
 
 func TestMentionFilesOutsideGit(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, name := range []string{"visible/a.go", ".hypercube/secret", ".svn/config", "visible/Thumbs.db"} {
 		name = filepath.Join(dir, name)

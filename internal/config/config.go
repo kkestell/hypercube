@@ -111,20 +111,24 @@ func defaults() Config {
 	return Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 }
 
-func path() string {
+// File is the preferences file owned by one application instance.
+type File string
+
+// DefaultFile resolves the user's preferences location at application startup.
+func DefaultFile() File {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "hypercube", "config.json")
+	return File(filepath.Join(base, "hypercube", "config.json"))
 }
 
 // Load reads config.json. Without a file, every preference takes its
 // default.
-func Load() (Config, error) {
+func (file File) Load() (Config, error) {
 	c := defaults()
-	path := path()
+	path := string(file)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return c, nil
@@ -184,7 +188,7 @@ func (c *Config) Validate() error {
 
 // Save validates and replaces the config as a complete document. Readers
 // keep using Load; direct file edits while the app runs are unsupported.
-func Save(c Config) error {
+func (file File) Save(c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -192,11 +196,11 @@ func Save(c Config) error {
 	if err != nil {
 		return err
 	}
-	return write(data)
+	return file.write(data)
 }
 
-func write(data []byte) error {
-	path := path()
+func (file File) write(data []byte) error {
+	path := string(file)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}

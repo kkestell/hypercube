@@ -13,6 +13,7 @@ import (
 )
 
 func TestBranchesAndWorktreeParameters(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "main"},

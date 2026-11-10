@@ -22,8 +22,10 @@ import (
 )
 
 func TestTerminalStartsOnlyAfterWebSocketHandshake(t *testing.T) {
+	t.Parallel()
 	for _, owner := range []struct{ query, holder string }{{"session=s", "s"}, {"workspace=w", "w-w"}} {
 		t.Run(owner.query, func(t *testing.T) {
+			t.Parallel()
 			db := open(t)
 			change(t, db, func(tx *store.Tx) error {
 				if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: t.TempDir()}); err != nil {
@@ -37,11 +39,11 @@ func TestTerminalStartsOnlyAfterWebSocketHandshake(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { os.RemoveAll(dir) })
-			rt := session.New(db, "", session.Programs{Holder: holdtest.Path})
+			rt := session.New(db, configFile(db), "", session.Programs{Holder: holdtest.Path})
 			rt.Terminals.Dir = dir
 			rt.Terminals.Command = []string{"/bin/sh", "-c", "printf 'terminal-ready\\n'; exec /bin/cat"}
 			t.Cleanup(rt.Quit)
-			server := httptest.NewServer(Handler(db, rt, &github.Watcher{}))
+			server := httptest.NewServer(Handler(db, configFile(db), rt, &github.Watcher{}))
 			t.Cleanup(server.Close)
 			response, err := server.Client().Get(server.URL + "/terminal?" + owner.query)
 			if err != nil {

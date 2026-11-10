@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/hold/holdtest"
@@ -30,9 +31,8 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	db, err := store.Open()
+	preferences := config.File(filepath.Join(dir, "config.json"))
+	db, err := store.Open(filepath.Join(dir, "state"), preferences)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,10 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 	}
 	harnesstest.Install(t, plugins, "one")
 	harnesstest.Install(t, plugins, "two")
-	return db, session.New(db, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
+	rt := session.New(db, preferences, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
+	logs := t.TempDir()
+	rt.Env = func(string) []string { return []string{"HYPERCUBE_TEST_LOGS=" + logs} }
+	return db, rt
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -152,6 +155,7 @@ func schemaOf(t *testing.T, tl *mcp.Tool) map[string]any {
 }
 
 func TestTools(t *testing.T) {
+	t.Parallel()
 	for _, noGit := range []bool{false, true} {
 		db, rt := family(t, noGit, t.TempDir(), "")
 		server := httptest.NewServer(Handler(db, rt))
@@ -197,6 +201,7 @@ func TestTranscriptLabels(t *testing.T) {
 }
 
 func TestProtocol(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), "")
 	server := httptest.NewServer(Handler(db, rt))
 	defer server.Close()
@@ -226,6 +231,7 @@ func TestProtocol(t *testing.T) {
 }
 
 func TestHandlerChecksTheSession(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), "")
 	handler := Handler(db, rt)
 	for _, id := range []string{"", "nobody"} {
@@ -238,6 +244,7 @@ func TestHandlerChecksTheSession(t *testing.T) {
 // create_session refuses bad arguments and a parked session,
 // adding no agent.
 func TestCreateSessionRefusals(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
@@ -267,7 +274,6 @@ func TestCreateSessionRefusals(t *testing.T) {
 // started runs session-1 with the stand-in plugin and connects to its tools.
 func started(t *testing.T, db *store.DB, rt *session.Runtime) *mcp.ClientSession {
 	t.Helper()
-	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
 	t.Cleanup(rt.Quit)
 	change(t, db, func(tx *store.Tx) error {
 		parent, err := tx.Session("session-1")
@@ -284,6 +290,7 @@ func started(t *testing.T, db *store.DB, rt *session.Runtime) *mcp.ClientSession
 }
 
 func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
 	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": "missing"})
@@ -297,6 +304,7 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 
 // An explicitly requested child starts without an offer or proposal.
 func TestRequestedSessionStartsWithoutAnOffer(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
 	args := map[string]any{"initiation": "user_asked", "name": "reviewer", "title": "Review", "dir": "."}
@@ -328,6 +336,7 @@ func TestRequestedSessionStartsWithoutAnOffer(t *testing.T) {
 // An offer starts nothing until the user chooses New session and the agent
 // supplies the brief; a suggestion starts nothing until the user's Start.
 func TestCreateSessionForms(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
 	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "offer", "title": "Task"})
@@ -385,6 +394,7 @@ func TestCreateSessionForms(t *testing.T) {
 
 // read_session shows a child's transcript, newest last, a page at a time.
 func TestReadSession(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	long := strings.Repeat("x", 30000)
 	items := []harness.Item{
@@ -424,6 +434,7 @@ func TestReadSession(t *testing.T) {
 
 // set_title changes the caller's display title and nothing else.
 func TestSetTitle(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": "  Fix the parser "}); failed {
@@ -449,6 +460,7 @@ func TestSetTitle(t *testing.T) {
 
 // end_session refuses in a parked session and leaves the child.
 func TestEndSessionParkedSession(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	if text, failed := callTool(t, parent, "end_session", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
@@ -460,6 +472,7 @@ func TestEndSessionParkedSession(t *testing.T) {
 }
 
 func TestSessionBoundaries(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	db, rt := family(t, false, dir, t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
@@ -566,6 +579,7 @@ func TestSessionBoundaries(t *testing.T) {
 }
 
 func TestListSessionsParked(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	change(t, db, func(tx *store.Tx) error {
 		return tx.AddSession(store.Session{ID: "peer", Workspace: "w"})
@@ -615,6 +629,7 @@ func TestListSessionsParked(t *testing.T) {
 // list_models reports the harnesses and their choices without starting a
 // session.
 func TestListModels(t *testing.T) {
+	t.Parallel()
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
 	for _, tc := range []struct {

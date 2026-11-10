@@ -24,6 +24,7 @@ func plugin(t *testing.T, dir, name, script string, mode os.FileMode) {
 }
 
 func TestDescribe(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plugin(t, dir, "one", `echo '{"name":"One","installed":true}'`, 0o755)
 	plugin(t, dir, "two", `echo '{"name":"Two","installed":false}'`, 0o755)
@@ -50,6 +51,7 @@ func TestDescribe(t *testing.T) {
 }
 
 func TestModels(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	req := harness.ModelsRequest{Dir: t.TempDir(), Model: "a/b"}
 	for name, tc := range map[string]struct {
@@ -83,7 +85,9 @@ func TestModels(t *testing.T) {
 // Cancelling a probe lets the plugin clean up, then ends its native
 // processes, also when the plugin ignores the request to stop.
 func TestModelsCancel(t *testing.T) {
-	cancelGrace = time.Second
+	originalGrace := cancelGrace
+	cancelGrace = 100 * time.Millisecond
+	t.Cleanup(func() { cancelGrace = originalGrace })
 	for name, trap := range map[string]string{
 		"cleans up": `trap 'echo cleaned > "$CLEANED"; exit 1' TERM`,
 		"ignores":   `trap '' TERM`,

@@ -15,6 +15,7 @@ import (
 )
 
 func TestFileOpensReachTheViewingPage(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	change(t, a.db, func(tx *store.Tx) error {
 		return tx.AddSession(store.Session{ID: "other", Workspace: a.session.Workspace, Dir: a.session.Dir})
@@ -56,6 +57,7 @@ func TestFileOpensReachTheViewingPage(t *testing.T) {
 }
 
 func TestRequestsReachPagesViewingOtherSessions(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	p := a.page()
 	p.until("initial state", func() bool { return p.state.Build != "" })
@@ -72,6 +74,7 @@ func TestRequestsReachPagesViewingOtherSessions(t *testing.T) {
 }
 
 func TestTranscriptImagesLoadByLink(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	p := a.page()
 	p.send(`{"select":"` + a.session.ID + `"}`)

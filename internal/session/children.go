@@ -64,7 +64,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 	var l *live
 	err := r.save(func(tx *write) error {
 		var err error
-		parent, child, err = prepareChild(tx.Tx, parentID, options, approved.saved())
+		parent, child, err = r.prepareChild(tx.Tx, parentID, options, approved.saved())
 		if err != nil {
 			return err
 		}

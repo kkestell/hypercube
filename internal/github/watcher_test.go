@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/github/githubtest"
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -29,12 +30,8 @@ type stand struct {
 
 func newStand(t *testing.T, logins ...string) *stand {
 	t.Helper()
-	// A developer's own settings and tokens must not decide any case.
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("GH_TOKEN", "outer")
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	db, err := store.Open()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "state"), config.File(filepath.Join(dir, "config.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +111,7 @@ func (s *stand) resolved(id string) func(map[string]Status) bool {
 const remote = "https://github.com/o/r.git"
 
 func TestConfiguredAccountSkipsPermissionQuery(t *testing.T) {
+	t.Setenv("GH_TOKEN", "outer")
 	s := newStand(t, "alice", "bob")
 	id := s.workspace("w", remote, []string{"config", "credential.githubAccount", "bob"})
 	s.run()
@@ -132,6 +130,7 @@ func TestConfiguredAccountSkipsPermissionQuery(t *testing.T) {
 }
 
 func TestOneAccountThatCanPush(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob", "carol")
 	s.api.SetPermission("token-bob", "MAINTAIN")
 	s.api.SetPermission("token-carol", "READ")
@@ -147,6 +146,7 @@ func TestOneAccountThatCanPush(t *testing.T) {
 }
 
 func TestSeveralAccountsThatCanPush(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob", "carol")
 	s.api.SetPermission("token-alice", "WRITE")
 	s.api.SetPermission("token-carol", "ADMIN")
@@ -163,6 +163,7 @@ func TestSeveralAccountsThatCanPush(t *testing.T) {
 }
 
 func TestRevokedAccountDoesNotBlockDetection(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	s.api.Revoke("token-alice")
 	s.api.SetPermission("token-bob", "WRITE")
@@ -175,7 +176,9 @@ func TestRevokedAccountDoesNotBlockDetection(t *testing.T) {
 }
 
 func TestNoAccountCanPush(t *testing.T) {
+	t.Parallel()
 	t.Run("one login", func(t *testing.T) {
+		t.Parallel()
 		s := newStand(t, "alice")
 		id := s.workspace("w", remote)
 		s.run()
@@ -185,6 +188,7 @@ func TestNoAccountCanPush(t *testing.T) {
 		}
 	})
 	t.Run("several logins", func(t *testing.T) {
+		t.Parallel()
 		s := newStand(t, "alice", "bob")
 		id := s.workspace("w", remote)
 		s.run()
@@ -196,6 +200,7 @@ func TestNoAccountCanPush(t *testing.T) {
 }
 
 func TestWorkspacesWithoutGitHub(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	good := s.workspace("good", remote)
 	s.workspace("gitlab", "https://gitlab.com/o/r.git")
@@ -215,6 +220,7 @@ func TestWorkspacesWithoutGitHub(t *testing.T) {
 
 // The page reads the accounts as a list, so none is an empty list.
 func TestNoAccountsIsAnEmptyList(t *testing.T) {
+	t.Parallel()
 	if got := (&Watcher{}).Accounts(); got == nil {
 		t.Fatal("Accounts() = nil, want an empty list")
 	}
@@ -243,6 +249,7 @@ func TestGHMissing(t *testing.T) {
 }
 
 func TestFailedPermissionQueryIsRetried(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	s.api.SetPermission("token-bob", "WRITE")
 	s.api.Fail(true)
@@ -264,6 +271,7 @@ func TestFailedPermissionQueryIsRetried(t *testing.T) {
 }
 
 func TestDetectionRepeatsOnlyWhenInputsChange(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	s.api.SetPermission("token-bob", "WRITE")
 	first := s.workspace("first", remote)
@@ -286,6 +294,7 @@ func (s *stand) queried(id string) func(map[string]Status) bool {
 }
 
 func TestAheadBehindAfterFetch(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	id := s.workspace("w", remote)
 	dir, bare := s.dirs[id], s.bares[id]
@@ -339,6 +348,7 @@ func repoNode(repo string, number int) map[string]any {
 }
 
 func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	s.api.SetPullRequests([]map[string]any{
 		{"number": 7, "title": "Add it", "url": "https://github.com/o/r/pull/7", "isDraft": false, "updatedAt": "2026-01-02T03:04:05Z",
@@ -383,6 +393,7 @@ func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 }
 
 func TestRepositoryMatchIgnoresCase(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	s.api.SetPullRequests([]map[string]any{repoNode("O/R", 1)}, nil)
 	id := s.workspace("w", remote)
@@ -394,6 +405,7 @@ func TestRepositoryMatchIgnoresCase(t *testing.T) {
 }
 
 func TestEveryLoginIsRead(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
 	s.workspace("w", remote) // pending a choice, so it uses neither account
@@ -409,6 +421,7 @@ func TestEveryLoginIsRead(t *testing.T) {
 }
 
 func TestDirectAndTeamRequestsAreKeyedByURL(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	direct, team := repoNode("o/r", 1), repoNode("o/s", 1)
 	s.api.SetPullRequests(nil, []map[string]any{direct, team}, "https://github.com/o/r/pull/1")
@@ -422,6 +435,7 @@ func TestDirectAndTeamRequestsAreKeyedByURL(t *testing.T) {
 }
 
 func TestRequiredFailuresAcrossRepositories(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	var nodes []map[string]any
 	for _, repo := range []string{"o/r", "o/s"} {
@@ -468,6 +482,7 @@ func thread(resolved bool, first, last map[string]any) map[string]any {
 }
 
 func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
+	t.Parallel()
 	type pr = map[string]any
 	node := func(number int, author string, fields pr) pr {
 		n := pr{"number": number, "author": map[string]string{"login": author}, "headRefOid": "head",
@@ -585,6 +600,7 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 }
 
 func TestPendingChoiceDoesNotFetchOrQuery(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	id := s.workspace("w", remote)
 	dir, bare := s.dirs[id], s.bares[id]
@@ -605,6 +621,7 @@ func TestPendingChoiceDoesNotFetchOrQuery(t *testing.T) {
 }
 
 func TestTokenFailureIsReported(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "broken", "alice")
 	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
 	id := s.workspace("w", remote, []string{"config", "credential.githubAccount", "broken"})
@@ -622,6 +639,7 @@ func TestTokenFailureIsReported(t *testing.T) {
 }
 
 func TestSavedChoiceDecidesBetweenPushers(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice", "bob")
 	s.api.SetPermission("token-alice", "WRITE")
 	s.api.SetPermission("token-bob", "WRITE")
@@ -655,6 +673,7 @@ func TestSavedChoiceDecidesBetweenPushers(t *testing.T) {
 }
 
 func TestReviewThreadsAfterTheFirstPage(t *testing.T) {
+	t.Parallel()
 	s := newStand(t, "alice")
 	resolved := thread(true, said(person("bob"), 1), said(person("bob"), 1))
 	var first []map[string]any

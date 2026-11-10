@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func open(t *testing.T, sessions ...store.Session) *store.DB {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	db, err := store.Open()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "state"), config.File(filepath.Join(dir, "config.json")))
 	if err != nil {
 		t.Fatal(err)
 	}

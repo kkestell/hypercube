@@ -11,6 +11,7 @@ import (
 )
 
 func TestChanges(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	for name, text := range map[string]string{"modified": "one\ntwo\n", "deleted": "old\n", "binary": "a\x00b"} {
 		write(t, filepath.Join(root, name), text)
@@ -77,6 +78,7 @@ func TestChanges(t *testing.T) {
 }
 
 func TestChangesUnborn(t *testing.T) {
+	t.Parallel()
 	_, run := gitRepo(t)
 	root := t.TempDir()
 	run(root, "init", "-q", "-b", "main")
@@ -102,6 +104,7 @@ func TestChangesUnborn(t *testing.T) {
 }
 
 func TestDiff(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	text := "first\n" + strings.Repeat("middle\n", 12) + "last\n\n"
 	write(t, filepath.Join(root, "x[1].txt"), text)
@@ -186,6 +189,7 @@ func TestChangesAndDiffLeaveIndexUnchanged(t *testing.T) {
 }
 
 func TestDiffMetadataOnly(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "config", "core.filemode", "true")
 	write(t, filepath.Join(root, "mode"), "contents\n")
@@ -207,6 +211,7 @@ func TestDiffMetadataOnly(t *testing.T) {
 }
 
 func TestBranchChanges(t *testing.T) {
+	t.Parallel()
 	checkout, run := gitRepo(t)
 	for path, text := range map[string]string{
 		"modified": "base\n", "deleted": "old\n", "binary": "a\x00b", "sub/a:[1]": "old\n", "renamed": "rename\n",

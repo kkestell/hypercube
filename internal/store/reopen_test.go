@@ -18,14 +18,14 @@ import (
 func createCurrentDatabase(t *testing.T, setup string) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+	if err := os.MkdirAll(DefaultDir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	ddl, err := os.ReadFile("testdata/current-schema.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := sql.Open("sqlite", dbPath())
+	raw, err := sql.Open("sqlite", filepath.Join(DefaultDir(), "hypercube.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ INSERT INTO model_entries VALUES ('b', 'claude', 'opus', 'Opus', '["low","high"]
 	if hasModelEntriesTable(t, db) {
 		t.Fatal("model_entries remains after opening")
 	}
-	cfg, err := config.Load()
+	cfg, err := config.DefaultFile().Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ INSERT INTO sessions (id, workspace, title, ended, harness, model, effort, dir, 
 func TestOpenKeepsModelEntriesWhenConfigIsInvalid(t *testing.T) {
 	configPath := writeConfig(t, `{"theme":"blue"}`)
 	createCurrentDatabase(t, `INSERT INTO model_entries VALUES ('b', 'claude', 'opus', 'Opus', '[]', '');`)
-	if db, err := Open(); err == nil {
+	if db, err := Open(DefaultDir(), config.DefaultFile()); err == nil {
 		db.Close()
 		t.Fatal("opened with an invalid config.json")
 	} else if !strings.Contains(err.Error(), configPath) {
@@ -258,7 +258,7 @@ func TestOpenKeepsModelEntriesWhenConfigIsInvalid(t *testing.T) {
 	if hasModelEntriesTable(t, db) {
 		t.Fatal("model_entries remains after opening")
 	}
-	cfg, err := config.Load()
+	cfg, err := config.DefaultFile().Load()
 	if err != nil {
 		t.Fatal(err)
 	}

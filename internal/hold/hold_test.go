@@ -73,6 +73,7 @@ func until(t *testing.T, fn func() bool) {
 	t.Fatal("condition timed out")
 }
 func TestLineOutputReattachesAtPosition(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/cat")
 	out := output(t, h, 0)
 	if _, err := h.Write([]byte("first\n")); err != nil {
@@ -96,6 +97,7 @@ func TestLineOutputReattachesAtPosition(t *testing.T) {
 	}
 }
 func TestSegmentsAndDiscard(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/cat")
 	data := append(bytes.Repeat([]byte("x"), 3*segmentSize+10), '\n')
 	go h.Write(data)
@@ -111,6 +113,7 @@ func TestSegmentsAndDiscard(t *testing.T) {
 	}
 }
 func TestExitIncludesStatusAndStderr(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/sh", "-c", "printf end; printf old >&2; head -c 3000 /dev/zero | tr '\\0' x >&2; echo final >&2; exit 3")
 	b, err := io.ReadAll(output(t, h, 0))
 	if err != nil || string(b) != "end" {
@@ -123,6 +126,7 @@ func TestExitIncludesStatusAndStderr(t *testing.T) {
 }
 
 func TestOutputWriteFailureStopsChild(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(temp(t), "run")
 	if err := os.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
@@ -150,6 +154,7 @@ func TestOutputWriteFailureStopsChild(t *testing.T) {
 	}
 }
 func TestClosedAndLost(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/cat")
 	out := output(t, h, 0)
 	done := make(chan error, 1)
@@ -172,6 +177,7 @@ func TestClosedAndLost(t *testing.T) {
 	}
 }
 func TestInputDropsPartialLinesAndSerializesWriters(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/cat")
 	conn, err := net.Dial("unix", filepath.Join(h.dir, "in"))
 	if err != nil {
@@ -202,6 +208,7 @@ func TestInputDropsPartialLinesAndSerializesWriters(t *testing.T) {
 	}
 }
 func TestLongSocketPathRefused(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(temp(t), strings.Repeat("x", 104))
 	_, err := Start(holdtest.Path, dir, []string{"cat"}, os.Environ(), "", nil)
 	if err == nil || !strings.Contains(err.Error(), dir) {
@@ -209,6 +216,7 @@ func TestLongSocketPathRefused(t *testing.T) {
 	}
 }
 func TestStartWithoutHolder(t *testing.T) {
+	t.Parallel()
 	dir := temp(t)
 	_, err := Start(filepath.Join(dir, "missing"), filepath.Join(dir, "run"), []string{"/bin/cat"}, os.Environ(), "", nil)
 	if !errors.Is(err, os.ErrNotExist) {
@@ -219,6 +227,7 @@ func TestStartWithoutHolder(t *testing.T) {
 	}
 }
 func TestStopClosesInput(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/sh", "-c", "cat; echo closed")
 	out := output(t, h, 0)
 	_, _ = h.Write([]byte("line\n"))
@@ -230,6 +239,7 @@ func TestStopClosesInput(t *testing.T) {
 	}
 }
 func TestStopKillsChildIgnoringEOF(t *testing.T) {
+	t.Parallel()
 	h := start(t, nil, "/bin/sh", "-c", "echo ready; exec sleep 300")
 	readN(t, output(t, h, 0), 6)
 	began := time.Now()
@@ -244,6 +254,7 @@ func TestStopKillsChildIgnoringEOF(t *testing.T) {
 	}
 }
 func TestTerminalResizeHangupAndRetention(t *testing.T) {
+	t.Parallel()
 	h := start(t, &Size{Cols: 80, Rows: 24}, "/bin/sh", "-c", "trap 'echo hungup; exit 0' HUP; stty size; read line; stty size; read line; head -c 700000 /dev/zero | tr '\\0' x; echo done; while :; do sleep 1; done")
 	out := output(t, h, 0)
 	got := readN(t, out, 7)
@@ -272,6 +283,7 @@ func TestTerminalResizeHangupAndRetention(t *testing.T) {
 	}
 }
 func TestSurvivesKilledParent(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(temp(t), "run")
 	exe, _ := os.Executable()
 	cmd := exec.Command(exe, "parent", holdtest.Path, dir)

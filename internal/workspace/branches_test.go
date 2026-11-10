@@ -9,6 +9,7 @@ import (
 )
 
 func TestCheckNewBranch(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "branch", "taken")
 	run(root, "branch", "previous")
@@ -32,6 +33,7 @@ func TestCheckNewBranch(t *testing.T) {
 }
 
 func TestAddWorktreeRefusesExistingBranch(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "branch", "taken")
 	before, err := BranchTip(root, "taken")
@@ -49,6 +51,7 @@ func TestAddWorktreeRefusesExistingBranch(t *testing.T) {
 
 // A non-empty target makes Git create the branch and then fail.
 func TestAddWorktreeFailureLeavesNoBranch(t *testing.T) {
+	t.Parallel()
 	root, _ := gitRepo(t)
 	dir := SessionDir(root, "s1")
 	write(t, filepath.Join(dir, "file"), "occupied")
@@ -63,7 +66,29 @@ func TestAddWorktreeFailureLeavesNoBranch(t *testing.T) {
 	}
 }
 
+func TestAddWorktreeSetupFailureRollsBack(t *testing.T) {
+	t.Parallel()
+	root, _ := gitRepo(t)
+	if err := os.Mkdir(filepath.Join(root, ".worktreeinclude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := SessionDir(root, "s1")
+	if err := AddWorktree(root, dir, "feature/x", ""); err == nil {
+		t.Fatal("AddWorktree with an unreadable include file succeeded")
+	}
+	if exists(root, "feature/x") {
+		t.Error("setup failure left its branch")
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("setup failure left its directory: %v", err)
+	}
+	if out, err := git(root, "worktree", "list", "--porcelain"); err != nil || strings.Contains(out, dir) {
+		t.Errorf("setup failure left a registered worktree: %s", out)
+	}
+}
+
 func TestBranches(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	remote := t.TempDir()
 	run(remote, "init", "-q", "--bare", "-b", "main")

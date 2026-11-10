@@ -21,7 +21,7 @@ func (r *Runtime) ProposeChild(parentID string, options ChildOptions) (harness.S
 		return harness.Settings{}, err
 	}
 	err = r.save(func(tx *write) error {
-		_, child, err := prepareChild(tx.Tx, parentID, options, false)
+		_, child, err := r.prepareChild(tx.Tx, parentID, options, false)
 		if err != nil {
 			return err
 		}

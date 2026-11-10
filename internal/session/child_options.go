@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
@@ -30,7 +29,7 @@ type ChildOptions struct {
 // prepareChild validates the requested context and directory before any files
 // or processes are created. Proposals and direct starts share these checks.
 // With exact, the options' settings are complete and used as they are.
-func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact bool) (store.Session, store.Session, error) {
+func (r *Runtime) prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact bool) (store.Session, store.Session, error) {
 	name, title, dir := options.Name, options.Title, options.Dir
 	if !childName.MatchString(name) {
 		return store.Session{}, store.Session{}, errors.New("name must be lowercase letters, digits, and hyphens")
@@ -48,7 +47,7 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	}
 	settings := options.Settings
 	if !exact {
-		cfg, err := config.Load()
+		cfg, err := r.config.Load()
 		if err != nil {
 			return store.Session{}, store.Session{}, err
 		}
