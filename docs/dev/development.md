@@ -74,18 +74,23 @@ Documentation procedures are in [documentation](documentation.md).
   container queries where they fit. No polyfills, manual DOM patching, or
   timers to wait for rendering. HTML holds markup only.
 - Use stock shadcn components and theme styles, Lucide icons, and Tailwind
-  utilities for layout. Keep component styling in the upstream shadcn source;
-  do not add custom component CSS or theme overrides. Reserve red for errors
-  and removed lines in diffs, and take status colors from
-  `internal/ui/web/shared/tones.ts`; repeated status indicators use icons with accessible names and hover text.
-  Write interface text as plain phrases and sentences, with facts joined by
-  words or given their own lines rather than separator characters.
+  utilities on the Tailwind scale. Component styling lives in the shadcn
+  source in `internal/ui/web/components/ui/`; class names passed to a shadcn
+  component set only its position, spacing, size, and layout. Build on the
+  shared pieces in `internal/ui/web/shared/`: `IconButton` for icon-only
+  buttons, `Message` for empty, loading, and error lines, `useRequest` and
+  `errorText` for requests a component makes, and `tones.ts` for status
+  colors. Reserve red for errors and removed lines in diffs; repeated status
+  indicators use icons with accessible names and hover text. Write interface
+  text as plain phrases and sentences, with facts joined by words or given
+  their own lines rather than separator characters.
 - Animate every change a person can see happen. Controls that appear on hover
   or focus fade with Tailwind's default transition on opacity and visibility;
-  content that opens or closes slides with `slide` from
-  `internal/ui/web/shared/motion.ts`; menus and dialogs keep shadcn's
-  animations. `internal/ui/web/base.css` holds the timings and turns motion off
-  for a reduced-motion setting.
+  `CollapsibleContent` slides open and closed, with children that do not
+  depend on whether it is open; menus and dialogs keep shadcn's animations.
+  `internal/ui/web/base.css` holds the timings and turns CSS motion off for a
+  reduced-motion setting; animation written in JavaScript checks
+  `useReducedMotion`.
 - Provide semantic elements, labels, correct focus order and returned focus.
   Add accessibility handling where native semantics fall short. Each module
   owns one concern, named for its behavior; remove duplication and split files
