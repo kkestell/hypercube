@@ -7,8 +7,9 @@
 - Author: implementer child of Hypercube session 32a6c484 (Claude Code, Opus 5.5)
 - Status: implemented
 - Code base: `42cc82bd4f5936e077612f2ce20caa0552c3f0be`
-- Code head: `26c8ebbf3dfae19234be869baf6909b454cbb382`
-- Implementation commits: `26c8ebbf3dfae19234be869baf6909b454cbb382` (work)
+- Code head: `d1d33e8e4211fbd3a2a07f53ae804b14ce8c2ae3`
+- Implementation commits: `26c8ebbf3dfae19234be869baf6909b454cbb382` (work),
+  `d1d33e8e4211fbd3a2a07f53ae804b14ce8c2ae3` (fix, round 1)
 
 ## Changes
 
@@ -56,11 +57,30 @@ Implemented as planned; see the plan for the design.
   rests on the existing mount focus, and the fetched-head start is covered by
   the Go integration test against a local bare repository.
 
+## Repair round 1
+
+Review: [.agents/reviews/2026-11-10-004-pull-request-chat.md](../reviews/2026-11-10-004-pull-request-chat.md)
+(committed at `b742dcf004827fb2c439d71f4ee341d40ba3df01`). N1 needed no
+change.
+
+- N2 fixed in `d1d33e8e4211fbd3a2a07f53ae804b14ce8c2ae3`: `useRowAction` now
+  returns `{run, running}`, and an untracked row's Chat is disabled while
+  `running(rowKey)` holds, which covers the chat that follows an add before
+  the workspace is listed. Deviation from the suggested fix: wrapping the
+  open-dialog handler in the running key disabled the opener while the dialog
+  opened, so focus could not return to it (the existing focus test failed);
+  only the post-add chat is tracked. New bun test: the untracked row's Chat is
+  disabled while the post-add `pull-request-branch` request is pending, and
+  enabled after; it fails without the fix.
+- Verification at `d1d33e8`: `cd internal/ui && bunx tsc -p .` — no errors;
+  `bun test` — 481 pass, 0 fail; `make check` — exit 0. No rendering change,
+  so no screenshots regenerated.
+
 ## Session provenance
 
 | Stage | Coordinator ID | Harness | Native conversation ID | Model / effort |
 | --- | --- | --- | --- | --- |
-| work | implementer (child of 32a6c484) | Claude Code | `1e99122f-a1ce-416a-bf0b-0630ff77488e` | claude-opus-5-5 / default |
+| work, fix round 1 | implementer (child of 32a6c484) | Claude Code | `1e99122f-a1ce-416a-bf0b-0630ff77488e` | claude-opus-5-5 / default |
 
 ## Outstanding
 
