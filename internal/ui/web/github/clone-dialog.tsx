@@ -10,27 +10,31 @@ import {Label} from '../components/ui/label';
 import {workspaceKey} from '../editor/target.ts';
 import {selectSession} from '../sessions/selection.ts';
 import {BusyDot} from '../shared/busy-dot.tsx';
+import {useDialogFocus} from '../shared/focus.ts';
+import {Message} from '../shared/message.tsx';
 import {useStore} from '../store.ts';
 import {suggestedFolder} from './clone.ts';
 import type {PullRequest} from './types.ts';
 
 interface CloneDialogProps {
+  open: boolean;
   pr: PullRequest;
   account: string;
   onClose: () => void;
 }
 
-export function CloneDialog({pr, account, onClose}: CloneDialogProps) {
+export function CloneDialog({open, pr, account, onClose}: CloneDialogProps) {
   const [state, store] = useStore();
   const [folder, setFolder] = useState(() => suggestedFolder(state.workspaces, pr.repo));
   const [cloning, setCloning] = useState(false);
   const [error, setError] = useState('');
   const running = useRef<AbortController | null>(null);
   const name = pr.repo.split('/')[1];
+  const focus = useDialogFocus(open);
 
   useEffect(() => () => running.current?.abort(), []);
 
-  const close = () => { running.current?.abort(); onClose(); };
+  const close = () => { running.current?.abort(); setCloning(false); onClose(); };
 
   const choose = async () => {
     const chosen = await hypercube()?.chooseFolder();
@@ -55,8 +59,8 @@ export function CloneDialog({pr, account, onClose}: CloneDialogProps) {
     onClose();
   }
 
-  return <Dialog open onOpenChange={open => { if (!open) close(); }}>
-    <DialogContent>
+  return <Dialog open={open} onOpenChange={open => { if (!open) close(); }}>
+    <DialogContent {...focus}>
       <form onSubmit={clone} className="grid gap-4">
         <DialogHeader>
           <DialogTitle>Clone {pr.repo}</DialogTitle>
@@ -68,10 +72,10 @@ export function CloneDialog({pr, account, onClose}: CloneDialogProps) {
             <Input id="clone-folder" value={folder} disabled={cloning} onChange={event => setFolder(event.target.value)} />
             {hypercube() && <Button type="button" variant="secondary" disabled={cloning} onClick={choose}>Choose…</Button>}
           </div>
-          {error && <p role="alert" className="text-sm break-words whitespace-pre-wrap text-destructive">{error}</p>}
+          {error && <Message error>{error}</Message>}
         </div>
         <DialogFooter>
-          <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={close}>Cancel</Button>
           <Button type="submit" disabled={cloning || !folder.trim()}>
             {cloning ? <><BusyDot title="Cloning" />Cloning…</> : 'Clone'}
           </Button>

@@ -6,6 +6,7 @@ import {HttpError, listFileTree, readFile} from '../api.ts';
 import type {ChangeTree} from '../changes/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
+import {errorText} from '../shared/error-text.ts';
 import type {FileEntry, FileRead, FolderListing, OpenFile, SessionFiles} from './types.ts';
 
 export const unreadFile: OpenFile = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
@@ -133,7 +134,7 @@ export async function loadTree(store: Store, dirs: string[]) {
   } catch (error) {
     if (error instanceof HttpError && error.status === 404) apply({'': null});
     else {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorText(error);
       apply(Object.fromEntries((dirs.includes('') ? [''] : dirs).map(dir => [dir, {error: message}])));
     }
   }
@@ -151,7 +152,7 @@ export async function readOpenFile(store: Store, path: string) {
   try {
     result = await readFile(editor.target, path, file.etag);
   } catch (error) {
-    result = {error: error instanceof Error ? error.message : String(error)};
+    result = {error: errorText(error)};
   }
   store.update(state => state.editorVersion === attachment && state.fileReadVersions[path] === request
     ? fileRead(state, editor.id, path, result) : state);

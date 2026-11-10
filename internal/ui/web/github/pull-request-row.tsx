@@ -5,20 +5,18 @@ import type {ReactNode} from 'react';
 import {Button} from '../components/ui/button';
 import {canReview} from './review.ts';
 import {Icon, type IconName} from '../shared/icon.tsx';
+import {tones} from '../shared/tones.ts';
 import type {Turn} from './turns.ts';
 import type {PullRequest} from './types.ts';
 
-// needColors color what a pull request needs: red for a failed check, amber
-// for work on the branch, blue for people waiting on an answer, green for a
-// merge, and grey for waiting.
 const needColors: Partial<Record<IconName, string>> = {
-  error: 'text-destructive',
-  warning: 'text-amber-600 dark:text-amber-500',
-  edit: 'text-amber-600 dark:text-amber-500',
-  refresh: 'text-amber-600 dark:text-amber-500',
-  eye: 'text-sky-600 dark:text-sky-500',
-  'comment-discussion': 'text-sky-600 dark:text-sky-500',
-  'git-merge': 'text-green-600 dark:text-green-500',
+  error: tones.error,
+  warning: tones.warning,
+  edit: tones.warning,
+  refresh: tones.warning,
+  eye: tones.info,
+  'comment-discussion': tones.info,
+  'git-merge': tones.success,
 };
 
 interface RowProps {
@@ -37,14 +35,14 @@ interface RowProps {
 export function PullRequestRow({pr, turn, account, onReview, hideReason, place, trailing}: RowProps) {
   const own = pr.author === account;
   return <li className={`group/row flex items-start gap-2 text-sm ${turn.yours ? '' : 'opacity-60'}`}>
-    <span className="flex h-5 items-center"><Icon name={turn.icon} className={needColors[turn.icon] ?? 'text-muted-foreground'} title={turn.reason} role="img" /></span>
+    <span className="flex h-5 items-center"><Icon name={turn.icon} className={needColors[turn.icon] ?? tones.muted} title={turn.reason} role="img" /></span>
     <div className="min-w-0 flex-1">
-      <p className="flex items-center gap-1.5">
+      <p><a href={pr.url} target="_blank" rel="noopener noreferrer" aria-label={`Open #${pr.number} on GitHub`} title="Open on GitHub" className="flex items-center gap-1.5 hover:underline">
         <span className="truncate">#{pr.number} {pr.title}</span>
-        <a href={pr.url} target="_blank" rel="noopener noreferrer" aria-label={`Open #${pr.number} on GitHub`} title="Open on GitHub" className="shrink-0 text-muted-foreground opacity-0 transition-[color,opacity] focus-visible:opacity-100 group-hover/row:opacity-100 hover:text-foreground">
+        <span className="invisible shrink-0 text-muted-foreground opacity-0 transition-[opacity,visibility] group-hover/row:visible group-hover/row:opacity-100 group-focus-within/row:visible group-focus-within/row:opacity-100">
           <Icon name="link-external" />
-        </a>
-      </p>
+        </span>
+      </a></p>
       {(!hideReason || (!own && pr.author)) && <p className="flex flex-wrap gap-x-1.5 text-muted-foreground">
         {!hideReason && <span>{turn.reason}</span>}
         {!own && pr.author && <span>From {pr.author}.</span>}

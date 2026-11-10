@@ -20,7 +20,7 @@ async function swallowed(platform: string, modifier: 'metaKey' | 'ctrlKey') {
   mount(store, <QuickOpen />);
   await act(async () => {});
   const event = new KeyboardEvent('keydown', {key: 'p', [modifier]: true, bubbles: true, cancelable: true});
-  act(() => { find(document, '[cmdk-input]').dispatchEvent(event); });
+  act(() => { find(document, '[aria-label="Search files"]').dispatchEvent(event); });
   return event.defaultPrevented;
 }
 
@@ -41,4 +41,13 @@ test('Quick Open lists files for the selected workspace', async () => {
   expect(url.pathname).toBe('/mention-files');
   expect(Object.fromEntries(url.searchParams)).toEqual({workspace: 'w'});
   expect(document.body.textContent).toContain('main.go');
+});
+
+test('Quick Open announces a failed file listing', async () => {
+  stubFetch(() => new Response('permission denied', {status: 403}));
+  const store = createStore(receivedWorkspaces(testState({dialog: 'quickOpen'}), [testWorkspace({id: 'w'})]));
+  store.update(state => selectWorkspace(state, 'w'));
+  mount(store, <QuickOpen />);
+  await act(async () => {});
+  expect(find(document, '[role="alert"]').textContent).toBe('Could not list files: permission denied');
 });

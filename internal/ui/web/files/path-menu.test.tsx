@@ -39,7 +39,7 @@ test.each([
   const open = mock(async (_app: string, _path: string) => '');
   globalThis.hypercube = testBridge({platform, open});
   const {root, fetches} = setup();
-  const row = find(root, '[data-path="src/file with spaces.go"]');
+  const row = find(root, '[role="treeitem"][aria-label="file with spaces.go, Modified"]');
   act(() => row.focus());
   key(row, 'F10', true);
   expect(item(label)).toBeDefined();
@@ -55,7 +55,7 @@ test.each([
 
 test('the file menu has no reveal item in a browser', () => {
   const {root} = setup();
-  const row = find(root, '[data-path="src"]');
+  const row = find(root, '[role="treeitem"][aria-label="src, Modified"]');
   act(() => row.focus());
   key(row, 'F10', true);
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Copy Name', 'Copy Path', 'Copy Relative Path']);
@@ -64,7 +64,7 @@ test('the file menu has no reveal item in a browser', () => {
 test('file menu copies names and paths, and Escape returns focus', async () => {
   const copy = spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
   const {root} = setup();
-  const row = find(root, '[data-path="src/file with spaces.go"]');
+  const row = find(root, '[role="treeitem"][aria-label="file with spaces.go, Modified"]');
   const open = () => {
     act(() => row.focus());
     key(row, 'ContextMenu');

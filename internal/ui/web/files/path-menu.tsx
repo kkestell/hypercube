@@ -15,24 +15,27 @@ interface PathMenu {
 export function usePathMenu() {
   const [state, store] = useStore();
   const [menu, setMenu] = useState<PathMenu | null>(null);
-  const close = useCallback(() => setMenu(null), []);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   const handlers = (path: string) => ({
     onContextMenu: (event: MouseEvent<HTMLElement>) => {
       event.preventDefault();
       setMenu({path, x: event.clientX, y: event.clientY});
+      setOpen(true);
     },
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
       event.preventDefault();
       const rect = event.currentTarget.getBoundingClientRect();
       setMenu({path, x: rect.left, y: rect.bottom});
+      setOpen(true);
     },
   });
   const dir = editorDirectory(state) ?? '';
   const relative = (path: string) => path.startsWith(dir + '/') ? path.slice(dir.length + 1) : path;
   const absolute = (path: string) => path.startsWith('/') ? path : `${dir.replace(/\/$/, '')}/${path}`;
   const changed = menu && changeTree(state.editor?.changes ?? null).files.has(menu.path);
-  const element = menu && dir && <ContextMenu open x={menu.x} y={menu.y} onClose={close} items={[
+  const element = menu && dir && <ContextMenu open={open} x={menu.x} y={menu.y} onClose={close} items={[
     ...(changed ? [[{label: 'Open Changes', icon: 'source-control' as const, run: () => openDiffTab(store, menu.path)}]] : []),
     revealItem(store, absolute(menu.path)),
     [

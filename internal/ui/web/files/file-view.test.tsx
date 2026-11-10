@@ -111,7 +111,7 @@ test.each([
   expect(viewer?.getAttribute(attribute)).toBe(url);
   if (tag === 'iframe') expect(viewer?.getAttribute('sandbox')).toBe('');
   if (tag === 'audio' || tag === 'video') expect(viewer?.hasAttribute('controls')).toBe(true);
-  expect(root.querySelector('.file-view-code')).toBeNull();
+  expect(root.querySelector('code')).toBeNull();
 });
 
 test('textual browser previews switch to highlighted source, then refresh the native viewer', () => {
@@ -139,7 +139,7 @@ test('source scrolling after a preview switch is remembered across remounts', as
   const store = createStore(testState({editor: session}));
   const root = mount(store, <FileView id={id} path={path} />);
   act(() => store.update(state => setSource(state, path, true)));
-  const scroller = root.querySelector<HTMLElement>('.file-view')!;
+  const scroller = root.querySelector<HTMLElement>('[role="region"][aria-label="File contents"]')!;
   act(() => {
     scroller.scrollTop = 500;
     scroller.dispatchEvent(new Event('scroll'));
@@ -148,7 +148,7 @@ test('source scrolling after a preview switch is remembered across remounts', as
   expect(store.get().editor?.scroll[id]?.top).toBe(500);
   const restored = mount(store, <FileView id={id} path={path} />);
   await act(async () => {});
-  expect(restored.querySelector('.file-view')?.scrollTop).toBe(500);
+  expect(restored.querySelector('[role="region"][aria-label="File contents"]')?.scrollTop).toBe(500);
 });
 
 test('a browser decoding error offers the file directly', () => {
@@ -170,14 +170,13 @@ test('source highlights reveal once after text arrives, across refreshes and rem
     session.scroll['file:a.md'] = {top: 100, left: 0, following: false};
     const store = createStore(testState({editor: session}));
     const root = mount(store, <FileView id="file:a.md" path="a.md" />);
-    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
+    expect(root.querySelectorAll('code')).toHaveLength(0);
     expect(scroll).not.toHaveBeenCalled();
     const text = (value: string) => store.update(state => state.editor ? {...state, editor: {...state.editor, files: {...state.editor.files, open: {
       'a.md': {...unread, ...state.editor.files.open['a.md'], text: value},
     }}}} : state);
     act(() => text('# Title\nline\nlast'));
-    expect(root.querySelector('.markdown-preview')).toBeNull();
-    const highlights = root.querySelectorAll('.file-view-highlight');
+    const highlights = root.querySelectorAll('code');
     expect(highlights).toHaveLength(3);
     expect([...highlights].map(line => line.textContent)).toEqual(['# Title', 'line', 'last']);
     expect(scroll).toHaveBeenCalledTimes(1);
@@ -201,11 +200,11 @@ test('reveal waits for a rendered source highlight, including an empty file', ()
     expect(scroll).not.toHaveBeenCalled();
     expect(store.get().editor?.files.open['a.md']?.reveal).toBe(true);
     act(() => store.update(state => setSource(state, 'a.md', true)));
-    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(1);
+    expect(root.querySelectorAll('code')).toHaveLength(1);
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(store.get().editor?.files.open['a.md']?.reveal).toBe(false);
     act(() => store.update(state => setSource(state, 'a.md', false)));
-    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
+    expect(root.querySelectorAll('code')).toHaveLength(0);
   } finally { scroll.mockRestore(); }
 });
 

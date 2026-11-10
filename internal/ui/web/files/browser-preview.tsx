@@ -1,13 +1,14 @@
 // Browser viewers stream media directly instead of loading it into file state.
 import {useState} from 'react';
+import {Message} from '../shared/message.tsx';
 import type {FilePreview} from './types.ts';
 
 export function BrowserPreview({preview, path}: {preview: FilePreview; path: string}) {
   const [failed, setFailed] = useState(false);
   const {mime, url} = preview;
-  const fallback = <p className="p-6 text-center text-sm text-muted-foreground">
+  const fallback = <Message fill>
     This browser could not display the file. <a className="underline" href={url} target="_blank" rel="noreferrer">Open file</a>
-  </p>;
+  </Message>;
   if (failed) return fallback;
   if (mime === 'text/html') return <iframe title={path} src={url} sandbox="" className="h-full w-full flex-1 border-0 bg-white" />;
   if (mime === 'application/pdf') return <object aria-label={path} data={url} type={mime} className="h-full w-full flex-1">{fallback}</object>;
