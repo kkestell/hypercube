@@ -106,10 +106,11 @@ export async function retrySubmission(store: Store, key: string, id: string) {
 export const dismissSubmission = (store: Store, key: string, id: string) => store.update(state =>
   withSubmissions(state, key, submissionsOf(state, key).filter(entry => entry.id !== id)));
 
-// requestMerge asks a worktree session's agent to merge its branch into the
-// checkout's branch.
-export const requestMerge = (store: Store, session: Pick<Session, 'id'>, target: string, path: string) => post(store, 'session', {action: 'input', id: session.id},
-  JSON.stringify({text: `Commit any remaining work, then merge your branch into ${target} in the checkout at ${path}, resolving any conflicts, and report the result.`, images: []}));
+// requestMerge asks a worktree session's agent to merge its branch into target,
+// the checkout's branch the user saw. The backend refuses when the checkout has
+// moved to another branch.
+export const requestMerge = (store: Store, session: Pick<Session, 'id'>, target: string) =>
+  post(store, 'session', {action: 'merge', id: session.id, target});
 
 // Clear the composer and show its complete prompt in the same update, before
 // waiting for HTTP or the agent. Each failure keeps its own retryable message.

@@ -9,7 +9,7 @@ import {openUnsent, receivedWorkspaces, selectSession, selectWorkspace} from '..
 import {createStore} from '../store.ts';
 import {receivedTranscript, setExpanded} from '../transcript/transcripts.ts';
 import {startViewStorage} from './view-storage.ts';
-import {resizeRegion, selectRightTab, toggle, toggleWrap} from './workbench.ts';
+import {hideRegion, resizeRegion, selectRightTab, toggle, toggleWrap} from './workbench.ts';
 
 const workspaces = [testWorkspace({id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})]})];
 const fresh = (selected = '') => createStore(testState({selected}));
@@ -234,4 +234,22 @@ test('workspace views persist independently and are removed with their workspace
   expect(reloaded.get().editor).toBeNull();
   expect(reloaded.get().workspaceViews).toEqual({});
   expect(reloaded.get().fileTrees['workspace:other']).toBeUndefined();
+});
+
+test('hiding a collapsed region keeps its size and the other saved views', () => {
+  const store = fresh('a');
+  startViewStorage(store);
+  store.update(state => receivedWorkspaces(state, workspaces));
+  openFileAt(store, 'session.md', []);
+  store.update(state => resizeRegion(state, 'rightPanel', 420));
+  store.update(state => hideRegion(state, 'rightPanel'));
+
+  const reloaded = fresh();
+  startViewStorage(reloaded);
+  reloaded.update(state => receivedWorkspaces(state, workspaces));
+  expect(reloaded.get().errors).toEqual([]);
+  expect(reloaded.get().selected).toBe('a');
+  expect(reloaded.get().workbench.rightPanel).toBe(false);
+  expect(reloaded.get().workbench.sizes.rightPanel).toBe(420);
+  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual(['file:session.md']);
 });

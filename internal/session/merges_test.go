@@ -2,6 +2,8 @@ package session
 
 import (
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -40,5 +42,49 @@ func TestArchivingForgetsMergeStatus(t *testing.T) {
 	}
 	if _, ok := f.rt.Merges()[s.ID]; ok {
 		t.Fatal("the archived session kept the merge status of its removed branch")
+	}
+}
+
+func TestMergeUsesTheLiveTarget(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	f.merge(s.ID, "the target main", func(m workspace.Merge) bool { return m.Target == "main" })
+	before := len(f.inputs(s.ID))
+
+	f.git(f.root, "switch", "-q", "-c", "release")
+	if err := f.rt.Merge(s.ID, "main"); err == nil || !strings.Contains(err.Error(), "now on release") {
+		t.Fatalf("Merge into a branch the checkout left = %v", err)
+	}
+	if got := f.inputs(s.ID); len(got) != before {
+		t.Fatalf("a refused merge sent input: %q", got)
+	}
+	f.merge(s.ID, "the target release", func(m workspace.Merge) bool { return m.Target == "release" })
+
+	if err := f.rt.Merge(s.ID, "release"); err != nil {
+		t.Fatal(err)
+	}
+	want := "Commit any remaining work, then merge your branch into release in the checkout at " + f.root + ", resolving any conflicts, and report the result."
+	f.until("the merge prompt", func() bool { return slices.Contains(f.inputs(s.ID), want) })
+}
+
+func TestMergeRefusesSessionsWithoutTheirOwnBranch(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Tx(func(tx *store.Tx) error {
+		return tx.AddSession(store.Session{ID: "archived", Workspace: f.workspace.ID, Ended: true,
+			Base: "base", Branch: "hypercube/archived", Dir: filepath.Join(f.root, "removed")})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plain := f.session()
+	parent := f.worktreeSession()
+	child := f.child(parent, "w1", "start")
+	for _, id := range []string{"archived", plain.ID, child.ID} {
+		before := len(f.inputs(id))
+		if err := f.rt.Merge(id, "main"); err == nil {
+			t.Errorf("Merge(%s) succeeded", id)
+		}
+		if got := f.inputs(id); len(got) != before {
+			t.Errorf("a refused merge sent input to %s: %q", id, got)
+		}
 	}
 }

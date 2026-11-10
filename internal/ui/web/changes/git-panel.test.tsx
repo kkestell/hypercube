@@ -154,12 +154,10 @@ test('merge sits below both comparisons and asks the agent to merge into the che
   expect(fetches).toHaveBeenCalledTimes(1);
   const [url, init] = fetches.mock.calls[0];
   const params = new URL(url, 'http://x/').searchParams;
-  expect(params.get('action')).toBe('input');
+  expect(params.get('action')).toBe('merge');
   expect(params.get('id')).toBe('s');
-  expect(JSON.parse(init!.body as string)).toEqual({
-    text: 'Commit any remaining work, then merge your branch into main in the checkout at /repo, resolving any conflicts, and report the result.',
-    images: [],
-  });
+  expect(params.get('target')).toBe('main');
+  expect(init!.body).toBeUndefined();
 });
 
 test.each([

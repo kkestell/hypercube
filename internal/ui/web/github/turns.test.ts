@@ -24,6 +24,8 @@ test('each pull request is the account’s move, a wait, or none of its business
     [own({merge: 'BEHIND'}), 'Behind the base branch.', true],
     [own({review: 'CHANGES_REQUESTED', merge: 'BLOCKED'}), 'Changes requested.', true],
     [own({review: 'CHANGES_REQUESTED', responded: true, merge: 'BLOCKED'}), 'Waiting for another review.', false],
+    [own({review: 'CHANGES_REQUESTED', responded: true, unanswered: 1, merge: 'BLOCKED'}), '1 unanswered comment.', true],
+    [own({review: 'CHANGES_REQUESTED', unanswered: 1, merge: 'BLOCKED'}), 'Changes requested.', true],
     [own({unanswered: 1, merge: 'CLEAN'}), '1 unanswered comment.', true],
     [own({merge: 'CLEAN'}), 'Ready to merge.', true],
     [own({merge: 'CLEAN', pendingReviews: 1}), 'Waiting for review.', false],

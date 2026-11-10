@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -484,6 +485,8 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 		return pr{"nodes": []pr{{"author": map[string]string{"login": login}, "state": state}}}
 	}
 	threads := func(ts ...map[string]any) pr { return pr{"nodes": ts} }
+	// Bob requested changes on a commit before the head.
+	pushedPast := pr{"nodes": []pr{{"author": map[string]string{"login": "bob"}, "state": "CHANGES_REQUESTED", "commit": pr{"oid": "old"}}}}
 	conversation := func(cs ...map[string]any) pr { return pr{"nodes": cs} }
 	cases := []struct {
 		name string
@@ -508,6 +511,16 @@ func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
 		{"own with changes requested, then a push", node(9, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
 			"latestOpinionatedReviews": pr{"nodes": []pr{{"author": map[string]string{"login": "bob"}, "state": "CHANGES_REQUESTED", "commit": pr{"oid": "old"}}}}}),
 			PullRequest{Review: "CHANGES_REQUESTED", Responded: true}},
+		{"own with changes requested, a push, then a newer comment", node(13, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
+			"latestOpinionatedReviews": pushedPast, "reviewThreads": threads(thread(false, said(person("bob"), 5), said(person("bob"), 5))),
+			"comments": conversation(said(person("bob"), 12))}),
+			PullRequest{Review: "CHANGES_REQUESTED", Responded: true, Unanswered: 1}},
+		{"own with changes requested, then a push past its threads", node(14, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
+			"latestOpinionatedReviews": pushedPast, "reviewThreads": threads(thread(false, said(person("bob"), 5), said(person("bob"), 5)))}),
+			PullRequest{Review: "CHANGES_REQUESTED", Responded: true}},
+		{"own with changes requested, a push, then a thread reply", node(15, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
+			"latestOpinionatedReviews": pushedPast, "reviewThreads": threads(thread(false, said(person("bob"), 5), said(person("bob"), 12)))}),
+			PullRequest{Review: "CHANGES_REQUESTED", Responded: true, Unanswered: 1}},
 		{"own with changes requested at its head", node(10, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
 			"latestOpinionatedReviews": pr{"nodes": []pr{{"author": map[string]string{"login": "bob"}, "state": "CHANGES_REQUESTED", "commit": pr{"oid": "head"}}}}}),
 			PullRequest{Review: "CHANGES_REQUESTED"}},
@@ -638,4 +651,42 @@ func TestSavedChoiceDecidesBetweenPushers(t *testing.T) {
 	// A saved account that is not a candidate is ignored.
 	choose("carol")
 	s.until("the choice dropped", func(m map[string]Status) bool { return m[id].Account == "" })
+}
+
+func TestReviewThreadsAfterTheFirstPage(t *testing.T) {
+	s := newStand(t, "alice")
+	resolved := thread(true, said(person("bob"), 1), said(person("bob"), 1))
+	var first []map[string]any
+	for range 20 {
+		first = append(first, resolved)
+	}
+	paged := repoNode("o/r", 1)
+	paged["id"], paged["author"] = "PR_1", map[string]string{"login": "alice"}
+	paged["reviewThreads"] = map[string]any{"pageInfo": map[string]any{"hasNextPage": true, "endCursor": "c1"}, "nodes": first}
+	whole := repoNode("o/r", 2)
+	whole["id"], whole["author"] = "PR_2", map[string]string{"login": "alice"}
+	whole["reviewThreads"] = map[string]any{"pageInfo": map[string]any{"hasNextPage": false}, "nodes": first}
+	s.api.SetPullRequests([]map[string]any{paged, whole}, nil)
+	s.api.SetThreadPage("PR_1", "c1", map[string]any{"pageInfo": map[string]any{"hasNextPage": true, "endCursor": "c2"},
+		"nodes": []any{resolved}})
+	s.api.SetThreadPage("PR_1", "c2", map[string]any{"pageInfo": map[string]any{"hasNextPage": false},
+		"nodes": []any{thread(false, said(person("bob"), 2), said(person("bob"), 3))}})
+	// A configured account needs no permission query, so every other query
+	// the server counts would be a misread thread query.
+	s.workspace("w", remote, []string{"config", "credential.githubAccount", "alice"})
+	s.run()
+	s.untilAccounts("the account", func(as []Account) bool { return s.accountOf(as, "alice").Updated != 0 })
+	unanswered := map[int]int{}
+	for _, pr := range s.w.Accounts()[0].PullRequests {
+		unanswered[pr.Number] = pr.Unanswered
+	}
+	if want := map[int]int{1: 1, 2: 0}; !reflect.DeepEqual(unanswered, want) {
+		t.Fatalf("unanswered = %v, want %v", unanswered, want)
+	}
+	if reads := s.api.ThreadReads(); len(reads) < 2 || slices.Contains(reads, "PR_2") {
+		t.Fatalf("thread reads = %v", reads)
+	}
+	if n := s.api.Requests(); n != 0 {
+		t.Fatalf("permission queries = %d", n)
+	}
 }

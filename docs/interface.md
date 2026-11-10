@@ -171,7 +171,9 @@ to GitHub, why it is listed, and its author when someone else wrote it.
   changes not yet answered by a push, or unanswered comments. A comment is
   unanswered when it is in an unresolved review thread and someone else spoke
   last, or when it is the latest comment in the conversation and is newer than
-  both the account's last reply and the last commit.
+  both the account's last reply and the last commit. After a push answers
+  requested changes, only comments newer than the last commit count as
+  unanswered.
 - The account's own pull requests that are ready to merge.
 - Pull requests whose review was requested from one of the account's teams,
   until the account reviews them.

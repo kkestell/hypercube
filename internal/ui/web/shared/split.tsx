@@ -7,7 +7,8 @@ import {ResizableHandle, ResizablePanel, ResizablePanelGroup} from '../component
 // and a horizontal one stacks them. fixed names the child that keeps its
 // pixel size, size is its size in pixels, or the first child's percentage when
 // neither is fixed. minStart and minEnd are CSS sizes. collapsed hides one
-// child.
+// child. Dragging or a key can collapse a fixed child; onCollapse then hides
+// it, and its size is not reported.
 interface SplitProps {
   split?: 'vertical' | 'horizontal';
   fixed?: 'start' | 'end' | 'none';
@@ -17,10 +18,11 @@ interface SplitProps {
   collapsed?: 'start' | 'end' | null;
   // User changes report pixels for a fixed child, or the first child's percent.
   onResize?: (size: number) => void;
+  onCollapse?: () => void;
   children: [ReactNode, ReactNode];
 }
 
-export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, children}: SplitProps) {
+export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, onCollapse, children}: SplitProps) {
   const [start, end] = Children.toArray(children);
   const id = useId();
   const first = useRef<PanelImperativeHandle>(null), last = useRef<PanelImperativeHandle>(null);
@@ -40,6 +42,7 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
     onLayoutChanged={(layout, meta) => {
       if (!meta.isUserInteraction || collapsed) return;
       if (fixed === 'none') onResize?.(layout[id + '-start']);
+      else if (layout[id + '-' + fixed] === 0) onCollapse?.();
       else {
         // Keyboard callbacks precede React's panel styles. Combine the new
         // percentage with the available pixels instead of reading the old size.

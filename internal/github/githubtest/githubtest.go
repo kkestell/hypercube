@@ -51,7 +51,8 @@ esac
 }
 
 // API is a GraphQL server. A test sets the permission each bearer token sees
-// and the pull requests and required check failures every token reads.
+// and the pull requests, later pages of their review threads, and required
+// check failures every token reads.
 type API struct {
 	URL string
 
@@ -62,13 +63,18 @@ type API struct {
 	requests    int
 	pulls       string
 	failedURLs  []string
+	threadPages map[threadPage]any
+	threadReads []string
 }
+
+// threadPage names the review threads of a pull request after a cursor.
+type threadPage struct{ id, after string }
 
 // NewAPI starts the server and stops it when the test ends. Every account
 // starts without access to any repository.
 func NewAPI(t testing.TB) *API {
 	t.Helper()
-	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer()}
+	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer(), threadPages: map[threadPage]any{}}
 	server := httptest.NewServer(a)
 	t.Cleanup(server.Close)
 	a.URL = server.URL
@@ -126,6 +132,47 @@ func (a *API) SetRequiredFailures(urls ...string) {
 	a.failedURLs = urls
 }
 
+// SetThreadPage sets the page of review threads, shaped like GitHub's
+// reviewThreads connection, that follows the cursor after in the pull request
+// with node ID id.
+func (a *API) SetThreadPage(id, after string, page map[string]any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.threadPages[threadPage{id, after}] = page
+}
+
+// ThreadReads lists the node IDs of the pull requests whose further review
+// threads the server has been asked for, in order.
+func (a *API) ThreadReads() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Clone(a.threadReads)
+}
+
+// threadFields finds the pull request fields of a review thread query.
+var threadFields = regexp.MustCompile(`(p\d+):node\(id:\$(i\d+)\)\{\.\.\.on PullRequest\{reviewThreads\(first:\d+,after:\$(c\d+)\)`)
+
+// threadsAnswer answers a review thread query from the pages set for each pull
+// request's ID and cursor variables.
+func (a *API) threadsAnswer(query string, variables map[string]string) string {
+	data := map[string]any{}
+	for _, m := range threadFields.FindAllStringSubmatch(query, -1) {
+		id := variables[m[2]]
+		a.threadReads = append(a.threadReads, id)
+		page, ok := a.threadPages[threadPage{id, variables[m[3]]}]
+		if !ok {
+			data[m[1]] = nil
+			continue
+		}
+		data[m[1]] = map[string]any{"reviewThreads": page}
+	}
+	out, err := json.Marshal(map[string]any{"data": data})
+	if err != nil {
+		panic(err)
+	}
+	return string(out)
+}
+
 // aliases finds the repository and pull request fields of a required check
 // query.
 var aliases = regexp.MustCompile(`(r\d+):repository\(owner:"([^"]*)",name:"([^"]*)"\)|(p\d+):pullRequest\(number:(\d+)\)`)
@@ -170,12 +217,14 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer a.mu.Unlock()
 	body, _ := io.ReadAll(r.Body)
 	var request struct {
-		Query string `json:"query"`
+		Query     string            `json:"query"`
+		Variables map[string]string `json:"variables"`
 	}
 	_ = json.Unmarshal(body, &request)
 	required := strings.Contains(request.Query, "isRequired")
 	pulls := strings.Contains(request.Query, "involved:search")
-	if !pulls && !required {
+	threads := !pulls && strings.Contains(request.Query, "reviewThreads")
+	if !pulls && !required && !threads {
 		a.requests++
 	}
 	if a.failing {
@@ -193,6 +242,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if pulls {
 		_, _ = w.Write([]byte(a.pulls))
+		return
+	}
+	if threads {
+		_, _ = w.Write([]byte(a.threadsAnswer(request.Query, request.Variables)))
 		return
 	}
 	permission := a.permissions[token]

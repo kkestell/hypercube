@@ -25,7 +25,7 @@ func (w *Watcher) Clone(ctx context.Context, repo, login, dir string) error {
 		return fmt.Errorf("reading the GitHub token for %s: %w", login, err)
 	}
 	return workspace.Clone(ctx, "https://github.com/"+repo+".git", dir,
-		[]string{"credential.githubAccount=" + login}, []string{"GH_TOKEN=" + token})
+		[]string{"credential.githubAccount=" + login}, token)
 }
 
 func (w *Watcher) hasPullRequestIn(login, repo string) bool {

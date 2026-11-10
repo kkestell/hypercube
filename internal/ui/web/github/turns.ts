@@ -50,8 +50,11 @@ function ownTurn(pr: PullRequest): Turn {
   if (pr.requiredFailed) return yours('fix', 3, 'A required check failed.');
   if (pr.merge === 'DIRTY') return yours('fix', 3, 'Has merge conflicts.');
   if (pr.merge === 'BEHIND') return yours('fix', 3, 'Behind the base branch.');
-  if (pr.review === 'CHANGES_REQUESTED') return pr.responded ? theirs('Waiting for another review.') : yours('fix', 3, 'Changes requested.');
+  if (pr.review === 'CHANGES_REQUESTED' && !pr.responded) return yours('fix', 3, 'Changes requested.');
+  // After a push answers requested changes, only newer comments count as
+  // unanswered, so they come before waiting for the reviewers.
   if (pr.unanswered) return yours('fix', 3, `${plural(pr.unanswered, 'unanswered comment', 'unanswered comments')}.`);
+  if (pr.review === 'CHANGES_REQUESTED') return theirs('Waiting for another review.');
   // Without branch protection GitHub calls a pull request mergeable while
   // requested reviewers have yet to answer.
   if (pr.pendingReviews && pr.review !== 'APPROVED') return theirs('Waiting for review.');

@@ -367,10 +367,11 @@ func cloneFlag() string {
 	return "--reflink=auto"
 }
 
-// Removable returns an error if the worktree has uncommitted changes, or its
-// branch or checked-out commit has commits that no kept ref reaches. The kept
-// refs are root's HEAD, base when it is not empty, and every remote-tracking
-// branch. A worktree or branch that no longer exists passes.
+// Removable returns an error if the worktree has uncommitted changes, its
+// branch or checked-out commit has commits that no kept ref reaches, or one of
+// its submodules has commits that no remote branch of that submodule has. The
+// kept refs are root's HEAD, base when it is not empty, and every
+// remote-tracking branch. A worktree or branch that no longer exists passes.
 func Removable(root, dir, branch, base string) error {
 	if exists(root, branch) {
 		if n, err := unkept(root, "refs/heads/"+branch, base); err != nil {
@@ -398,6 +399,13 @@ func Removable(root, dir, branch, base string) error {
 	if n > 0 {
 		return fmt.Errorf("worktree %s has uncommitted changes", dir)
 	}
+	path, err := unpushedSubmodule(dir)
+	if err != nil {
+		return err
+	}
+	if path != "" {
+		return fmt.Errorf("submodule %s has commits that are not on a remote branch", path)
+	}
 	return nil
 }
 
@@ -420,6 +428,30 @@ func unkept(root, tip, base string) (int, error) {
 		return 0, err
 	}
 	return strconv.Atoi(count)
+}
+
+// unpushedSubmodule returns the path, relative to dir, of the first initialized
+// submodule at any depth whose HEAD or local branches have commits that none of
+// its remote-tracking branches has. A submodule's repository lives in the
+// worktree's Git directory, so removing the worktree deletes those commits.
+func unpushedSubmodule(dir string) (string, error) {
+	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err != nil {
+		return "", nil
+	}
+	paths, err := run(dir, nil, "", 0, "submodule", "foreach", "--quiet", "--recursive", `printf "%s\0" "$displaypath"`)
+	if err != nil || paths == "" {
+		return "", err
+	}
+	for path := range strings.SplitSeq(strings.TrimSuffix(paths, "\x00"), "\x00") {
+		count, err := git(filepath.Join(dir, path), "rev-list", "--count", "HEAD", "--branches", "--not", "--remotes")
+		if err != nil {
+			return "", err
+		}
+		if count != "0" {
+			return path, nil
+		}
+	}
+	return "", nil
 }
 
 // uncommitted counts the changed and untracked files in the checkout in dir,
@@ -481,8 +513,8 @@ func MergeStatus(root, dir, branch, base string) (Merge, error) {
 // RemoveWorktree removes the worktree and deletes its branch if Removable
 // allows it with base. Removable has checked that a kept ref reaches every
 // commit on the branch, so the deletion ignores the branch's upstream, and has
-// checked the worktree, so --force only lets Git remove a worktree with
-// submodules. A worktree or branch that is already gone is skipped.
+// checked the worktree and its submodules, so --force only lets Git remove a
+// worktree with submodules. A worktree or branch that is already gone is skipped.
 func RemoveWorktree(root, dir, branch, base string) error {
 	if err := Removable(root, dir, branch, base); err != nil {
 		return err

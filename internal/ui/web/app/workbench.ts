@@ -9,6 +9,12 @@ export const toggle = (state: State, region: Region): State => region === 'panel
   ? state.editor ? {...state, editor: {...state.editor, panel: !state.editor.panel}} : state
   : {...state, workbench: {...state.workbench, [region]: !state.workbench[region]}};
 
+// hideRegion hides the 'sidebar', 'rightPanel', or 'panel', as when the user
+// collapses it.
+export const hideRegion = (state: State, region: Region): State => region === 'panel'
+  ? closePanel(state)
+  : {...state, workbench: {...state.workbench, [region]: false}};
+
 export const selectRightTab = (state: State, tab: RightTab): State => ({...state, workbench: {...state.workbench, rightTab: tab}});
 
 export const closePanel = (state: State): State => state.editor?.panel ? {...state, editor: {...state.editor, panel: false}} : state;

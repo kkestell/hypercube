@@ -137,6 +137,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.rt.InputSubmission(id, in.Submission, in.Text, in.Images...)
+	case "merge":
+		err = s.rt.Merge(id, q.Get("target"))
 	case "selection":
 		err = s.rt.Select(id, harness.Selection{Model: q.Get("model"), Effort: q.Get("effort")})
 	case "interrupt":

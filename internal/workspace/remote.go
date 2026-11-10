@@ -92,12 +92,23 @@ func fetch(ctx context.Context, dir string, env []string, args ...string) error 
 	return nil
 }
 
+// tokenHelper is a Git credential helper that answers with the token in
+// GH_TOKEN and stores nothing.
+const tokenHelper = `!f() { test "$1" = get && printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"; }; f`
+
 // Clone clones url into dir with each config entry (such as
 // credential.githubAccount=alice) written into the new repository before Git
-// fetches, and with extra environment variables such as a token. Cancelling
-// ctx interrupts Git, which then removes the folder it created.
-func Clone(ctx context.Context, url, dir string, config, env []string) error {
-	args := []string{"clone", "--quiet"}
+// fetches. A token, when set, answers Git's HTTPS credential requests for this
+// clone only: the configured helpers are cleared, so none answers or stores it,
+// and nothing about it is written into the clone. Cancelling ctx interrupts
+// Git, which then removes the folder it created.
+func Clone(ctx context.Context, url, dir string, config []string, token string) error {
+	var args, env []string
+	if token != "" {
+		args = []string{"-c", "credential.helper=", "-c", "credential.helper=" + tokenHelper}
+		env = []string{"GH_TOKEN=" + token}
+	}
+	args = append(args, "clone", "--quiet")
 	for _, entry := range config {
 		args = append(args, "--config", entry)
 	}

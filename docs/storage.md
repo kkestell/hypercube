@@ -45,9 +45,10 @@ lost: the worktree has no uncommitted files, and Git keeps each of its commits
 elsewhere. A child's commits must be on its parent's branch or a remote
 branch. A top-level worktree's commits must be on the original checkout's
 branch, in the history of the commit the session started from, or on a remote
-branch, such as one you pushed. Removal is refused without changes if checks
-fail. Checks honor Git's submodule settings, including settings that ignore
-submodule changes.
+branch, such as one you pushed. Each submodule's commits must be on a remote
+branch of that submodule, whatever Git's submodule settings say. Removal is
+refused without changes if checks fail. The uncommitted-files check honors
+Git's submodule settings, including settings that ignore submodule changes.
 
 Original project folders and existing directories assigned to children are
 not removed. Ended children can be deleted individually.

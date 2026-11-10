@@ -4,7 +4,7 @@ import {find, mount, unmountAll} from '../../test-render.tsx';
 import {testState} from '../../test-state.ts';
 import {createStore} from '../store.ts';
 import {useStore} from '../store.ts';
-import {toggle} from '../app/workbench.ts';
+import {hideRegion, toggle} from '../app/workbench.ts';
 import {Split} from './split.tsx';
 
 afterEach(() => {
@@ -112,5 +112,33 @@ test.each([
     act(() => store.update(state => toggle(state, 'sidebar')));
     act(() => store.update(state => toggle(state, 'sidebar')));
     expect(sizes).toHaveLength(1);
+  } finally { unmountAll(); layout.restore(); }
+});
+
+test('a keyboard collapse of a fixed child hides it without reporting a size', () => {
+  const layout = geometry();
+  try {
+    const sizes: number[] = [];
+    let collapses = 0;
+    const store = createStore(testState());
+    function View() {
+      const [state] = useStore();
+      return <Split fixed="end" size={280} minEnd="280px" collapsed={state.workbench.rightPanel ? null : 'end'}
+        onResize={size => sizes.push(size)}
+        onCollapse={() => { collapses++; store.update(s => hideRegion(s, 'rightPanel')); }}>
+        <div>First</div><div>Last</div>
+      </Split>;
+    }
+    const root = mount(store, <View />);
+    layout.resize();
+    const panel = root.querySelectorAll<HTMLElement>('[data-panel]')[1];
+    act(() => find(root, '[role=separator]').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true, cancelable: true})));
+    expect(collapses).toBe(1);
+    expect(sizes).not.toContain(0);
+    expect(store.get().workbench.rightPanel).toBe(false);
+    act(() => store.update(state => toggle(state, 'rightPanel')));
+    layout.resize();
+    expect(panel.offsetWidth).toBeGreaterThanOrEqual(280);
+    expect(sizes).not.toContain(0);
   } finally { unmountAll(); layout.restore(); }
 });

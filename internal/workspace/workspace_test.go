@@ -317,6 +317,62 @@ func TestWorktreeSetUp(t *testing.T) {
 	}
 }
 
+func TestRemoveWorktreeKeepsUnpushedSubmoduleCommits(t *testing.T) {
+	// Git refuses local submodule URLs unless file transport is allowed.
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "protocol.file.allow")
+	t.Setenv("GIT_CONFIG_VALUE_0", "always")
+	sub, run := gitRepo(t)
+	root, _ := gitRepo(t)
+	run(root, "submodule", "-q", "add", sub, "vendor/sub")
+	run(root, "commit", "-q", "-m", "submodule")
+	output := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := git(dir, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	// The agent commits in the submodule and records it in the worktree's
+	// branch, which is then merged, so only the submodule commit is at risk.
+	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(dir, "vendor/sub")
+	run(module, "commit", "-q", "--allow-empty", "-m", "agent work")
+	commit := output(module, "rev-parse", "HEAD")
+	run(dir, "commit", "-q", "-am", "update submodule")
+	run(root, "merge", "-q", "--ff-only", branch)
+	err := RemoveWorktree(root, dir, branch, "")
+	if err == nil || !strings.Contains(err.Error(), "submodule vendor/sub ") {
+		t.Fatalf("RemoveWorktree with an unpushed submodule commit = %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("worktree directory is gone: %v", err)
+	}
+	output(module, "cat-file", "-e", commit)
+	run(module, "push", "-q", "origin", "HEAD:refs/heads/w")
+	if err := RemoveWorktree(root, dir, branch, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// A commit left on a submodule branch counts after HEAD moves back.
+	dir, branch = WorktreeDir(root, "parent", "w2"), ChildBranch("parent", "w2")
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
+		t.Fatal(err)
+	}
+	module = filepath.Join(dir, "vendor/sub")
+	run(module, "switch", "-q", "-c", "keep")
+	run(module, "commit", "-q", "--allow-empty", "-m", "branch work")
+	run(module, "checkout", "-q", "--detach", "HEAD~1")
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil || !strings.Contains(err.Error(), "submodule vendor/sub ") {
+		t.Fatalf("RemoveWorktree with a commit on a submodule branch = %v", err)
+	}
+}
+
 func TestAddWorktreeAtStart(t *testing.T) {
 	root, run := gitRepo(t)
 	first, err := Head(root)

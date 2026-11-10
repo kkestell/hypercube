@@ -3,6 +3,8 @@ package workspace
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,7 +150,7 @@ func TestCloneRecordsConfigBeforeFetching(t *testing.T) {
 	run(root, "push", "-q", bare, "main")
 
 	dir := filepath.Join(t.TempDir(), "new", "clone")
-	if err := Clone(context.Background(), bare, dir, []string{"credential.githubAccount=alice"}, []string{"GH_TOKEN=secret"}); err != nil {
+	if err := Clone(context.Background(), bare, dir, []string{"credential.githubAccount=alice"}, "secret"); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := Config(dir, "credential.githubAccount"); err != nil || got != "alice" {
@@ -161,7 +163,45 @@ func TestCloneRecordsConfigBeforeFetching(t *testing.T) {
 	if err != nil || strings.Contains(string(config), "secret") {
 		t.Fatalf("config holds the token: %v\n%s", err, config)
 	}
-	if err := Clone(context.Background(), bare, dir, nil, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err := Clone(context.Background(), bare, dir, nil, ""); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("cloning into a non-empty folder = %v", err)
+	}
+}
+
+func TestCloneAuthenticatesWithTokenOnly(t *testing.T) {
+	// A configured helper must neither answer nor store the token.
+	store := filepath.Join(t.TempDir(), "credentials")
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	write(t, global, "[credential]\n\thelper = store --file "+store+"\n")
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+	served := t.TempDir()
+	root, run := gitRepo(t)
+	bare := filepath.Join(served, "repo.git")
+	run(served, "init", "-q", "--bare", "-b", "main", bare)
+	run(root, "push", "-q", bare, "main")
+	run(bare, "update-server-info")
+	files := http.FileServer(http.Dir(served))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, password, ok := r.BasicAuth(); !ok || password != "secret" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="git"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		files.ServeHTTP(w, r)
+	}))
+	t.Cleanup(server.Close)
+
+	dir := filepath.Join(t.TempDir(), "clone")
+	if err := Clone(context.Background(), server.URL+"/repo.git", dir, nil, "secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(store); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the credential store was written: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
+	if err != nil || strings.Contains(string(config), "secret") || strings.Contains(string(config), "helper") {
+		t.Fatalf("config holds the token or a helper: %v\n%s", err, config)
 	}
 }
