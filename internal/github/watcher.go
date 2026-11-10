@@ -162,7 +162,7 @@ func (w *Watcher) Accounts() []Account {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	accounts := slices.SortedFunc(maps.Values(w.accounts), func(a, b Account) int { return strings.Compare(a.Login, b.Login) })
-	return slices.Concat([]Account{}, accounts) // never nil
+	return append([]Account{}, accounts...) // never nil
 }
 
 // Changed returns a channel that closes at the next change to the statuses or

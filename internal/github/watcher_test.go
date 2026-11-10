@@ -212,6 +212,13 @@ func TestWorkspacesWithoutGitHub(t *testing.T) {
 	}
 }
 
+// The page reads the accounts as a list, so none is an empty list.
+func TestNoAccountsIsAnEmptyList(t *testing.T) {
+	if got := (&Watcher{}).Accounts(); got == nil {
+		t.Fatal("Accounts() = nil, want an empty list")
+	}
+}
+
 func TestGHMissing(t *testing.T) {
 	s := newStand(t, "alice")
 	// gh is found on PATH, resolves the workspace, then disappears.
