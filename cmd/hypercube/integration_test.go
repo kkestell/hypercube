@@ -60,11 +60,11 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
 	// Panel shells run $SHELL, which a bare container leaves unset.
 	t.Setenv("SHELL", "/bin/sh")
-	config := `{
+	document := `{
 		"default_selection":{"harness":"test","model":"haiku","effort":"low"},
 		"child_model_guidance":"Use harness test, model p/m, effort high for child sessions."
 	}`
-	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(document), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"commit", "-q", "--allow-empty", "-m", "init"}} {
@@ -76,7 +76,7 @@ func newWorld(t *testing.T) *world {
 	if w.root, err = filepath.EvalSymlinks(w.root); err != nil {
 		t.Fatal(err)
 	}
-	if w.db, err = store.Open(); err != nil {
+	if w.db, err = store.Open(store.DefaultDir(), config.DefaultFile()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { w.db.Close() })
@@ -258,7 +258,7 @@ func TestAppProcess(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(version), "Hypercube v") && strings.TrimSpace(string(version)) != "Hypercube devel" {
 		t.Fatalf("version: %v %s", err, version)
 	}
-	ws, err := session.New(w.db, "", session.Programs{}).AddWorkspace(w.root)
+	ws, err := session.New(w.db, config.DefaultFile(), "", session.Programs{}).AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}

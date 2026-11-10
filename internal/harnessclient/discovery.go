@@ -70,7 +70,7 @@ func Describe(ctx context.Context, dir string) ([]harness.Harness, error) {
 			list[i].ID = id
 			ctx, cancel := context.WithTimeout(ctx, describeTimeout)
 			defer cancel()
-			if err := run(ctx, dir, id, "describe", nil, &list[i].Description); err != nil {
+			if err := run(ctx, dir, id, "describe", nil, &list[i].Description, nil); err != nil {
 				list[i].Error = err.Error()
 			}
 		}()
@@ -87,7 +87,7 @@ func Models(ctx context.Context, dir, harnessID string, req harness.ModelsReques
 	if !filepath.IsAbs(req.Dir) {
 		return c, fmt.Errorf("directory %q is not absolute", req.Dir)
 	}
-	if err := run(ctx, dir, harnessID, "models", req, &c); err != nil {
+	if err := run(ctx, dir, harnessID, "models", req, &c, nil); err != nil {
 		return c, err
 	}
 	if err := c.Check(req); err != nil {
@@ -96,11 +96,11 @@ func Models(ctx context.Context, dir, harnessID string, req harness.ModelsReques
 	return c, nil
 }
 
-// Generate sends one prompt to the harness's plugin in dir and returns the
-// model's text.
-func Generate(ctx context.Context, dir, harnessID string, req harness.GenerateRequest) (string, error) {
+// Generate sends one prompt to the harness's plugin in dir, with env added to
+// the environment, and returns the model's text.
+func Generate(ctx context.Context, dir, harnessID string, req harness.GenerateRequest, env []string) (string, error) {
 	var g harness.Generation
-	if err := run(ctx, dir, harnessID, "generate", req, &g); err != nil {
+	if err := run(ctx, dir, harnessID, "generate", req, &g, env); err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(g.Text) == "" {
@@ -116,12 +116,15 @@ var cancelGrace = 15 * time.Second
 // run runs a one-shot plugin command and decodes its output. Cancelling ctx
 // asks the plugin to stop with SIGTERM, then kills its process group, native
 // processes included, after cancelGrace.
-func run(ctx context.Context, dir, harness, command string, in, out any) error {
+func run(ctx context.Context, dir, harness, command string, in, out any, env []string) error {
 	path, err := Find(dir, harness)
 	if err != nil {
 		return err
 	}
 	cmd := exec.Command(path, command)
+	if env != nil {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	if in != nil {
 		data, err := json.Marshal(in)
 		if err != nil {

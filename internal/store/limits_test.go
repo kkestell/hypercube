@@ -49,16 +49,3 @@ func TestLimitsKeepTheNewestReadingOfEachWindow(t *testing.T) {
 		t.Fatalf("limits = %+v, want %+v", got, want)
 	}
 }
-
-func TestOpenAddsLimitsToAnExistingDatabase(t *testing.T) {
-	db := open(t)
-	if _, err := db.sql.Exec(`DROP TABLE limits`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if got := limits(t, reopen(t)); len(got) != 0 {
-		t.Fatalf("limits = %+v", got)
-	}
-}

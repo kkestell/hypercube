@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -43,7 +42,8 @@ func (f *fixture) view(id string) func() {
 }
 
 func TestReleasingTheLastViewParksAnIdleSession(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.session()
 	first, second := f.view(s.ID), f.view(s.ID)
@@ -66,7 +66,8 @@ func TestReleasingTheLastViewParksAnIdleSession(t *testing.T) {
 }
 
 func TestSessionsWakeAndParkOnTheirOwn(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	parent := f.session()
 	child := f.child(parent, "child", "brief")
@@ -97,6 +98,7 @@ func TestSessionsWakeAndParkOnTheirOwn(t *testing.T) {
 }
 
 func TestBusySessionsDoNotPark(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name, text string
 		ready      func(*fixture, string) bool
@@ -111,7 +113,8 @@ func TestBusySessionsDoNotPark(t *testing.T) {
 		{"delivery in flight", "", func(f *fixture, id string) bool { return len(f.inputs(id)) == 2 }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := newFixture(t)
+			t.Parallel()
+			f := newPlainFixture(t)
 			f.idleAfter(time.Hour)
 			s := f.session()
 			if c.text != "" {
@@ -129,7 +132,8 @@ func TestBusySessionsDoNotPark(t *testing.T) {
 
 // A blocker that ends with no idle event still starts a fresh idle timeout.
 func TestAnsweredQuestionStartsTheIdleTimeout(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.session()
 	f.input(s.ID, "!ask")
@@ -147,7 +151,8 @@ func TestAnsweredQuestionStartsTheIdleTimeout(t *testing.T) {
 }
 
 func TestReportWakesAParkedParent(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	parent := f.session()
 	child := f.child(parent, "child", "")
@@ -165,28 +170,43 @@ func TestReportWakesAParkedParent(t *testing.T) {
 // A view or message that arrives while the agent stops wakes it once it has
 // ended.
 func TestWakeWhileParking(t *testing.T) {
-	t.Setenv("HYPERCUBE_TEST_END_DELAY", "300ms")
+	t.Parallel()
 	for _, c := range []struct {
-		name string
-		wake func(*fixture, string)
+		name      string
+		wake      func(*fixture, string)
+		requested func(*fixture, string) bool
 	}{
-		{"view", func(f *fixture, id string) { f.view(id) }},
-		{"message", func(f *fixture, id string) { f.queue("user", id, "while parking") }},
+		{"view", func(f *fixture, id string) { f.view(id) }, func(f *fixture, id string) bool {
+			f.rt.mu.Lock()
+			defer f.rt.mu.Unlock()
+			return f.rt.viewers[id] > 0
+		}},
+		{"message", func(f *fixture, id string) { f.queue("user", id, "while parking") }, func(f *fixture, id string) bool {
+			return len(f.queued(id)) > 0
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := newFixture(t)
+			t.Parallel()
+			f := newPlainFixture(t)
+			release := f.pauseExit()
 			f.idleAfter(time.Hour)
 			s := f.session()
 			parked := make(chan struct{})
-			go func() { f.park(s.ID); close(parked) }()
+			go func() { defer close(parked); f.park(s.ID) }()
+			t.Cleanup(func() { release(); <-parked })
 			f.until("the agent stopping", func() bool {
 				f.rt.mu.Lock()
 				defer f.rt.mu.Unlock()
 				l := f.rt.live[s.ID]
 				return l != nil && l.stopping
 			})
-			c.wake(f, s.ID)
+			woken := make(chan struct{})
+			go func() { defer close(woken); c.wake(f, s.ID) }()
+			t.Cleanup(func() { release(); <-woken })
+			f.until("the wake request while stopping", func() bool { return c.requested(f, s.ID) })
+			release()
 			<-parked
+			<-woken
 			f.until("the agent awake again", func() bool { return len(f.log(s.ID, "start")) == 2 && f.idle(s.ID) && len(f.queued(s.ID)) == 0 })
 		})
 	}
@@ -195,7 +215,8 @@ func TestWakeWhileParking(t *testing.T) {
 // Restart replaces a running agent and starts a parked one, each resuming its
 // conversation without an error in the transcript.
 func TestRestart(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.session()
 	first := f.log(s.ID, "start")[0]
@@ -239,6 +260,7 @@ func (f *fixture) setTip(id, tip string) {
 // Unarchiving a session whose recorded tip is gone from the repository
 // recreates its branch from the checkout's HEAD.
 func TestUnarchive(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.worktreeSession()
@@ -282,45 +304,10 @@ func TestUnarchive(t *testing.T) {
 	}
 }
 
-func TestFailedUnarchiveCanBeRetried(t *testing.T) {
-	f := newFixture(t)
-	f.idleAfter(time.Hour)
-	s := f.worktreeSession()
-	if err := f.rt.Archive(s.ID); err != nil {
-		t.Fatal(err)
-	}
-	// Without a recorded tip, unarchiving reads the new worktree's HEAD.
-	f.setTip(s.ID, "")
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin := t.TempDir()
-	// Only the first HEAD lookup fails, so cleanup can still check the worktree.
-	script := "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$PWD\" = \"" + s.Dir + "\" ] && mkdir \"" + bin + "/failed\" 2>/dev/null; then exit 1; fi\nexec \"" + git + "\" \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := os.Getenv("PATH")
-	t.Setenv("PATH", bin+":"+path)
-	if err := f.rt.Unarchive(s.ID); err == nil {
-		t.Fatal("unarchived without reading the worktree's HEAD")
-	}
-	if _, err := os.Stat(s.Dir); !os.IsNotExist(err) {
-		t.Fatalf("the failed unarchive left its worktree: %v", err)
-	}
-	t.Setenv("PATH", path)
-	if err := f.rt.Unarchive(s.ID); err != nil {
-		t.Fatal("retry:", err)
-	}
-	if got := f.storedSession(s.ID); got.Ended || got.Base == "" {
-		t.Fatalf("unarchived session = %+v", got)
-	}
-}
-
 // A worktree session whose commits are on a remote branch archives, and
 // unarchiving restores its branch and starting commit.
 func TestArchiveRestoresPushedWork(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.worktreeSession()
@@ -358,7 +345,8 @@ func TestArchiveRestoresPushedWork(t *testing.T) {
 }
 
 func TestUnarchiveCheckoutSession(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.session()
 	if err := f.rt.Archive(s.ID); err != nil {

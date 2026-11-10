@@ -14,8 +14,9 @@ import (
 )
 
 func TestHTTPSubmissionCorrelation(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
-	h := Handler(a.db, a.rt, &github.Watcher{})
+	h := Handler(a.db, configFile(a.db), a.rt, &github.Watcher{})
 	post := func(path, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "http://localhost:4280"+path, strings.NewReader(body))

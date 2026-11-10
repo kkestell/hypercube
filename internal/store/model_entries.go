@@ -11,7 +11,7 @@ import (
 // earlier builds saved it, to config.json, then drops the table. The config is
 // saved before the drop commits, and rows the config already lists are
 // skipped, so an interrupted move neither loses nor repeats an entry.
-func (d *DB) moveModelEntries() error {
+func (d *DB) moveModelEntries(preferences config.File) error {
 	return d.Tx(func(tx *Tx) error {
 		var found bool
 		if err := tx.tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'model_entries')`).Scan(&found); err != nil || !found {
@@ -33,7 +33,7 @@ func (d *DB) moveModelEntries() error {
 			return err
 		}
 		if len(entries) > 0 {
-			cfg, err := config.Load()
+			cfg, err := preferences.Load()
 			if err != nil {
 				return err
 			}
@@ -42,7 +42,7 @@ func (d *DB) moveModelEntries() error {
 					cfg.Models = append(cfg.Models, e)
 				}
 			}
-			if err := config.Save(cfg); err != nil {
+			if err := preferences.Save(cfg); err != nil {
 				return err
 			}
 		}

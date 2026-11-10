@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/session"
@@ -38,12 +39,12 @@ type app struct {
 // serves HTTP while adopting the sessions the user left running. programs names
 // the plugins and helpers.
 // The desktop app's connection, when it has one, shows their alerts.
-func startApp(listener net.Listener, programs session.Programs, desktop *desktop.Desktop) (*app, error) {
-	db, err := store.Open()
+func startApp(listener net.Listener, dir string, preferences config.File, programs session.Programs, desktop *desktop.Desktop) (*app, error) {
+	db, err := store.Open(dir, preferences)
 	if err != nil {
 		return nil, err
 	}
-	rt := session.New(db, "http://"+listener.Addr().String(), programs)
+	rt := session.New(db, preferences, "http://"+listener.Addr().String(), programs)
 	ctx, cancel := context.WithCancel(context.Background())
 	// Sessions that start know the installed harnesses. A plugin that cannot
 	// describe its harness is listed with its error.
@@ -56,7 +57,7 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 	rt.Env = watcher.Env
 	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1),
 		github: watcher, githubDone: make(chan struct{})}
-	a.server = &http.Server{Handler: handler(db, rt, desktop, watcher)}
+	a.server = &http.Server{Handler: handler(db, preferences, rt, desktop, watcher)}
 	if err := rt.Restore(func() {
 		go func() { a.done <- a.server.Serve(listener) }()
 	}); err != nil {
@@ -65,7 +66,7 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 		return nil, err
 	}
 	go func() { watcher.Run(ctx); close(a.githubDone) }()
-	go watchAlerts(ctx, rt, desktop)
+	go watchAlerts(ctx, preferences, rt, desktop)
 	return a, nil
 }
 
@@ -107,7 +108,7 @@ func serveUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	a, err := startApp(listener, p, &desktop.Desktop{})
+	a, err := startApp(listener, store.DefaultDir(), config.DefaultFile(), p, &desktop.Desktop{})
 	if err != nil {
 		return err
 	}

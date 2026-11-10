@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 
 	_ "modernc.org/sqlite"
@@ -95,19 +96,14 @@ type Message struct {
 	Report bool
 }
 
-// Dir is the directory that holds the database and plugin files.
-func Dir() string {
+// DefaultDir resolves the user's database and plugin state location at startup.
+func DefaultDir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".local", "state")
 	}
 	return filepath.Join(base, "hypercube")
-}
-
-// dbPath is the database file.
-func dbPath() string {
-	return filepath.Join(Dir(), "hypercube.db")
 }
 
 // NewID returns a short random identifier.
@@ -176,28 +172,33 @@ CREATE TABLE IF NOT EXISTS limits (
 `
 
 // DB is the open database.
-type DB struct{ sql *sql.DB }
+type DB struct {
+	// Dir is the state directory supplied to Open, shared with holders and plugins.
+	Dir string
+	sql *sql.DB
+}
 
-// Open opens the database in Dir, creating its tables if they are missing,
+// Open opens the database in dir, creating its tables if they are missing,
 // adding the session columns earlier builds lacked, resetting the last-active
 // times earlier builds filled with creation times, and moving model entries
 // saved by earlier builds to config.json.
 // Writes take the database lock when they begin and wait up to five seconds
 // for it.
-func Open() (*DB, error) {
-	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+func Open(dir string, preferences config.File) (*DB, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	// Also protect transcripts and plugin state in existing installations.
-	if err := os.Chmod(Dir(), 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return nil, err
 	}
 	params := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)"}, "_txlock": {"immediate"}}
-	db, err := sql.Open("sqlite", dbPath()+"?"+params.Encode())
+	path := filepath.Join(dir, "hypercube.db")
+	db, err := sql.Open("sqlite", path+"?"+params.Encode())
 	if err != nil {
 		return nil, err
 	}
-	d := &DB{db}
+	d := &DB{sql: db, Dir: dir}
 	if err := d.Tx(func(tx *Tx) error {
 		if err := tx.exec(schema); err != nil {
 			return err
@@ -214,9 +215,9 @@ func Open() (*DB, error) {
 		return tx.replaceInertLastActive()
 	}); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("%s: %w", dbPath(), err)
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := d.moveModelEntries(); err != nil {
+	if err := d.moveModelEntries(preferences); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("moving model entries to config.json: %w", err)
 	}

@@ -60,7 +60,7 @@ func (r *Runtime) Restore(serve func()) error {
 	if err != nil {
 		return err
 	}
-	run := filepath.Join(store.Dir(), "run")
+	run := filepath.Join(r.db.Dir, "run")
 	entries, _ := os.ReadDir(run)
 	for _, e := range entries {
 		if !known[e.Name()] {
@@ -123,7 +123,7 @@ func (r *Runtime) Restore(serve func()) error {
 func (r *Runtime) registerRestored(families [][]store.Session) (attached, lost []*live, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	run := filepath.Join(store.Dir(), "run")
+	run := filepath.Join(r.db.Dir, "run")
 	for _, family := range families {
 		for _, s := range family {
 			if s.Launch == "" {

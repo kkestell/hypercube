@@ -28,7 +28,8 @@ func nextChange(t *testing.T, changes <-chan Change, match func(Change) bool) Ch
 }
 
 func TestWritePublishesAfterCommit(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
@@ -42,7 +43,8 @@ func TestWritePublishesAfterCommit(t *testing.T) {
 }
 
 func TestFailedWritePublishesNothing(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	if err := f.rt.Rename("missing", "Title"); err == nil {
@@ -57,7 +59,8 @@ func TestFailedWritePublishesNothing(t *testing.T) {
 }
 
 func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
@@ -87,7 +90,8 @@ func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 }
 
 func TestDeliveredMessagePublishesItsItem(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "worker", "")
 	changes, cancel := f.rt.Subscribe()
@@ -102,7 +106,8 @@ func TestDeliveredMessagePublishesItsItem(t *testing.T) {
 }
 
 func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("a pending item", func() bool { return len(f.transcript(parent.ID)) == 4 })
@@ -117,7 +122,8 @@ func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
 }
 
 func TestParkedSessionPublishesDrainedItems(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.until("a pending item", func() bool { return len(f.transcript(s.ID)) == 4 })
@@ -131,6 +137,7 @@ func TestParkedSessionPublishesDrainedItems(t *testing.T) {
 }
 
 func TestSlowSubscriberIsDropped(t *testing.T) {
+	t.Parallel()
 	r := &Runtime{}
 	changes, cancel := r.Subscribe()
 	defer cancel()
@@ -153,6 +160,7 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 }
 
 func TestCancelStopsDelivery(t *testing.T) {
+	t.Parallel()
 	r := &Runtime{}
 	changes, cancel := r.Subscribe()
 	cancel()
@@ -166,7 +174,8 @@ func TestCancelStopsDelivery(t *testing.T) {
 // A completed item reported again keeps its saved position, and its change
 // says so.
 func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("the working item", func() bool {

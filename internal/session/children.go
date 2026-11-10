@@ -64,7 +64,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 	var l *live
 	err := r.save(func(tx *write) error {
 		var err error
-		parent, child, err = prepareChild(tx.Tx, parentID, options, approved.saved())
+		parent, child, err = r.prepareChild(tx.Tx, parentID, options, approved.saved())
 		if err != nil {
 			return err
 		}
@@ -127,7 +127,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 		}
 		return store.Session{}, discard(err)
 	}
-	r.nameSession(child.ID, options.Message)
+	r.nameSession(child.ID, child.Workspace, options.Message)
 	// The start saved the settings the harness accepted.
 	err = r.db.Read(func(tx *store.Tx) error { var err error; child, err = tx.Session(child.ID); return err })
 	return child, err

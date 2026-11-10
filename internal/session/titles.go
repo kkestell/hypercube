@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harnessclient"
 	"github.com/kkestell/hypercube/internal/report"
@@ -16,12 +15,12 @@ import (
 // nameSession renames a new session in the background from its first message,
 // using the utility model, when the user has chosen one. A session whose
 // message has no text, or whose naming fails, keeps its title; failures go to
-// the log.
-func (r *Runtime) nameSession(id, message string) {
+// the log. The call gets the workspace's launch environment, like an agent.
+func (r *Runtime) nameSession(id, workspace, message string) {
 	if strings.TrimSpace(message) == "" {
 		return
 	}
-	c, err := config.Load()
+	c, err := r.config.Load()
 	if err != nil {
 		logf("naming session %s: %v", id, err)
 		return
@@ -35,6 +34,7 @@ func (r *Runtime) nameSession(id, message string) {
 		r.mu.Unlock()
 		return
 	}
+	env := r.env(workspace)
 	ctx, cancel := context.WithTimeout(context.Background(), r.utilityTimeout)
 	r.utilityCancels[id] = cancel
 	r.utilityCalls.Add(1)
@@ -48,7 +48,7 @@ func (r *Runtime) nameSession(id, message string) {
 			r.utilityCalls.Done()
 		}()
 		answer, err := harnessclient.Generate(ctx, r.programs.Plugins, utility.Harness,
-			harness.GenerateRequest{Model: utility.Model, Effort: utility.Effort, Prompt: report.TitlePrompt(message)})
+			harness.GenerateRequest{Model: utility.Model, Effort: utility.Effort, Prompt: report.TitlePrompt(message)}, env)
 		if err == nil {
 			err = r.applyTitle(id, answer)
 		}

@@ -14,6 +14,7 @@ import (
 )
 
 func TestChildLifecycle(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "w1", "the brief")
@@ -78,6 +79,7 @@ func TestChildLifecycle(t *testing.T) {
 // A child can be created while another agent's request to its plugin is
 // waiting, as when a native tool call reaches the MCP tools.
 func TestChildCreatedWhileARequestWaits(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	held := make(chan error, 1)
@@ -100,6 +102,7 @@ func TestChildCreatedWhileARequestWaits(t *testing.T) {
 }
 
 func TestChildFailureReachesItsParent(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	other := f.session()
@@ -119,6 +122,7 @@ func TestChildFailureReachesItsParent(t *testing.T) {
 }
 
 func TestChildDirectoriesAndScope(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	direct, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "direct", Title: "Title", Settings: lead, Dir: ".", Message: ""})
@@ -149,6 +153,7 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 // outside Git, it shares the parent's folder; from a worktree session, it gets
 // a new worktree from the parent's HEAD.
 func TestForkPlacement(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	fork := func(parent store.Session, name, dir string) (store.Session, error) {
 		return f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Fork", Settings: lead, Dir: dir, Fork: true})
@@ -205,6 +210,7 @@ func TestForkPlacement(t *testing.T) {
 }
 
 func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "brief")
@@ -246,6 +252,7 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 }
 
 func TestDeleteParentSkipsEndedChildren(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "done", "")
@@ -264,6 +271,7 @@ func TestDeleteParentSkipsEndedChildren(t *testing.T) {
 }
 
 func TestDeleteRefusesAnActiveChild(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
@@ -278,6 +286,7 @@ func TestDeleteRefusesAnActiveChild(t *testing.T) {
 // A child cannot work in a worktree of the checkout that Hypercube did not
 // create, because Hypercube would neither track nor remove it.
 func TestChildRefusesForeignWorktree(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t)
 	parent := f.session()
 	foreign := filepath.Join(t.TempDir(), "foreign")

@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func open(t *testing.T, sessions ...store.Session) *store.DB {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	db, err := store.Open()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "state"), config.File(filepath.Join(dir, "config.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,18 +112,18 @@ func TestWorktreeSessionInstructions(t *testing.T) {
 	}
 }
 
-func TestFormatAttributesMessages(t *testing.T) {
+func TestFormatAttributesMessagesAndSaysHowToAnswer(t *testing.T) {
 	db := open(t, store.Session{ID: "p"}, store.Session{ID: "q", Title: "Fix parser"}, store.Session{ID: "c", Parent: "p", Name: "builder"})
 	if err := db.Read(func(tx *store.Tx) error {
-		for _, c := range []struct{ from, to, address string }{{"c", "p", "builder"}, {"p", "c", "p"}} {
+		for _, c := range []struct{ from, to, prefix, suffix string }{
+			{"c", "p", "Message from builder:\nhello", "builder cannot see your chat. To answer, use the hypercube send_message tool to builder."},
+			{"p", "c", "Message from p:\nhello", "Your final response reaches p automatically. Use send_message only to ask p something before you finish."},
+			{"q", "p", "Message from q (\"Fix parser\", workspace /repo):\nhello", "Your replies here are not delivered to q. To answer, use the hypercube send_message tool to q."},
+		} {
 			got := Format(tx, store.Message{From: c.from, To: c.to, Text: "hello"})
-			if !strings.HasPrefix(got, "Message from "+c.address+":\nhello") || !strings.HasSuffix(got, "send_message tool to "+c.address+".") {
-				t.Error(got)
+			if !strings.HasPrefix(got, c.prefix) || !strings.HasSuffix(got, c.suffix) {
+				t.Errorf("%s to %s: %s", c.from, c.to, got)
 			}
-		}
-		got := Format(tx, store.Message{From: "q", To: "p", Text: "hello"})
-		if !strings.HasPrefix(got, "Message from q (\"Fix parser\", workspace /repo):\nhello") || !strings.HasSuffix(got, "send_message tool to q.") {
-			t.Error(got)
 		}
 		if got := Format(tx, store.Message{From: "gone", Text: "hi"}); !strings.HasPrefix(got, "Message from gone:\nhi\n\n") {
 			t.Error(got)

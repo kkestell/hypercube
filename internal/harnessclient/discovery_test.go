@@ -24,6 +24,7 @@ func plugin(t *testing.T, dir, name, script string, mode os.FileMode) {
 }
 
 func TestDescribe(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plugin(t, dir, "one", `echo '{"name":"One","installed":true}'`, 0o755)
 	plugin(t, dir, "two", `echo '{"name":"Two","installed":false}'`, 0o755)
@@ -50,6 +51,7 @@ func TestDescribe(t *testing.T) {
 }
 
 func TestModels(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	req := harness.ModelsRequest{Dir: t.TempDir(), Model: "a/b"}
 	for name, tc := range map[string]struct {
@@ -83,7 +85,9 @@ func TestModels(t *testing.T) {
 // Cancelling a probe lets the plugin clean up, then ends its native
 // processes, also when the plugin ignores the request to stop.
 func TestModelsCancel(t *testing.T) {
-	cancelGrace = time.Second
+	originalGrace := cancelGrace
+	cancelGrace = 100 * time.Millisecond
+	t.Cleanup(func() { cancelGrace = originalGrace })
 	for name, trap := range map[string]string{
 		"cleans up": `trap 'echo cleaned > "$CLEANED"; exit 1' TERM`,
 		"ignores":   `trap '' TERM`,
@@ -134,7 +138,7 @@ func TestGenerate(t *testing.T) {
 	in := filepath.Join(t.TempDir(), "stdin")
 	plugin(t, dir, "fake", `cat > '`+in+`'
 echo '{"text":"A title"}'`, 0o755)
-	got, err := Generate(context.Background(), dir, "fake", req)
+	got, err := Generate(context.Background(), dir, "fake", req, nil)
 	if err != nil || got != "A title" {
 		t.Fatalf("Generate = %q, %v", got, err)
 	}
@@ -143,11 +147,11 @@ echo '{"text":"A title"}'`, 0o755)
 		t.Fatalf("request = %s, want %s", sent, want)
 	}
 	plugin(t, dir, "blank", "cat >/dev/null\necho '{\"text\":\"   \"}'", 0o755)
-	if _, err := Generate(context.Background(), dir, "blank", req); err == nil || !strings.Contains(err.Error(), "empty answer") {
+	if _, err := Generate(context.Background(), dir, "blank", req, nil); err == nil || !strings.Contains(err.Error(), "empty answer") {
 		t.Fatalf("blank answer: %v", err)
 	}
 	plugin(t, dir, "broken", "cat >/dev/null\necho 'out of credit' >&2\nexit 1", 0o755)
-	if _, err := Generate(context.Background(), dir, "broken", req); err == nil || !strings.Contains(err.Error(), "out of credit") {
+	if _, err := Generate(context.Background(), dir, "broken", req, nil); err == nil || !strings.Contains(err.Error(), "out of credit") {
 		t.Fatalf("failure: %v", err)
 	}
 }

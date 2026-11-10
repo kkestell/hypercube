@@ -140,7 +140,7 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 	if worktree != nil {
 		r.refreshMerges(workspaceID)
 	}
-	r.nameSession(s.ID, text)
+	r.nameSession(s.ID, workspaceID, text)
 	return s, r.input(s.ID, submission, text, images...)
 }
 

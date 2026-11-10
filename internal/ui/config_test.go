@@ -11,13 +11,16 @@ import (
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/config"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/session"
 )
 
 // lead is the settings of the app's first session.
 var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 
 func TestSaveConfig(t *testing.T) {
+	t.Parallel()
 	a := newApp(t)
 	cfg := config.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
 		ReviewPrompt: config.DefaultReviewPrompt, Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true},
@@ -27,7 +30,7 @@ func TestSaveConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.post("/config", string(body), http.StatusNoContent)
-	got, err := config.Load()
+	got, err := configFile(a.db).Load()
 	if err != nil || !reflect.DeepEqual(got, cfg) {
 		t.Fatalf("saved config = %+v, %v", got, err)
 	}
@@ -42,7 +45,7 @@ func TestSaveConfig(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			a.post("/config", body, http.StatusBadRequest)
-			got, err := config.Load()
+			got, err := configFile(a.db).Load()
 			if err != nil || !reflect.DeepEqual(got, cfg) {
 				t.Fatalf("invalid save changed config: %+v, %v", got, err)
 			}
@@ -51,12 +54,14 @@ func TestSaveConfig(t *testing.T) {
 }
 
 func TestSaveConfigFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
 	if err := os.WriteFile(filepath.Join(dir, "hypercube"), []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	h := handler(t, open(t))
+	db := open(t)
+	preferences := config.File(filepath.Join(dir, "hypercube", "config.json"))
+	h := Handler(db, preferences, session.New(db, preferences, "", session.Programs{}), &github.Watcher{})
 	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"review_prompt":"Review #{number}.","theme":"system","terminal_font_size":13}`))
 	req.Header.Set("Origin", "http://localhost:4280")
 	res := httptest.NewRecorder()

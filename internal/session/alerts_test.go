@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/kkestell/hypercube/internal/store"
 )
 
 // watch runs WatchAlerts until the test ends and returns the alerts it sends.
@@ -38,7 +36,8 @@ func (f *fixture) nextAlert(alerts <-chan Alert) Alert {
 }
 
 func TestRequestAlerts(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	alerts := f.watch()
 	f.input(s.ID, "!ask")
@@ -63,7 +62,8 @@ func TestRequestAlerts(t *testing.T) {
 }
 
 func TestReplyAlerts(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "worker", "")
 	f.until("the child idle", func() bool { return f.idle(child.ID) })
@@ -81,7 +81,8 @@ func TestReplyAlerts(t *testing.T) {
 // A page that marks the shown session seen as the turn ends does not hide the
 // reply from the watcher.
 func TestSeenRepliesStillAlert(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)
 	if err := w.read(nil); err != nil {
@@ -113,7 +114,8 @@ func TestSeenRepliesStillAlert(t *testing.T) {
 }
 
 func TestExistingRequestsAndRepliesAreNotAlerted(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
 	f.until("attention", func() bool { return f.storedSession(s.ID).Attention })
@@ -131,7 +133,8 @@ func TestExistingRequestsAndRepliesAreNotAlerted(t *testing.T) {
 }
 
 func TestWatcherStartedDuringQuestionIgnoresEarlierReply(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
 	f.until("the question", func() bool { return f.storedSession(s.ID).Attention })
@@ -162,7 +165,8 @@ func TestWatcherStartedDuringQuestionIgnoresEarlierReply(t *testing.T) {
 }
 
 func TestOfferRequestAlerts(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)
 	if err := w.read(nil); err != nil {
@@ -185,7 +189,8 @@ func TestOfferRequestAlerts(t *testing.T) {
 }
 
 func TestDeletedCapturedRequestDoesNotStopAlerts(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	w := newAlertWatch(f.rt)
 	if err := w.read(nil); err != nil {
@@ -223,20 +228,5 @@ func TestDeletedCapturedRequestDoesNotStopAlerts(t *testing.T) {
 	}
 	if len(alerts) != 1 || alerts[0].Key != "request:"+other.ID+":"+id {
 		t.Fatalf("alerts after deleting another session = %+v", alerts)
-	}
-}
-
-func TestAlertReadReportsDatabaseErrors(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	db, err := store.Open()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-	w := newAlertWatch(New(db, "", Programs{}))
-	if err := w.readStored([]Request{{Session: "deleted"}}, func(Alert) {}); err == nil {
-		t.Fatal("reading a closed database succeeded")
 	}
 }

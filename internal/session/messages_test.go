@@ -9,7 +9,8 @@ import (
 )
 
 func TestSendMessageScope(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	f.seed(store.Session{ID: "own-child", Name: "child"}, store.Session{ID: "sibling", Name: "sibling"}, store.Session{ID: "ended", Name: "ended", Ended: true})
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		if err := tx.AddWorkspace(store.Workspace{ID: "far", Path: "/other"}); err != nil {
@@ -84,7 +85,8 @@ func TestSendMessageScope(t *testing.T) {
 }
 
 func TestSendMessageAcrossWorkspaces(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	parent := f.session()
 	outside, err := f.rt.AddWorkspace(t.TempDir())
 	if err != nil {

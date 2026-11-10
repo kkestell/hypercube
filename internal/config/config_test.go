@@ -12,8 +12,10 @@ import (
 )
 
 func TestSave(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "hypercube")
-	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
+	path := filepath.Join(dir, "config.json")
+	file := File(path)
 	cfg := Config{DefaultSelection: &harness.Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
 		DefaultWorktree: true, ReviewSelection: &harness.Settings{Harness: "opencode", Model: "provider/model"},
 		UtilitySelection: &harness.Settings{Harness: "claude", Model: "haiku", Effort: "low"},
@@ -22,14 +24,13 @@ func TestSave(t *testing.T) {
 			{Harness: "codex", Model: "sol", Title: "Sol", Efforts: []string{"low", "high"}, DefaultEffort: "high"},
 			{Harness: "opencode", Model: "provider/model", Title: "Model", Efforts: []string{}},
 		}}
-	if err := Save(cfg); err != nil {
+	if err := file.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Load()
+	got, err := file.Load()
 	if err != nil || !reflect.DeepEqual(got, cfg) {
 		t.Fatalf("saved config = %+v, %v", got, err)
 	}
-	path := filepath.Join(dir, "config.json")
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +47,7 @@ func TestSave(t *testing.T) {
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{cfg.Models[1], cfg.Models[1]}},
 		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{{Harness: "codex", Model: "sol"}}},
 	} {
-		if err := Save(invalid); err == nil {
+		if err := file.Save(invalid); err == nil {
 			t.Fatalf("saved invalid config: %+v", invalid)
 		}
 		after, err := os.ReadFile(path)
@@ -61,11 +62,12 @@ func TestSave(t *testing.T) {
 }
 
 func TestLoadDefaults(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "hypercube")
-	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
+	file := File(filepath.Join(dir, "config.json"))
 	defaults := Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 	// A fresh installation has no file.
-	got, err := Load()
+	got, err := file.Load()
 	if err != nil || !reflect.DeepEqual(got, defaults) {
 		t.Fatalf("missing config = %+v, %v", got, err)
 	}
@@ -76,7 +78,7 @@ func TestLoadDefaults(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(source), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		got, err = Load()
+		got, err = file.Load()
 		if err != nil || !reflect.DeepEqual(got, defaults) {
 			t.Fatalf("config %s = %+v, %v", source, got, err)
 		}
@@ -142,21 +144,23 @@ func TestModelEntryCheck(t *testing.T) {
 }
 
 func TestSaveWriteFailure(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	file := File(filepath.Join(dir, "hypercube", "config.json"))
 	// A regular file where the config directory belongs makes saving fail.
 	if err := os.WriteFile(filepath.Join(dir, "hypercube"), []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13}); err == nil {
+	if err := file.Save(Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13}); err == nil {
 		t.Fatal("save succeeded without a config directory")
 	}
 }
 
 func TestLoadPreservesConfig(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "hypercube")
-	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	path := filepath.Join(dir, "config.json")
+	file := File(path)
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +193,7 @@ func TestLoadPreservesConfig(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			got, err := Load()
+			got, err := file.Load()
 			if tc.bad {
 				if err == nil {
 					t.Error("loaded malformed config")

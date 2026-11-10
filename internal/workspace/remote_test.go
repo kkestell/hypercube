@@ -11,14 +11,8 @@ import (
 	"testing"
 )
 
-func isolateGit(t *testing.T) {
-	t.Helper()
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-}
-
 func TestConfig(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
 	root, run := gitRepo(t)
 	if got, err := Config(root, "credential.githubAccount"); err != nil || got != "" {
 		t.Fatalf("unset Config = %q, %v", got, err)
@@ -30,7 +24,7 @@ func TestConfig(t *testing.T) {
 }
 
 func TestRemote(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		setup func(root string, run func(dir string, args ...string))
@@ -64,6 +58,7 @@ func TestRemote(t *testing.T) {
 		}, [2]string{"origin", "https://github.com/o/r.git"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			root, run := gitRepo(t)
 			tc.setup(root, run)
 			name, url, err := Remote(root)
@@ -75,7 +70,7 @@ func TestRemote(t *testing.T) {
 }
 
 func TestFetchAndTracking(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
 	bare := t.TempDir()
 	root, run := gitRepo(t)
 	run(bare, "init", "-q", "--bare", "-b", "main")
@@ -116,7 +111,7 @@ func TestFetchAndTracking(t *testing.T) {
 }
 
 func TestFetchPullRequest(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
 	bare := t.TempDir()
 	root, run := gitRepo(t)
 	run(bare, "init", "-q", "--bare", "-b", "main")
@@ -143,7 +138,7 @@ func TestFetchPullRequest(t *testing.T) {
 }
 
 func TestCloneRecordsConfigBeforeFetching(t *testing.T) {
-	isolateGit(t)
+	t.Parallel()
 	bare := t.TempDir()
 	root, run := gitRepo(t)
 	run(bare, "init", "-q", "--bare", "-b", "main")

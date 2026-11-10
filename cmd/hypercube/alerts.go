@@ -13,9 +13,9 @@ import (
 
 // watchAlerts passes the runtime's alerts to the desktop app until ctx ends.
 // A failed alert is reported and the watch goes on.
-func watchAlerts(ctx context.Context, rt *session.Runtime, d *desktop.Desktop) {
+func watchAlerts(ctx context.Context, preferences config.File, rt *session.Runtime, d *desktop.Desktop) {
 	err := rt.WatchAlerts(ctx, func(alert session.Alert) {
-		if err := sendAlert(d, alert); err != nil {
+		if err := sendAlert(preferences, d, alert); err != nil {
 			fmt.Fprintln(os.Stderr, "hypercube: alerting the desktop app:", err)
 		}
 	})
@@ -27,9 +27,9 @@ func watchAlerts(ctx context.Context, rt *session.Runtime, d *desktop.Desktop) {
 // sendAlert passes an alert to the desktop app as the notification
 // preferences allow. An unreadable config is reported and sends the alert as
 // the defaults do.
-func sendAlert(d *desktop.Desktop, alert session.Alert) error {
+func sendAlert(preferences config.File, d *desktop.Desktop, alert session.Alert) error {
 	n := config.DefaultNotifications
-	cfg, err := config.Load()
+	cfg, err := preferences.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube: reading notification preferences:", err)
 	} else {

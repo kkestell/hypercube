@@ -20,5 +20,5 @@ func TestMain(m *testing.M) {
 		time.Sleep(time.Hour)
 		os.Exit(0)
 	}
-	holdtest.Main(m)
+	holdtest.Main(m, Main)
 }

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/terminal"
@@ -68,6 +69,7 @@ type Runtime struct {
 	Env func(workspace string) []string
 
 	db       *store.DB
+	config   config.File
 	url      string
 	programs Programs
 	// startTimeout and requestTimeout bound replies, and idleTimeout parks
@@ -117,8 +119,8 @@ type Runtime struct {
 
 // New returns a runtime for the database. url is where agents reach the
 // backend.
-func New(db *store.DB, url string, programs Programs) *Runtime {
-	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run"), Holder: programs.Holder}, db: db, url: url, programs: programs, live: map[string]*live{},
+func New(db *store.DB, preferences config.File, url string, programs Programs) *Runtime {
+	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(db.Dir, "run"), Holder: programs.Holder}, db: db, config: preferences, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
 		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{}, submissions: map[string]string{}, childCreates: map[string]chan struct{}{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout,

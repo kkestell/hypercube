@@ -5,22 +5,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/report"
 )
 
 // useUtilityModel makes test/m/low the utility model.
-func useUtilityModel(t *testing.T) {
-	t.Helper()
-	c, err := config.Load()
+func (f *fixture) useUtilityModel() {
+	f.t.Helper()
+	c, err := f.config.Load()
 	if err != nil {
-		t.Fatal(err)
+		f.t.Fatal(err)
 	}
 	c.UtilitySelection = &harness.Settings{Harness: "test", Model: "m", Effort: "low"}
-	if err := config.Save(c); err != nil {
-		t.Fatal(err)
+	if err := f.config.Save(c); err != nil {
+		f.t.Fatal(err)
 	}
 }
 
@@ -30,7 +29,7 @@ func (f *fixture) generated() []harnesstest.Entry {
 
 func TestUtilityModelNamesANewSession(t *testing.T) {
 	f := newFixture(t)
-	useUtilityModel(t)
+	f.useUtilityModel()
 	s, err := f.rt.Create(f.workspace.ID, lead, false, "Fix the flaky parser test")
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +61,7 @@ func TestWithoutAUtilityModelTheTitleIsTheFirstMessage(t *testing.T) {
 
 func TestAFailedUtilityCallKeepsTheTitle(t *testing.T) {
 	f := newFixture(t)
-	useUtilityModel(t)
+	f.useUtilityModel()
 	s, err := f.rt.Create(f.workspace.ID, lead, false, "!utility-fail")
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +111,7 @@ func TestApplyTitle(t *testing.T) {
 func TestUtilityModelNamesAChildFromItsBrief(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	useUtilityModel(t)
+	f.useUtilityModel()
 	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "worker", Title: "Initial", Message: "Review the lexer"})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +127,7 @@ func TestUtilityModelNamesAChildFromItsBrief(t *testing.T) {
 
 func TestQuitCancelsAHeldUtilityCall(t *testing.T) {
 	f := newFixture(t)
-	useUtilityModel(t)
+	f.useUtilityModel()
 	s, err := f.rt.Create(f.workspace.ID, lead, false, "!utility-hold")
 	if err != nil {
 		t.Fatal(err)

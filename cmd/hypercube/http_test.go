@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/session"
@@ -20,8 +22,8 @@ import (
 // openHTTPStore returns a database in a temporary state directory.
 func openHTTPStore(t *testing.T) *store.DB {
 	t.Helper()
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	db, err := store.Open()
+	dir := t.TempDir()
+	db, err := store.Open(dir, config.File(filepath.Join(dir, "config.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +34,8 @@ func openHTTPStore(t *testing.T) *store.DB {
 // testHandler serves a runtime whose agents are never started.
 func testHandler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{}, &github.Watcher{})
+	preferences := config.File(filepath.Join(db.Dir, "config.json"))
+	return handler(db, preferences, session.New(db, preferences, "", session.Programs{}), &desktop.Desktop{}, &github.Watcher{})
 }
 
 func TestVersion(t *testing.T) {

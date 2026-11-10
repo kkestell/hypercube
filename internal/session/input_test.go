@@ -9,7 +9,8 @@ import (
 )
 
 func TestAttentionRequests(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!ask")
 	f.until("attention", func() bool { return f.storedSession(parent.ID).Attention })
@@ -53,7 +54,8 @@ func TestAttentionRequests(t *testing.T) {
 }
 
 func TestInterruptAndUsage(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
@@ -72,7 +74,8 @@ func TestInterruptAndUsage(t *testing.T) {
 }
 
 func TestImagePrompts(t *testing.T) {
-	f := newFixture(t)
+	t.Parallel()
+	f := newPlainFixture(t)
 	s := f.session()
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
 	if err := f.rt.Input(s.ID, "", harness.Image{MIMEType: "image/png", Data: "bm90IGEgcG5n"}); err == nil {
