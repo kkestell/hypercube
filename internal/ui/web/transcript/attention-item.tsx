@@ -1,20 +1,21 @@
-import {Card, CardContent} from '../components/ui/card';
-import {Icon} from '../shared/icon.tsx';
 // A session's question or approval request. While an approval or task offer
 // is open it offers its answers inside the pending card, where QuestionsForm
 // answers questions; once answered it becomes a collapsed row.
+import type {ReactNode} from 'react';
+import type {Session} from '../sessions/types.ts';
+import {Icon} from '../shared/icon.tsx';
 import {AttentionForm} from './attention-form.tsx';
 import {Disclosure} from './disclosure.tsx';
 import {Markdown} from './markdown.tsx';
 import {TaskOffer} from './task-offer.tsx';
-import type {RowControls} from './transcript-item.tsx';
+import {TranscriptDetails} from './transcript-details.tsx';
 import type {AttentionItem as Attention} from './types.ts';
 
-export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {item: Attention}) {
+export function AttentionItem({item, session}: {item: Attention; session: Pick<Session, 'id' | 'ended'>}) {
   return (
-    <div className="attention-item attention-item-open space-y-3">
+    <div className="space-y-3">
       {item.offer ? <TaskOffer session={session.id} item={item} ended={session.ended} /> : <>
-        <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" /></div>
+        <Markdown text={item.text ?? ''} style="chat" />
         <AttentionForm session={session.id} item={item} ended={session.ended} />
       </>}
     </div>
@@ -24,26 +25,18 @@ export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {i
 // AnsweredItem is a finished question, laid out as a finished tool call: its
 // status, its outcome, and the answer or question beside it. Opening it shows
 // the question and the answer.
-export function AnsweredItem({item, expanded, setOpen}: {item: Attention; expanded: boolean; setOpen: (key: string, open: boolean) => void}) {
+export function AnsweredItem({item}: {item: Attention}) {
   const answer = item.answer ?? '';
+  const outcome = answer ? 'Answered' : 'Closed';
   const title = <span className="min-w-0 truncate text-sm" title={answer || item.text}>
-    <span>{answer ? 'Answered' : 'Closed'}</span> <span className="ml-1 text-xs text-muted-foreground">{answer || item.text}</span>
+    {outcome} <span className="ml-1 text-xs text-muted-foreground">{answer || item.text}</span>
   </span>;
+  const sections: [string, ReactNode][] = [['Question', <Markdown text={item.text ?? ''} style="chat" muted />]];
+  if (answer) sections.push(['Answer', <div className="whitespace-pre-wrap break-words">{answer}</div>]);
   return (
-    <Disclosure className="attention-item [:is(.tool-items-call,.attention-item)[data-state=closed]+&]:-mt-3" open={expanded} onToggle={open => setOpen(item.id, open)}
-      marker={<Icon name="check" role="img" title={answer ? 'Answered' : 'Closed'} />} summary={title}>
-      {expanded && (
-        <Card className="mt-2 gap-0 overflow-hidden border-0 py-0">
-          <CardContent className="space-y-2 px-3 py-2">
-            <h4 className="text-xs font-medium text-muted-foreground">Question</h4>
-            <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" muted /></div>
-          </CardContent>
-          {answer && <CardContent className="space-y-2 border-t px-3 py-2">
-            <h4 className="text-xs font-medium text-muted-foreground">Answer</h4>
-            <div className="attention-item-answer whitespace-pre-wrap break-words">{answer}</div>
-          </CardContent>}
-        </Card>
-      )}
+    <Disclosure id={item.id} className="attention-item [:is(.tool-items-call,.attention-item)[data-state=closed]+&]:-mt-3"
+      marker={<Icon name="check" role="img" title={outcome} />} summary={title}>
+      <div className="mt-2"><TranscriptDetails sections={sections} /></div>
     </Disclosure>
   );
 }

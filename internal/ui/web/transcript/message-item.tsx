@@ -1,14 +1,14 @@
-import type {ReactNode} from 'react';
-import {Card, CardContent} from '../components/ui/card';
-import {BusyDot} from '../shared/busy-dot.tsx';
-import {Icon} from '../shared/icon.tsx';
 // User prompts are bubbles. Messages between sessions show their sender or
 // recipient, as a disclosure with a first-line preview until expanded.
-import {useStore} from '../store.ts';
+import type {ReactNode} from 'react';
+import {Card, CardContent} from '../components/ui/card';
 import {sessionOf} from '../sessions/selection.ts';
+import {tones} from '../shared/tones.ts';
+import {useStore} from '../store.ts';
 import {CopyButton} from './copy-button.tsx';
 import {Disclosure} from './disclosure.tsx';
 import {Markdown, MarkdownText} from './markdown.tsx';
+import {ToolStatus} from './tool-items.tsx';
 import {TranscriptImages} from './transcript-images.tsx';
 import type {ToolItem, UserItem} from './types.ts';
 
@@ -20,18 +20,12 @@ function sentMessage(input: unknown): {to: string; text: string} {
   return {to: typeof to === 'string' ? to : '', text: typeof text === 'string' ? text : ''};
 }
 
-interface MessageItemProps {
-  item: UserItem | ToolItem;
-  expanded: boolean;
-  setOpen: (key: string, open: boolean) => void;
-}
-
 function UserBubble({item}: {item: UserItem}) {
   return (
-    <div className="message-item message-item-user my-3 flex justify-end">
-      <div className="message-item-user-content group relative max-w-[75%] [--copy-bg:var(--secondary)]">
-        <Card className="message-item-bubble border-0 bg-secondary py-3"><CardContent className="px-4">
-          <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
+    <div className="my-3 flex justify-end">
+      <div className="group relative max-w-[75%] [--copy-bg:var(--card)]">
+        <Card className="py-3"><CardContent className="px-4">
+          <div className="whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
         </CardContent></Card>
         <CopyButton text={item.text ?? ''} label="Copy message" />
@@ -40,18 +34,15 @@ function UserBubble({item}: {item: UserItem}) {
   );
 }
 
-export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
+export function MessageItem({item}: {item: UserItem | ToolItem}) {
   const [state] = useStore();
-  let heading: string, text: string, details: ReactNode, status: ReactNode;
+  let heading: string, text: string, details: ReactNode, status: ReactNode = null;
   if (item.kind === 'tool') {
     const sent = sentMessage(item.input);
     heading = 'To ' + sent.to;
-    status = <>
-      {!item.done && <BusyDot title="Running" />}
-      {item.failed && <Icon name="error" className="message-item-failure text-destructive" role="img" title="Failed" />}
-    </>;
+    status = <ToolStatus item={item} />;
     text = sent.text;
-    details = <>{item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>}<TranscriptImages images={item.images} /></>;
+    details = <>{item.failed && <div className={tones.error}>{item.output ?? ''}</div>}<TranscriptImages images={item.images} /></>;
   } else if (item.automatic) {
     heading = 'Automatic message';
     text = item.text ?? '';
@@ -63,18 +54,14 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
   } else {
     return <UserBubble item={item} />;
   }
-  const body = (
-    <div className="message-item-body space-y-2">
-      <div className="message-item-text"><Markdown text={text} style="chat" muted /></div>
-      {details}
-    </div>
-  );
   return (
-    <Disclosure className="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={<>
-      <span className="flex min-w-0 max-w-1/2 shrink-0 items-center gap-2"><span className="truncate">{heading}</span>{status}</span>
-      {!expanded && <span className="message-item-preview min-w-0 flex-1 truncate text-muted-foreground"><MarkdownText text={text.split(/\r?\n/, 1)[0]} /></span>}
-    </>}>
-      {expanded && <div className="pb-1 pr-3">{body}</div>}
+    <Disclosure id={item.id}
+      summary={<span className="flex min-w-0 max-w-1/2 shrink-0 items-center gap-2"><span className="truncate">{heading}</span>{status}</span>}
+      preview={<span className="min-w-0 flex-1 truncate text-muted-foreground"><MarkdownText text={text.split(/\r?\n/, 1)[0]} /></span>}>
+      <div className="space-y-2 pb-1 pr-3">
+        <Markdown text={text} style="chat" muted />
+        {details}
+      </div>
     </Disclosure>
   );
 }

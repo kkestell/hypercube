@@ -31,10 +31,31 @@ function setup(items: NewItem[], session = busy) {
 
 const marker = (id: string, state: WorkState, at: number, final?: string[]): Item => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
 
-const choose = (root: HTMLElement, choice: string) => {
-  act(() => clickControl(find(root, `[role="radio"][data-choice="${choice}"]`)));
+// button is the button named name by its label or its text.
+const button = (root: ParentNode, name: string) => {
+  const found = findAll(root, 'button').find(b => (b.getAttribute('aria-label') ?? b.textContent) === name);
+  if (!found) throw new Error(`No button named ${name}`);
+  return found;
 };
-const submitButton = (root: HTMLElement) => find(root, '.attention-form-submit');
+// labelled is the control that the label reading text names.
+const labelled = (root: ParentNode, text: string) => {
+  const label = findAll(root, 'label').find(l => l.textContent === text);
+  const control = label && document.getElementById(label.getAttribute('for') ?? '');
+  if (!control) throw new Error(`No control labelled ${text}`);
+  return control;
+};
+// toggle is the expand and collapse button whose text includes text.
+const toggle = (root: ParentNode, text: string) => {
+  const found = findAll(root, 'button[aria-expanded]').find(b => b.textContent?.includes(text));
+  if (!found) throw new Error(`No toggle reading ${text}`);
+  return found;
+};
+const pendingArea = (root: ParentNode) => root.querySelector<HTMLElement>('[aria-label="Waiting on you"]');
+const proposals = (root: ParentNode) => findAll(root, '[aria-label="Proposed child session"]');
+const choose = (root: HTMLElement, choice: string) => {
+  act(() => clickControl(labelled(root, choice)));
+};
+const submitButton = (root: HTMLElement) => button(root, 'Submit');
 const submit = (root: HTMLElement) => act(() => clickControl(submitButton(root)));
 
 test('an open proposal is pinned below the history, sends only its saved ID, and returns to history when started', async () => {
@@ -47,8 +68,8 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
     {id: 'L1:answer', kind: 'text', text: 'I found a separate task.', done: true},
     marker('idle', 'idle', 2, ['L1:answer']),
   ]);
-  const card = find(root, '.transcript-pending [aria-label="Proposed child session"]');
-  expect(root.querySelector('.transcript-list [aria-label="Proposed child session"]')).toBeNull();
+  const card = find(pendingArea(root)!, '[aria-label="Proposed child session"]');
+  expect(proposals(root)).toEqual([card]);
   expect(card.textContent).toContain('Check the parser');
   expect(card.textContent).toContain('Fresh context');
   act(() => find(card, 'button').click());
@@ -58,8 +79,8 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
   expect(fetches.mock.calls[0][1]?.body).toBeUndefined();
   await act(async () => reply.resolve(new Response('')));
   send([{id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', settings: {harness: 'codex', model: 'm', effort: 'low'}}, done: true, answer: 'child-id'}]);
-  expect(root.querySelector('.transcript-pending')).toBeNull();
-  const done = find(root, '.transcript-list [aria-label="Proposed child session"]');
+  expect(pendingArea(root)).toBeNull();
+  const [done] = proposals(root);
   expect(done.textContent).toContain('Child session: review');
   expect([...done.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
 });
@@ -97,7 +118,7 @@ test('an archived proposal cannot be started or dismissed', () => {
 
 test('items replace themselves in place, and unchanged items are left alone', () => {
   const {root, send} = setup([{id: '1', kind: 'user', text: 'hi', seq: 1}, {id: '2', kind: 'text', text: 'Hel', seq: 2}]);
-  const list = find(root, '.transcript-list');
+  const list = find(root, '[aria-label="Transcript"]');
   const [user, reply] = list.children;
   expect(user.textContent).toBe('hi');
   expect(reply.textContent).toBe('Hel');
@@ -116,38 +137,38 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
     {id: 'r', kind: 'reasoning', text: '<i>thinking</i>'},
     {id: 'u', kind: 'user', text: '<a href=x>me</a>'},
   ]);
-  act(() => find(root, '.tool-items-call > [data-slot=collapsible-trigger]').click());
+  act(() => toggle(root, '<b>tool</b>').click());
   expect(root.querySelectorAll('b, script, img, u, i, a').length).toBe(0);
   for (const text of ['<b>tool</b>', '<img src=x onerror=1>', '<u>bad</u>', '<i>thinking</i>', '<a href=x>me</a>']) expect(root.textContent).toContain(text);
 });
 
 test('an expanded running tool explains missing details and updates as they arrive', () => {
   const {root, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', seq: 1}]);
-  act(() => find(root, '.tool-items-call > [data-slot=collapsible-trigger]').click());
-  expect(find(root, '.tool-items-body').textContent).toBe('Waiting for tool details…');
+  act(() => toggle(root, 'Run command').click());
+  expect(root.textContent).toContain('Waiting for tool details…');
 
   send([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'pwd'}, seq: 1}]);
-  expect(find(root, '.tool-items-input').textContent).toContain('pwd');
+  expect(root.textContent).toContain('Arguments{\n  "command": "pwd"\n}');
   expect(root.textContent).not.toContain('Waiting for tool details…');
 
   send([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'pwd'}, output: '/workspace', done: true, seq: 1}]);
-  expect(find(root, '.tool-items-body').textContent).toContain('/workspace');
+  expect(root.textContent).toContain('Output/workspace');
 });
 
 test('an expanded completed tool with no details says so', () => {
   const {root} = setup([{id: 'c', kind: 'tool', tool: 'bash', done: true}]);
-  act(() => find(root, '.tool-items-call > [data-slot=collapsible-trigger]').click());
-  expect(find(root, '.tool-items-body').textContent).toBe('No details recorded.');
+  act(() => toggle(root, 'Run command').click());
+  expect(root.textContent).toContain('No details recorded.');
 });
 
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
   const refusal = Promise.withResolvers<Response>();
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(refusal.promise);
   const {root, send} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
-  const rows = () => findAll(root, '[role="radio"][data-choice]');
+  const rows = () => findAll(root, '[role="radio"]');
   const list = () => find(root, '[role="radiogroup"]');
   expect(list().getAttribute('aria-label')).toBe('Choices');
-  expect(rows().map(r => r.getAttribute('data-choice'))).toEqual(['yes', 'no']);
+  expect(findAll(list(), 'label').map(label => label.textContent)).toEqual(['yes', 'no']);
   expect(root.querySelector('input')).toBeNull();
   expect(submitButton(root).hasAttribute('disabled')).toBe(true);
   choose(root, 'yes');
@@ -166,19 +187,19 @@ test('an attention request offers its choices, waits while sending, and opens ag
 
   send([{id: 'q', kind: 'attention', text: 'Proceed?', done: true, answer: 'no', seq: 1}]);
   expect(rows()).toEqual([]);
-  expect(find(root, '.attention-item').textContent).toContain('Answered');
-  expect(root.querySelector('.attention-item-answer')).toBeNull();
-  act(() => find(root, '.attention-item > [data-slot=collapsible-trigger]').click());
-  expect(find(root, '.attention-item-question').textContent).toBe('Proceed?');
-  expect(find(root, '.attention-item-answer').textContent).toBe('no');
+  const answered = toggle(root, 'Answered');
+  expect(answered.textContent).toBe('Answered no');
+  expect(root.textContent).not.toContain('Question');
+  act(() => answered.click());
+  expect(root.textContent).toContain('QuestionProceed?Answerno');
 });
 
 test.each(['New session', 'Do it here'])('a task offer sends %s immediately, prevents duplicate answers, and records it', choice => {
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}));
   const offer = {id: 'o', kind: 'attention' as const, offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']};
   const {root, send} = setup([offer]);
-  const pending = find(root, '.transcript-pending');
-  expect(pending.querySelector('[role="radio"], .attention-form-submit')).toBeNull();
+  const pending = pendingArea(root)!;
+  expect(pending.querySelector('[role="radio"]')).toBeNull();
   const buttons = findAll(pending, 'button');
   expect(buttons.map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Dismiss task', 'New session', 'Do it here']);
   act(() => buttons.find(button => button.textContent === choice)!.click());
@@ -187,8 +208,8 @@ test.each(['New session', 'Do it here'])('a task offer sends %s immediately, pre
   expect(fetches).toHaveBeenCalledTimes(1);
   expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'o', choice});
   send([{...offer, done: true, answer: choice}]);
-  expect(root.querySelector('.transcript-pending .attention-item')).toBeNull();
-  expect(find(root, '.attention-item').textContent).toContain(choice);
+  expect(pendingArea(root)).toBeNull();
+  expect(toggle(root, 'Answered').textContent).toBe('Answered ' + choice);
 });
 
 test('current and saved two-choice offers can be dismissed and leave the pending area', () => {
@@ -196,13 +217,12 @@ test('current and saved two-choice offers can be dismissed and leave the pending
   for (const choices of [['New session', 'Do it here', 'Dismiss'], ['New session', 'Do it here']]) {
     const offer = {id: 'o', kind: 'attention' as const, offer: true, text: 'Fix the parser', choices};
     const {root, send} = setup([offer]);
-    const pending = find(root, '.transcript-pending');
-    act(() => find(pending, '[aria-label="Dismiss task"]').click());
+    act(() => button(pendingArea(root)!, 'Dismiss task').click());
     const call = fetches.mock.calls.at(-1)!;
     expect(Object.fromEntries(new URL(String(call[0]), 'http://x/').searchParams)).toEqual({action: 'answer', id: 's', request: 'o', choice: 'Dismiss'});
     send([{...offer, done: true, answer: 'Dismiss'}]);
-    expect(root.querySelector('.transcript-pending')).toBeNull();
-    expect(find(root, '.attention-item').textContent).toContain('Dismiss');
+    expect(pendingArea(root)).toBeNull();
+    expect(toggle(root, 'Answered').textContent).toBe('Answered Dismiss');
   }
   expect(fetches).toHaveBeenCalledTimes(2);
 });
@@ -210,7 +230,7 @@ test('current and saved two-choice offers can be dismissed and leave the pending
 test('an offer in an archived transcript cannot be answered', () => {
   const fetches = spyOn(globalThis, 'fetch');
   const {root} = setup([{id: 'o', kind: 'attention', offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
-  const buttons = findAll(root, '.attention-item button');
+  const buttons = findAll(pendingArea(root)!, 'button');
   expect(buttons).toHaveLength(3);
   expect(buttons.every(button => button.hasAttribute('disabled'))).toBe(true);
   act(() => buttons.forEach(button => button.click()));
@@ -220,7 +240,7 @@ test('an offer in an archived transcript cannot be answered', () => {
 test('a refused task placement can be retried', async () => {
   const fetches = stubFetch(() => new Response('Could not answer', {status: 409}));
   const {root} = setup([{id: 'o', kind: 'attention', offer: true, text: 'Fix the parser', choices: ['New session', 'Do it here']}]);
-  const buttons = findAll(root, '.attention-item button');
+  const buttons = findAll(pendingArea(root)!, 'button');
   await act(async () => buttons[2].click());
   expect(buttons.every(button => !button.hasAttribute('disabled'))).toBe(true);
   await act(async () => buttons[2].click());
@@ -231,7 +251,7 @@ test('an approval request offers to always allow its tool in either scope', asyn
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
   for (const [i, scope] of ['session', 'all'].entries()) {
     const {root} = setup([{id: 'q', kind: 'attention', text: 'Allow Bash?', choices: ['Allow', 'Deny'], grant: 'Bash'}]);
-    const buttons = findAll(root, 'button[data-always]');
+    const buttons = findAll(find(root, '[aria-label="Always allow"]'), 'button');
     expect(buttons.map(b => b.textContent)).toEqual(['Always allow in this session', 'Always allow in all sessions']);
     await act(async () => { clickControl(buttons[i]); });
     expect(Object.fromEntries(requestParams(fetches.mock.calls, i))).toEqual({action: 'allow', id: 's', request: 'q', scope});
@@ -247,7 +267,7 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   act(() => clickControl(submitButton(root)));
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(fetches).not.toHaveBeenCalled();
-  const otherRadio = find(root, '[role="radio"]:not([data-choice])');
+  const otherRadio = find(root, '[role="radio"][aria-label="Other"]');
   act(() => clickControl(otherRadio));
   expect(otherRadio.getAttribute('aria-checked')).toBe('true');
   expect(submitButton(root).hasAttribute('disabled')).toBe(true);
@@ -255,7 +275,7 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   expect(otherRadio.getAttribute('aria-checked')).toBe('false');
   setValue(field, 'Grace');
   act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
-  expect(find(root, '[role="radio"][data-choice="Ada"]').getAttribute('aria-checked')).toBe('false');
+  expect(labelled(root, 'Ada').getAttribute('aria-checked')).toBe('false');
   expect(submitButton(root).hasAttribute('disabled')).toBe(false);
   await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(requestParams(fetches.mock.calls, 0).get('choice')).toBe('');
@@ -271,17 +291,17 @@ test('a nested request stays pinned outside a collapsed activity and returns to 
     {id: 't', kind: 'text', text: 'Waiting on you', at: 1400},
     marker('i', 'idle', 2000, ['t']),
   ]);
-  const group = find(root, '.activity-item');
-  expect(group.getAttribute('data-state') === 'open').toBe(false);
-  const pending = find(root, '[aria-label="Waiting on you"]');
-  expect(pending.querySelector('button[data-choice="ok"]')).not.toBeNull();
-  expect(pending.closest('.transcript-list')).toBeNull();
-  expect(root.querySelector('.transcript-list .attention-item')).toBeNull();
+  const worked = toggle(root, 'Worked for');
+  expect(worked.getAttribute('aria-expanded')).toBe('false');
+  const pending = pendingArea(root)!;
+  expect(labelled(pending, 'ok')).toBeDefined();
+  expect(find(root, '[aria-label="Transcript"]').contains(pending)).toBe(false);
+  expect(root.textContent).not.toContain('Answered');
   send([{id: 'q', parent: 'a', kind: 'attention', text: 'Allow?', done: true, answer: 'ok', at: 1300}]);
-  expect(root.querySelector('.transcript-pending')).toBeNull();
-  act(() => find(group, '[data-slot=collapsible-trigger]').click());
-  act(() => find(group, '.tool-items-call > [data-slot=collapsible-trigger]').click());
-  expect(find(group, '.attention-item').textContent).toContain('ok');
+  expect(pendingArea(root)).toBeNull();
+  act(() => worked.click());
+  act(() => toggle(root, 'Run agent').click());
+  expect(toggle(root, 'Answered').textContent).toBe('Answered ok');
 });
 
 test('pending questions and their draft stay outside the history list while output arrives', () => {
@@ -289,25 +309,25 @@ test('pending questions and their draft stay outside the history list while outp
     {id: 'q1', kind: 'attention', text: 'First?', free: true},
     {id: 'q2', kind: 'attention', text: 'Second?', choices: ['yes']},
   ]);
-  const pending = find(root, '.transcript-pending');
+  const pending = pendingArea(root)!;
   const field = element(pending, 'input', HTMLInputElement);
   setValue(field, 'My answer');
   act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
-  const view = find(root, '.transcript');
+  const view = find(root, '[aria-label="Transcript"]').parentElement!;
   view.scrollTop = 0;
   act(() => view.dispatchEvent(new Event('scroll')));
   send([{id: 'output', kind: 'text', text: 'More work'}]);
-  expect(find(root, '.transcript-pending') === pending).toBe(true);
+  expect(pendingArea(root) === pending).toBe(true);
   expect(find(pending, 'input') === field).toBe(true);
   expect(field.value).toBe('My answer');
-  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['First?']);
-  expect(find(pending, '.questions-form-progress').textContent).toBe('Question 1 of 2');
-  expect(find(view, '.transcript-list').textContent).toBe('More work');
-  expect(find(root, '.transcript-footer').contains(pending)).toBe(true);
+  expect(pending.textContent).toContain('First?');
+  expect(pending.textContent).not.toContain('Second?');
+  expect(pending.textContent).toContain('Question 1 of 2');
+  expect(find(view, '[aria-label="Transcript"]').textContent).toBe('More work');
   send([{id: 'q1', kind: 'attention', text: 'First?', done: true, answer: 'My answer', seq: 0}]);
-  expect(find(view, '.attention-item').textContent).toContain('My answer');
-  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['Second?']);
-  expect(pending.querySelector('.questions-form-progress')).toBeNull();
+  expect(toggle(view, 'Answered').textContent).toBe('Answered My answer');
+  expect(pending.textContent).toContain('Second?');
+  expect(pending.textContent).not.toContain('Question 1 of');
 });
 
 test('a turn draws as it runs and folds its activity under Worked for once it finishes', () => {
@@ -317,12 +337,13 @@ test('a turn draws as it runs and folds its activity under Worked for once it fi
     {id: 'c', kind: 'tool', tool: 'bash', at: 1200},
     {id: 't', kind: 'text', text: 'Done', at: 1400},
   ]);
-  expect(root.querySelector('.activity-item')).toBeNull();
-  expect(find(root, '.transcript-list > .tool-items-call')).toBeDefined();
+  const list = find(root, '[aria-label="Transcript"]');
+  expect(root.textContent).not.toContain('Worked');
+  expect(list.children[1].textContent).toBe('Run command');
   send([marker('i', 'idle', 2000, ['t'])]);
-  expect(find(root, '.activity-item [data-slot=collapsible-trigger]').textContent).toBe('Worked for 1s');
-  expect(root.querySelector('.transcript-list > .tool-items-call')).toBeNull();
-  expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
+  expect(list.children[1].querySelector('button')!.textContent).toBe('Worked for 1s');
+  expect(root.textContent).not.toContain('Run command');
+  expect(list.children[2].textContent).toBe('Done');
 });
 
 test('empty reasoning and text do not create an empty activity disclosure', () => {
@@ -334,13 +355,12 @@ test('empty reasoning and text do not create an empty activity disclosure', () =
     {id: 't', kind: 'text', text: 'Done', at: 1400},
     marker('i', 'idle', 5000, ['t']),
   ]);
-  expect(root.querySelector('.activity-item')).toBeNull();
-  expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
+  expect(root.textContent).not.toContain('Worked');
+  expect(find(root, '[aria-label="Transcript"]').textContent).toBe('GoDone');
 
   send([{id: 'r', kind: 'reasoning', text: 'Checking the answer', at: 1200, seq: 3}]);
-  const activity = find(root, '.activity-item');
-  act(() => find(activity, '[data-slot=collapsible-trigger]').click());
-  expect(find(activity, '.reasoning-item').textContent).toBe('Checking the answer');
+  act(() => toggle(root, 'Worked for').click());
+  expect(root.textContent).toContain('Checking the answer');
 });
 
 test('image-only activity remains available to expand', () => {
@@ -350,9 +370,8 @@ test('image-only activity remains available to expand', () => {
     {id: 't', kind: 'text', text: 'Done', at: 1400},
     marker('i', 'idle', 5000, ['t']),
   ]);
-  const activity = find(root, '.activity-item');
-  act(() => find(activity, '[data-slot=collapsible-trigger]').click());
-  expect(find(activity, 'img').getAttribute('src')).toBe('/transcript-image?index=0');
+  act(() => toggle(root, 'Worked for').click());
+  expect(find(root, 'img').getAttribute('src')).toBe('/transcript-image?index=0');
 });
 
 // Happy DOM does not perform layout. These assertions protect the scrolling
@@ -363,15 +382,15 @@ test('pending forms have a shrinking scroll region before the composer', () => {
   const store = createStore(testState({session: emptySession('s')}));
   store.update(s => receivedTranscript(s, {type: 'transcript', session: 's', reset: true, items: items.map((item, seq) => ({...item, seq}))}));
   const root = mount(store, <Transcript session={busy} footer={<textarea aria-label="Message" />} />);
-  const footer = find(root, '.transcript-footer');
-  const pending = find(footer, '.transcript-pending');
+  const pending = pendingArea(root)!;
+  const content = pending.parentElement!, footer = content.parentElement!;
   expect(footer.classList.contains('min-h-0')).toBe(true);
   expect(footer.classList.contains('max-h-3/4')).toBe(true);
-  expect(find(footer, '.transcript-footer-content').classList.contains('overflow-y-auto')).toBe(true);
+  expect(content.classList.contains('overflow-y-auto')).toBe(true);
   expect(pending.classList.contains('min-h-24')).toBe(true);
   expect(pending.classList.contains('overflow-y-auto')).toBe(true);
-  expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['Question 0']);
-  expect(findAll(pending, '.questions-form-next')).toHaveLength(1);
+  expect(pending.textContent).toContain('Question 0YesNoQuestion 1 of 6');
+  expect(findAll(pending, 'button').filter(b => b.textContent === 'Next')).toHaveLength(1);
   expect(findAll(pending, '[aria-label="Proposed child session"] button').map(button => button.textContent)).toEqual(['Start', 'Dismiss']);
   const controls = findAll(footer, 'button, input, textarea').filter(control => !control.hasAttribute('tabindex') || control.tabIndex >= 0);
   expect(controls.at(-1)?.getAttribute('aria-label')).toBe('Message');
@@ -386,26 +405,24 @@ test('incoming, outgoing, and automatic messages collapse to one line and can be
     {id: 'failed', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'child', text: 'Try again'}, failed: true, done: true, output: 'Delivery failed', images: [image]},
     {id: 'automatic', kind: 'user', automatic: true, text: 'A report\nFull details', images: [image]},
   ]);
-  expect(find(root, '.message-item-user').textContent).toBe('A regular user prompt');
-  expect(root.querySelector('.message-item-user button[data-slot=collapsible-trigger]')).toBeNull();
-  const messages = findAll(root, '.message-item-agent');
-  expect(messages).toHaveLength(4);
-  expect(find(messages[3], '.disclosure-heading').textContent).toContain('Automatic message');
+  const list = find(root, '[aria-label="Transcript"]');
+  expect(list.children[0].textContent).toBe('A regular user prompt');
+  expect(list.children[0].querySelector('button[aria-expanded]')).toBeNull();
+  const triggers = findAll(root, 'button[aria-expanded]');
+  expect(triggers.map(trigger => trigger.textContent)).toEqual(['From childFirst line', 'To childA single line message', 'To childTry again', 'Automatic messageA report']);
   expect(root.textContent).not.toContain('Child reports');
-  for (const [i, message] of messages.entries()) {
-    const trigger = find(message, '[data-slot=collapsible-trigger]');
+  for (const [i, trigger] of triggers.entries()) {
+    const message = trigger.parentElement!;
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(find(message, '.disclosure-heading').contains(find(message, '.message-item-preview'))).toBe(true);
-    expect(message.querySelector('.message-item-body')).toBeNull();
     expect(message.querySelector('img')).toBeNull();
     act(() => trigger.click());
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(message.querySelector('.message-item-body')).not.toBeNull();
-    if (i === 0) expect(find(message, '.message-item-body').textContent).toContain('Second line');
-    if (i === 2) expect(find(message, '.message-item-body').textContent).toContain('Delivery failed');
+    expect(trigger.textContent).not.toContain(['First line', 'A single line message', 'Try again', 'A report'][i]);
+    if (i === 0) expect(message.textContent).toContain('Second line');
+    if (i === 2) expect(message.textContent).toContain('Delivery failed');
     if (i !== 1) expect(message.querySelector('img')).not.toBeNull();
     act(() => trigger.click());
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    expect(message.querySelector('.message-item-body')).toBeNull();
+    expect(message.textContent).toBe(trigger.textContent);
   }
 });

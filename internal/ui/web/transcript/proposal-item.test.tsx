@@ -21,7 +21,7 @@ test.each(['Started', 'Dismissed'])('a %s child proposal collapses and keeps its
   expect(root.textContent).toContain(brief);
   expect(root.textContent).toContain('Start');
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 's', reset: false, items: [{...item, done: true, answer}]})));
-  const trigger = find(root, '.proposal-item [data-slot=collapsible-trigger]');
+  const trigger = find(root, '[aria-label="Proposed child session"] button[aria-expanded]');
   expect(trigger.textContent).toContain(answer === 'Dismissed' ? 'Dismissed' : 'Child session: parser');
   expect(trigger.textContent).toContain('opusHigh');
   expect(find(trigger, '[title]').title).toBe('Claude opus, effort high');
