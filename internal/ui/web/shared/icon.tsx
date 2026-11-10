@@ -1,4 +1,6 @@
-// Lucide icons shared by the application actions.
+// Lucide icons shared by the application actions. An icon is 16px unless its
+// class names another size.
+import {cn} from 'cn';
 import {ArrowDown, BookMarked, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
   Clock, CloudUpload, Copy, Folder, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequest, GitPullRequestArrow, GitPullRequestDraft,
   Globe, Info, Laptop, MessageSquare, Paperclip, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
@@ -26,7 +28,7 @@ interface IconProps extends Omit<LucideProps, 'name'> {
 
 export function Icon({name, className = '', title, ...props}: IconProps) {
   const Component = icons[name];
-  return <Component className={`size-4 shrink-0 ${className}`} {...{title}} aria-label={title} aria-hidden={title || props['aria-label'] ? undefined : true} {...props} />;
+  return <Component className={cn('size-4 shrink-0', className)} {...{title}} aria-label={title} aria-hidden={title || props['aria-label'] ? undefined : true} {...props} />;
 }
 
 // Chevron marks an expandable item, turning to point down as it opens.
