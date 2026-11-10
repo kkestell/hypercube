@@ -75,8 +75,9 @@ Documentation procedures are in [documentation](documentation.md).
   timers to wait for rendering. HTML holds markup only.
 - Use stock shadcn components and theme styles, Lucide icons, and Tailwind
   utilities for layout. Keep component styling in the upstream shadcn source;
-  do not add custom component CSS or theme overrides. Reserve red for errors;
-  repeated status indicators use icons with accessible names and hover text.
+  do not add custom component CSS or theme overrides. Reserve red for errors
+  and removed lines in diffs, and take status colors from
+  `internal/ui/web/shared/tones.ts`; repeated status indicators use icons with accessible names and hover text.
   Write interface text as plain phrases and sentences, with facts joined by
   words or given their own lines rather than separator characters.
 - Animate every change a person can see happen. Controls that appear on hover
