@@ -3,40 +3,33 @@
 Open **Settings** with **Command+,** on macOS or **Ctrl+,** on Linux, or with
 the gear button at the top of the sidebar. It opens to **General**.
 **Save changes** validates and writes preferences; closing without saving
-discards edits. No configuration file is needed to use the defaults.
-Settings has five sections: **General**, **Agents**, **Review**,
-**Notifications**, and **Permissions**. Each part below names where its settings are.
+discards edits. Settings has five sections: **General**, **Agents**,
+**Review**, **Notifications**, and **Permissions**.
 
-The file is `~/.config/hypercube/config.json`, or
-`$XDG_CONFIG_HOME/hypercube/config.json` when that variable is set.
-Direct file edits while Hypercube runs are unsupported: a Settings save
-replaces the file. Stop Hypercube before editing by hand.
-[An example configuration](https://github.com/kkestell/hypercube/blob/main/docs/examples/config.json)
-shows every field.
+## General
 
-## Session defaults
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-general-dark.png">
+  <img alt="Settings › General showing Theme, Terminal text size, Default model, and Default location" src="images/settings-general-light.png">
+</picture>
 
-Set these in **Settings › General › New sessions**: **Default model** and
-**Default location**.
+### Appearance
 
-| Field | Meaning | Default |
-| --- | --- | --- |
-| `default_selection` | Object with `harness`, `model`, and `effort`; used for a workspace with no sessions. Otherwise, the newest session supplies the initial selection. | Not set |
-| `default_worktree` | Start new Git sessions in a worktree. The composer can override this for each session. | `false` |
+- **Theme**: **System**, **Light**, or **Dark**. Defaults to **System**.
+- **Terminal text size**: 12, 13, 14, 16, or 18 pixels. Defaults to 13.
 
-A model with effort levels needs an `effort`; a model without them takes none.
-Model and effort values are the harness's native IDs; the plugin rejects
-invalid ones at start or model change.
-See [harness requirements](harness-support.md#requirements).
+### New sessions
 
-## Utility model
+- **Default model**: the model for the first session in a workspace. Later
+  sessions start with the newest session's model. Not set by default.
+- **Default location**: **Existing checkout** or **New worktree** for new Git
+  sessions. The composer can override it for each session. Defaults to
+  **Existing checkout**.
 
-**Settings › General › Utility model** chooses the model that names new
-sessions.
+### Utility model
 
-| Field | Meaning | Default |
-| --- | --- | --- |
-| `utility_selection` | Object with `harness`, `model`, and `effort`. **Clear** removes it. | Not set |
+**Utility model** chooses the model that names new sessions. It is not set by
+default; **Clear** removes it.
 
 After a session's first message, the utility model reads that message, or a
 child's brief, and replaces the session's title with a short one. A title you
@@ -48,89 +41,99 @@ Choose a model from any harness. The call runs with no tools, project
 instructions, or saved conversation, in an empty temporary folder. See
 [what each harness runs](harness-support.md#utility-model).
 
-## Models
+## Agents
 
-Edit the model picker list in **Settings › Agents › Models**. Each entry needs
-a harness, its exact model ID, and a display title. Add effort levels ordered
-from lowest to highest and the effort a session starts with. Leave levels
-empty for a model without an effort control.
-One level is its own default; several levels require a default from the list.
+### Models
+
+**Models** edits the model picker list, which is empty by default. Each entry
+needs a harness, its exact model ID, and a display title. Add effort levels
+ordered from lowest to highest and the effort a session starts with. Leave
+levels empty for a model without an effort control. One level is its own
+default; several levels require a default from the list. A harness lists each
+model once.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/settings-models-dark.png">
   <img alt="Settings › Agents › Models listing Claude Code and OpenCode models with their effort levels and default effort" src="images/settings-models-light.png">
 </picture>
 
-The `models` field holds the list, empty by default. Each entry is an object
-with `harness`, `model`, `title`, `efforts` (lowest first), and
-`default_effort`. A harness lists each model once.
-
-Entries are saved in `config.json` and apply on **Save changes**, like other
-settings. Entries are checked against the harness only when a session starts
-or changes model.
+Entries apply on **Save changes**, like other settings. Entries are checked
+against the harness only when a session starts or changes model; the plugin
+rejects model and effort IDs the harness does not accept. See
+[harness requirements](harness-support.md#requirements).
 Editing or deleting an entry does not change existing session settings or saved
 defaults. Agents can still discover and choose models that are not in this
 list.
 
-## Child sessions
+### Child sessions
 
-Set **Guidance for choosing child models** in **Settings › Agents › Child
-sessions**.
+**Guidance for choosing child models** tells agents when a child should use a
+different harness, model, or effort. It does not restrict the choices. It is
+empty by default.
 
-| Field | Meaning | Default |
-| --- | --- | --- |
-| `child_model_guidance` | Instructions to agents about when children should use a different harness, model, or effort. It does not restrict available choices. | Empty text |
+## Review
 
-## Pull request reviews
-
-**Settings › Review** chooses the model and prompt that
+**Review** chooses the model and prompt that
 [**Review**](interface.md#github) starts a pull request review session with.
 
-| Field | Meaning | Default |
-| --- | --- | --- |
-| `review_selection` | Object with `harness`, `model`, and `effort` for review sessions. **Use default model** clears it. | Not set |
-| `review_prompt` | The review session's first prompt. `{number}` becomes the pull request's number and `{url}` its link. It cannot be empty. | Asks the agent to review the pull request with `gh`, report what it finds, and post nothing to GitHub |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-review-dark.png">
+  <img alt="Settings › Review showing the review model and the default review prompt" src="images/settings-review-light.png">
+</picture>
 
-Without `review_selection`, a review uses `default_selection`, or else the
-first listed model at its default effort. With neither, **Review** shows an
-error.
+- **Review model**: the model for review sessions. Not set by default;
+  **Use default model** clears it. Without it, a review uses the default
+  model, or else the first listed model at its default effort. With neither,
+  **Review** shows an error.
+- **Review prompt**: the review session's first prompt. `{number}` becomes the
+  pull request's number and `{url}` its link. It cannot be empty. The default
+  is:
 
-## Appearance
-
-Set **Theme** and **Terminal text size** in **Settings › General ›
-Appearance**.
-
-| Field | Values | Default |
-| --- | --- | --- |
-| `theme` | `system`, `light`, `dark` | `system` |
-| `terminal_font_size` | Pixels: `12`, `13`, `14`, `16`, `18` | `13` |
+  > Review pull request #{number} ({url}). Its head commit is checked out in
+  > your working directory. Read its description, discussion, and diff with
+  > gh, and report what you find. Post nothing to GitHub.
 
 ## Notifications
 
-Set these in **Settings › Notifications**. All four fields in the
-`notifications` object default to `true`.
+All four settings are on by default.
 
-| Field | Setting | Effect |
-| --- | --- | --- |
-| `requests` | **An agent needs my attention** | Show question and approval alerts as cards and desktop notifications. |
-| `replies` | **An agent has a new reply** | Show new-reply alerts as cards and desktop notifications. |
-| `desktop` | **Show desktop notifications** | Deliver desktop notifications while the app is open but its window is not focused. |
-| `sound` | **Play a sound** | Play a sound with desktop notifications. Available while desktop notifications are on. |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-notifications-dark.png">
+  <img alt="Settings › Notifications with all four switches on" src="images/settings-notifications-light.png">
+</picture>
+
+Under **Notify me when**:
+
+- **An agent needs my attention**: show question and approval alerts as cards
+  and desktop notifications.
+- **An agent has a new reply**: show new-reply alerts as cards and desktop
+  notifications.
+
+Under **Delivery**:
+
+- **Show desktop notifications**: deliver desktop notifications while the app
+  is open but its window is not focused.
+- **Play a sound**: play a sound with desktop notifications. Available while
+  desktop notifications are on.
 
 Notification delivery and dismissal are described in the
 [interface reference](interface.md#notifications).
 
 ## Permissions
 
-**Settings › Permissions › Always Allowed Tools** lists the tools you chose to
-always allow from an approval, with each choice's harness and whether it
-applies to one session or all sessions. **Remove** deletes a choice, so the
-harness asks again when it needs approval. Removal applies immediately,
-without **Save changes**.
+**Always Allowed Tools** lists the tools you chose to always allow from an
+approval, with each choice's harness and whether it applies to one session or
+all sessions. **Remove** deletes a choice, so the harness asks again when it
+needs approval. Removal applies immediately, without **Save changes**.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/settings-permissions-dark.png">
+  <img alt="Settings › Permissions listing tools always allowed in all sessions and in one session" src="images/settings-permissions-light.png">
+</picture>
 
 Saved choices are kept in the [database](storage.md#hypercube-files), not in
-`config.json`. [Permission behavior](harness-support.md#permissions) varies by
-harness.
+the configuration file. [Permission behavior](harness-support.md#permissions)
+varies by harness.
 
 ## `.worktreeinclude`
 
@@ -144,3 +147,51 @@ or synchronized folders. Hypercube uses copy-on-write clones where supported
 (APFS on macOS; Btrfs and XFS on Linux), otherwise ordinary copies.
 
 For a setup example, see [Supply ignored local files](teamwork.md#supply-ignored-local-files).
+
+## Configuration file
+
+Settings are saved to `~/.config/hypercube/config.json`, or
+`$XDG_CONFIG_HOME/hypercube/config.json` when that variable is set. Stop
+Hypercube before editing it by hand: a Settings save replaces the file.
+
+This example sets every field. Fields left out take their defaults.
+
+```json
+{
+  "default_selection": { "harness": "claude", "model": "opus", "effort": "medium" },
+  "default_worktree": false,
+  "utility_selection": { "harness": "claude", "model": "haiku", "effort": "low" },
+  "theme": "system",
+  "terminal_font_size": 13,
+  "models": [
+    {
+      "harness": "claude",
+      "model": "opus",
+      "title": "Opus 5.5",
+      "efforts": ["low", "medium", "high", "xhigh", "max"],
+      "default_effort": "medium"
+    }
+  ],
+  "child_model_guidance": "",
+  "review_selection": { "harness": "claude", "model": "opus", "effort": "high" },
+  "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
+  "notifications": { "requests": true, "replies": true, "desktop": true, "sound": true }
+}
+```
+
+| Field | Setting |
+| --- | --- |
+| `default_selection` | **General › New sessions › Default model** |
+| `default_worktree` | **General › New sessions › Default location**; `true` is **New worktree** |
+| `utility_selection` | **General › Utility model** |
+| `theme` | **General › Appearance › Theme**: `system`, `light`, or `dark` |
+| `terminal_font_size` | **General › Appearance › Terminal text size** |
+| `models` | **Agents › Models** |
+| `child_model_guidance` | **Agents › Child sessions** |
+| `review_selection` | **Review › Review model** |
+| `review_prompt` | **Review › Review prompt** |
+| `notifications` | **Notifications**: `requests`, `replies`, `desktop`, and `sound` in the order listed there |
+
+A selection is an object with `harness`, `model`, and `effort`, using the
+harness's own IDs. A model with effort levels needs an `effort`; a model
+without them takes none.

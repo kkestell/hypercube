@@ -41,7 +41,7 @@ Actions, or right-clicking the name, opens the workspace's menu, including
 4. Send the first prompt to create the session.
 
 New sessions initially use the workspace's newest session settings, or your
-[configured default](configuration.md#session-defaults) if there are no sessions.
+[configured default](configuration.md#new-sessions) if there are no sessions.
 The initial location choice comes from **Settings › General › Default
 location**.
 

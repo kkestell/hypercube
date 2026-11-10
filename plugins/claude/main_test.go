@@ -504,8 +504,12 @@ func TestInterruptedTurnIsNotAnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	frames := h.sentFrames(t)
-	if len(frames) != 1 || frames[0]["type"] != "control_request" || frames[0]["request"].(map[string]any)["subtype"] != "interrupt" {
-		t.Errorf("%v", frames)
+	if len(frames) != 1 || frames[0]["type"] != "control_request" {
+		t.Fatalf("%v", frames)
+	}
+	// A stop also drops the prompts that would otherwise start the next turn.
+	if req := frames[0]["request"].(map[string]any); req["subtype"] != "interrupt" || req["cancel_queued"] != true {
+		t.Errorf("%v", req)
 	}
 }
 

@@ -199,7 +199,7 @@ In **Pull Requests**, a pull request from a repository with no workspace
 shows **Clone**, and **Review** stays disabled. Clone the repository to add it
 as a workspace, then choose **Review**. To
 choose the review model and prompt, see
-[Pull request reviews](configuration.md#pull-request-reviews).
+[Review settings](configuration.md#review).
 
 ## Split a change across child sessions
 

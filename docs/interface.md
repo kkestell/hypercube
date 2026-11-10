@@ -210,7 +210,7 @@ cancels the clone. In the desktop app, **Choose…** picks the parent folder.
 A pull request whose review was requested from the account shows **Review**.
 It fetches the pull request's head commit, starts a new worktree session at that
 commit, and opens the session. The session's model and first prompt come from
-[**Settings › Review**](configuration.md#pull-request-reviews). The pull
+[**Settings › Review**](configuration.md#review). The pull
 request's own commits do not count as the session's unmerged work, so
 **Merge into …** appears only after the agent commits. On the Pull Requests
 view, **Review** is disabled until a workspace holds the repository.

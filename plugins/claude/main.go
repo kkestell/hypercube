@@ -215,10 +215,13 @@ func (c *claude) input(text string, images []harness.Image) error {
 	return c.send(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 }
 
+// interrupt stops the running turn. Claude queues prompts that arrive during
+// a turn and would start a new turn with them once this one stops, so the
+// stop drops them too.
 func (c *claude) interrupt() error {
 	c.writing.Lock()
 	c.counter++
 	id := fmt.Sprintf("interrupt-%d", c.counter)
 	c.writing.Unlock()
-	return c.send(map[string]any{"type": "control_request", "request_id": id, "request": map[string]any{"subtype": "interrupt"}})
+	return c.send(map[string]any{"type": "control_request", "request_id": id, "request": map[string]any{"subtype": "interrupt", "cancel_queued": true}})
 }
