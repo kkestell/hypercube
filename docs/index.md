@@ -48,8 +48,3 @@ using the app.
 - [Interface colors](dev/design.md) — color tokens and their uses in the app.
 - [Documentation maintenance](dev/documentation.md) — writing guides and updating
   diagrams and screenshots.
-
-### Historical explanation
-
-- [Why Codex support was dropped](dev/codex-retirement.md) — the maintenance
-  costs and integration tradeoffs behind its removal.
