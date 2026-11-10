@@ -171,10 +171,14 @@ test('history omits open requests and keeps answered requests under their calls'
   expect(toolAt([parent], 0).children.map(row => row.item.id)).toEqual(['answered']);
 });
 
-test('a run of reasoning titles draws as its latest title', () => {
+test('adjacent reasoning draws as one row named by its first item', () => {
   const reasoning = (id: string, text: string): TranscriptItem => ({id, kind: 'reasoning', text, seq: 0});
-  expect(ids(rows([
-    reasoning('r1', '**Checking events**'), reasoning('r2', '**Reviewing stop**'), call('c', 'shell', 1),
-    reasoning('r3', '**Running tests**'), reasoning('r4', 'Full reasoning text.'), reasoning('r5', '**Next step**'),
-  ]))).toEqual(['r2', 'c', 'r3', 'r4', 'r5']);
+  const result = rows([
+    reasoning('r1', '**Checking events**'), reasoning('r2', 'Full reasoning text.'), call('c', 'shell', 1),
+    reasoning('r3', '**Running tests**'), text('t', 2), reasoning('r4', '**Next step**'),
+  ]);
+  expect(ids(result)).toEqual(['r1', 'c', 'r3', 't', 'r4']);
+  const first = result[0];
+  if (first.type !== 'reasoning') throw new Error('row 0 is not reasoning');
+  expect(first.items.map(item => item.id)).toEqual(['r1', 'r2']);
 });

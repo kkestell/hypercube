@@ -1,16 +1,19 @@
-import {afterEach, expect, mock, spyOn, test} from 'bun:test';
+import {afterEach, expect, jest, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptySession} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {Transcript} from './transcript.tsx';
+import {quietDelay} from './quiet-turn.tsx';
+import {lineLength} from './reasoning-item.tsx';
 import {receivedTranscript} from './transcripts.ts';
 import type {Item, WorkState} from './types.ts';
 
 afterEach(() => {
   mock.restore();
   unmountAll();
+  jest.useRealTimers();
 });
 
 // requestParams are the query parameters of the nth fetch.
@@ -344,6 +347,90 @@ test('a turn draws as it runs and folds its activity under Worked for once it fi
   expect(list.children[1].querySelector('button')!.textContent).toBe('Worked for 1s');
   expect(root.textContent).not.toContain('Run command');
   expect(list.children[2].textContent).toBe('Done');
+});
+
+const working = (root: ParentNode) => findAll(root, '[role=status]').find(row => row.textContent === 'Working…');
+const wait = (ms: number) => act(() => jest.advanceTimersByTime(ms));
+
+test('a running turn that sends nothing for a while ends the list with a working row until output arrives', () => {
+  jest.useFakeTimers();
+  const {root, send} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+  ]);
+  wait(quietDelay - 1);
+  expect(working(root)).toBeUndefined();
+  wait(1);
+  expect(find(root, '[aria-label="Transcript"]').lastElementChild).toBe(working(root)!);
+  send([{id: 't', kind: 'text', text: 'Part', at: 1200}]);
+  expect(working(root)).toBeUndefined();
+  wait(quietDelay - 1);
+  send([{id: 't', kind: 'text', text: 'Partial answer', at: 1200, seq: 3}]);
+  wait(quietDelay - 1);
+  expect(working(root)).toBeUndefined();
+  wait(1);
+  expect(working(root)).toBeDefined();
+});
+
+test('a running tool, an open question, or an idle session shows no working row', () => {
+  jest.useFakeTimers();
+  const start: NewItem[] = [{id: 'u', kind: 'user', text: 'Go', at: 1000}, marker('w', 'working', 1100)];
+  const tool = setup([...start, {id: 'c', kind: 'tool', tool: 'bash', at: 1200}]);
+  const question = setup([...start, {id: 'q', kind: 'attention', text: 'Allow?', choices: ['ok'], at: 1200}]);
+  const idle = setup(start, testSession({id: 's', activity: 'idle'}));
+  wait(quietDelay);
+  for (const {root} of [tool, question, idle]) expect(working(root)).toBeUndefined();
+  tool.send([{id: 'c', kind: 'tool', tool: 'bash', at: 1200, done: true, seq: 3}]);
+  wait(quietDelay);
+  expect(working(tool.root)).toBeDefined();
+});
+
+test('an open proposal, which does not stop the agent, still shows the working row', () => {
+  jest.useFakeTimers();
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'p', kind: 'proposal', text: 'Later', input: {name: 'later', title: 'Later', settings: {harness: 'codex', model: 'm', effort: 'low'}}},
+  ]);
+  wait(quietDelay);
+  expect(working(root)).toBeDefined();
+});
+
+test('short reasoning shows in full without a heading', () => {
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go'},
+    {id: 'r1', kind: 'reasoning', text: 'First idea'},
+    {id: 'r2', kind: 'reasoning', text: 'Second'},
+  ]);
+  expect(findAll(root, 'button[aria-expanded]')).toHaveLength(0);
+  expect(find(root, '[aria-label="Transcript"]').textContent).toBe('GoFirst ideaSecond');
+});
+
+test('long reasoning shows its last lines under Thinking, opens to its whole trace while it streams, and reads Thought once done', () => {
+  const {root, send} = setup([
+    {id: 'u', kind: 'user', text: 'Go'},
+    {id: 'r1', kind: 'reasoning', text: 'One\nTwo'},
+    {id: 'r2', kind: 'reasoning', text: 'Three\n\nFour'},
+  ]);
+  const thinking = toggle(root, 'Thinking…');
+  expect(thinking.getAttribute('aria-expanded')).toBe('false');
+  expect(find(root, '[aria-label="Transcript"]').textContent).toBe('GoThinking…TwoThreeFour');
+  act(() => thinking.click());
+  expect(root.textContent).toContain('One\nTwo');
+  send([{id: 'r2', kind: 'reasoning', text: 'Three\n\nFour\nFive', seq: 3}]);
+  expect(root.textContent).toContain('Four\nFive');
+  send([{id: 'r1', kind: 'reasoning', text: 'One\nTwo', done: true, seq: 2}, {id: 'r2', kind: 'reasoning', text: 'Three\n\nFour\nFive', done: true, seq: 3}]);
+  expect(thinking.textContent).toBe('Thought');
+  act(() => thinking.click());
+  expect(find(root, '[aria-label="Transcript"]').textContent).toBe('GoThoughtThreeFourFive');
+});
+
+test('a long reasoning line puts the run under Thinking, one line on screen per line', () => {
+  const line = 'x'.repeat(lineLength + 1);
+  const {root} = setup([{id: 'r', kind: 'reasoning', text: 'Short\n' + line}]);
+  expect(toggle(root, 'Thinking…')).toBeDefined();
+  const shown = findAll(root, 'p.truncate');
+  expect(shown.map(p => p.textContent)).toEqual(['Short', line]);
 });
 
 test('empty reasoning and text do not create an empty activity disclosure', () => {

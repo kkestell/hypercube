@@ -5,7 +5,8 @@
 // below the scrolling view, so the scrollbar stops above it.
 // The list, the pending card, and the composer share one padded column.
 // Expanding or collapsing an item keeps its heading where it was on screen,
-// and the list follows its end again only if that leaves it there.
+// and the list follows its end again only if that leaves it there. A running
+// turn that has sent nothing for a while ends the list with a working row.
 import {Fragment, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode} from 'react';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {isUnsent} from '../agent/drafts.ts';
@@ -21,6 +22,7 @@ import {submissionsOf} from '../sessions/submissions.ts';
 import {tones} from '../shared/tones.ts';
 import {AttentionItem} from './attention-item.tsx';
 import {QuestionsForm} from './attention-form.tsx';
+import {QuietTurn, runsTool, useQuiet} from './quiet-turn.tsx';
 import {ProposalItem} from './proposal-item.tsx';
 import {TranscriptRow} from './transcript-item.tsx';
 import {isPending, isQuestion, pendingGroups, transcriptRows} from './transcript-tree.ts';
@@ -28,7 +30,7 @@ import {displayedTranscript} from './transcripts.ts';
 import type {AttentionItem as Attention} from './types.ts';
 
 interface TranscriptProps {
-  session: Pick<Session, 'id' | 'ended'>;
+  session: Pick<Session, 'id' | 'ended' | 'activity'>;
   active?: boolean;
   footer?: ReactNode;
 }
@@ -40,6 +42,8 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const ready = isUnsent(session.id) || (state.session?.transcriptReady ?? false);
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
   const pending = transcript.order.map(id => transcript.items[id]).filter(isPending);
+  const quiet = useQuiet(transcript, session.activity === 'busy' && !session.ended && !pending.some(item => item.kind === 'attention')
+    && !runsTool(transcript) && !submissions.some(entry => entry.status === 'sending'));
 
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLElement>(null);
   const {away, followEnd, holdPosition} = useScrollMemory(view, session.id, ready, true);
@@ -89,6 +93,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
               </div>}
             </Fragment>;
           })}
+          {quiet && <QuietTurn />}
         </section>
       </div>
       <div className="relative flex max-h-3/4 min-h-0 shrink-0 flex-col bg-tab">

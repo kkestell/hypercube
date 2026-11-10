@@ -122,11 +122,14 @@ export function Composer({session}: {session: Session}) {
           <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
         </CardContent>
       </Card>
-      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 px-1">
+      {/* The right padding centers the 14px context ring under the send and
+          stop button: the card's 1px border, its 12px padding, and half the
+          24px button. The ring stays at the right when the row wraps. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-1 pr-4.5">
         <div className="flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <SessionSelection session={session} />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-4">
           <Limits harness={session.harness} />
           <Usage usage={session.usage} />
         </div>

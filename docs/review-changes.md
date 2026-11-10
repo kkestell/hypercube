@@ -7,7 +7,9 @@ whose output you want to inspect before opening its files.
 ## Inspect the agent's actions
 
 Expand **Worked for …** in a completed turn to see reasoning, tool calls, and
-messages between sessions. Expand a tool call for its input and output.
+messages between sessions. Short reasoning shows in full. Longer reasoning
+shows its last three lines under **Thinking…**, or **Thought** once it finishes;
+expand it to read the whole trace, even while it streams. Expand a tool call for its input and output.
 Failed and interrupted turns leave activity visible.
 
 <picture>

@@ -1,5 +1,5 @@
-// Draws one transcript row with the component for its kind, and draws text,
-// reasoning, and error items, which need no component of their own.
+// Draws one transcript row with the component for its kind, and draws text
+// and error items, which need no component of their own.
 import {memo} from 'react';
 import {Alert, AlertDescription} from '../components/ui/alert';
 import {ActivityItem} from './activity-item.tsx';
@@ -8,6 +8,7 @@ import {CopyButton} from './copy-button.tsx';
 import {Markdown} from './markdown.tsx';
 import {MessageItem} from './message-item.tsx';
 import {AnsweredProposal} from './proposal-item.tsx';
+import {ReasoningItem} from './reasoning-item.tsx';
 import {ToolCall} from './tool-items.tsx';
 import {TranscriptImages} from './transcript-images.tsx';
 import type {Row} from './transcript-tree.ts';
@@ -31,7 +32,7 @@ export const TranscriptRow = memo(({row}: {row: Row}) => {
     case 'tool': return <ToolCall call={row} />;
     case 'message': return <MessageItem item={row.item} />;
     case 'user': return <MessageItem item={row.item} />;
-    case 'reasoning': return row.item.text ? <Markdown text={row.item.text} style="chat" muted /> : null;
+    case 'reasoning': return <ReasoningItem row={row} />;
     case 'attention': return <AnsweredItem item={row.item} />;
     case 'proposal': return <AnsweredProposal item={row.item} />;
     case 'error': return <Alert variant="destructive"><AlertDescription className="whitespace-pre-wrap">{row.item.text ?? ''}</AlertDescription></Alert>;

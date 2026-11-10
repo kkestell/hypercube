@@ -3,7 +3,7 @@
 // An item nests under its parent tool call when the parent is present. A call
 // that sends a message to a session draws as a message. The rows are rebuilt
 // from the whole list, so an item that arrives before its parent moves under
-// the parent when it arrives.
+// the parent when it arrives. Adjacent reasoning items draw as one row.
 //
 // Hypercube saves a state item at each change of the agent's work state. The
 // items between a working state and the next idle one are one turn's activity.
@@ -18,12 +18,19 @@ import type {AttentionItem, ProposalItem, ErrorItem, Item, ReasoningItem, StateI
 // A row is what the page draws for an item.
 export type ItemRow =
   | {type: 'user'; item: UserItem}
-  | {type: 'reasoning'; item: ReasoningItem}
+  | ReasoningRow
   | {type: 'text'; item: TextItem}
   | {type: 'error'; item: ErrorItem}
   | {type: 'attention'; item: AttentionItem}
   | {type: 'message'; item: ToolItem}
   | {type: 'proposal'; item: ProposalItem};
+
+// ReasoningRow is a run of adjacent reasoning items, named by the first.
+export interface ReasoningRow {
+  type: 'reasoning';
+  item: ReasoningItem;
+  items: ReasoningItem[];
+}
 
 // ToolRow is a tool call with the rows nested under it.
 export interface ToolRow {
@@ -82,14 +89,12 @@ export function pendingGroups<T extends Item>(pending: T[]): T[][] {
   return groups;
 }
 
-// Some models report their reasoning only as a bold title per step. A run of
-// such titles draws as one row showing the latest.
-const isHeading = (item: Item): boolean => item.kind === 'reasoning' && /^\*\*[^*\n]+\*\*$/.test(item.text?.trim() ?? '');
-
 // transcriptRows returns the rows of a transcript.
 export function transcriptRows(transcript: Transcript): Row[] {
   const {order, items} = transcript;
   const containers = new Map<string, Item[]>();
+  // Each run of reasoning, under the ID of its first item.
+  const reasoning = new Map<string, ReasoningItem[]>();
   for (let i = 0; i < order.length; i++) {
     const item = items[order[i]];
     // Harnesses may record reasoning without exposing its text, or empty text
@@ -100,10 +105,15 @@ export function transcriptRows(transcript: Transcript): Row[] {
     if (isPending(item)) continue;
     const parent = item.parent === undefined ? undefined : items[item.parent];
     const container = parent?.kind === 'tool' && !isMessage(parent) ? parent.id : '';
-    const siblings = containers.get(container);
-    if (!siblings) containers.set(container, [item]);
-    else if (isHeading(item) && isHeading(siblings[siblings.length - 1])) siblings[siblings.length - 1] = item;
-    else siblings.push(item);
+    const siblings = containers.get(container) ?? [];
+    containers.set(container, siblings);
+    const last = siblings.at(-1);
+    if (item.kind === 'reasoning' && last?.kind === 'reasoning') {
+      reasoning.get(last.id)?.push(item);
+      continue;
+    }
+    if (item.kind === 'reasoning') reasoning.set(item.id, [item]);
+    siblings.push(item);
   }
   const rowOf = (item: Exclude<Item, StateItem>): TurnRow => {
     switch (item.kind) {
@@ -113,7 +123,7 @@ export function transcriptRows(transcript: Transcript): Row[] {
         return {type: 'tool', item, children};
       }
       case 'user': return {type: 'user', item};
-      case 'reasoning': return {type: 'reasoning', item};
+      case 'reasoning': return {type: 'reasoning', item, items: reasoning.get(item.id) ?? [item]};
       case 'error': return {type: 'error', item};
       case 'attention': return {type: 'attention', item};
       case 'proposal': return {type: 'proposal', item};
