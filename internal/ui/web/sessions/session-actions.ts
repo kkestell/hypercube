@@ -6,9 +6,10 @@ import {hypercube} from '../app/window.ts';
 import {canSend, cleared, draftOf, isUnsent, unsentCreated, unsentOf} from '../agent/drafts.ts';
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
+import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {inWorktree, openUnsent, selectSession, unsentSending} from './selection.ts';
-import type {Session, Workspace} from './types.ts';
+import type {Session, Unsent, Workspace} from './types.ts';
 import {addedSubmission, movedSubmissions, submissionsOf, updatedSubmission, withSubmissions, type Submission} from './submissions.ts';
 
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
@@ -66,12 +67,17 @@ const newSubmission = (prompt: Prompt): Submission => ({
   text: prompt.text, images: prompt.images, id: 'submission-' + crypto.randomUUID(), status: 'sending',
 });
 
+function worktreeParams(state: State, unsent: Unsent): Record<string, string> {
+  if (!inWorktree(state, unsent)) return {};
+  return unsent.branch ? {worktree: '1', branch: unsent.branch.name, start: unsent.branch.start} : {worktree: '1'};
+}
+
 async function deliverSubmission(store: Store, key: string, submission: Submission): Promise<boolean> {
   const unsent = isUnsent(key) ? unsentOf(store.get(), key) : undefined;
   if (isUnsent(key) && (!unsent?.workspace || !unsent.settings)) return false;
   if (unsent) store.update(state => unsentSending(state, true, key));
   const params: Record<string, string> = unsent
-    ? {action: 'new', workspace: unsent.workspace!, ...unsent.settings!, ...(inWorktree(store.get(), unsent) && {worktree: '1'})}
+    ? {action: 'new', workspace: unsent.workspace!, ...unsent.settings!, ...worktreeParams(store.get(), unsent)}
     : {action: 'input', id: key};
   const result = await submitPrompt(params, JSON.stringify({text: submission.text, images: submission.images, submission: submission.id}));
   store.update(state => {

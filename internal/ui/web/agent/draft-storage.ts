@@ -1,7 +1,7 @@
 // Save typed text on each draft change so reloads and app restarts keep it.
 // Image attachments and in-progress reads remain in memory.
 import {showError} from '../notifications/errors.ts';
-import type {Unsent} from '../sessions/types.ts';
+import type {NewBranch, Unsent} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {unsentKey, withDraftDefaults} from './drafts.ts';
@@ -17,13 +17,16 @@ const isNullableString = (value: unknown): value is string | null => value === n
 const isSettings = (value: unknown): value is Settings => isRecord(value) &&
   typeof value.harness === 'string' && typeof value.model === 'string' && typeof value.effort === 'string';
 
+const isBranch = (value: unknown): value is NewBranch => isRecord(value) && typeof value.name === 'string' && typeof value.start === 'string';
+
 // Settings and worktree are null until the defaults arrive or the user chooses.
+// Drafts saved before branch choices existed have no branch.
 function readContext(value: unknown): Unsent {
   if (!isRecord(value) || !isNullableString(value.workspace) || (value.worktree !== null && typeof value.worktree !== 'boolean') ||
-    (value.settings !== null && !isSettings(value.settings))) {
+    (value.settings !== null && !isSettings(value.settings)) || (value.branch != null && !isBranch(value.branch))) {
     throw new Error('Invalid new-session draft.');
   }
-  return {workspace: value.workspace, settings: value.settings, worktree: value.worktree, identity: {}, sending: false};
+  return {workspace: value.workspace, settings: value.settings, worktree: value.worktree, branch: value.branch ?? null, identity: {}, sending: false};
 }
 
 function readSaved(text: string): Pick<State, 'drafts' | 'unsent' | 'unsentDrafts'> {
@@ -66,7 +69,7 @@ export function startDraftStorage(store: Store): () => void {
     previous = state;
     if (!changed) return;
     const drafts = Object.fromEntries(Object.entries(state.drafts).filter(([, draft]) => draft.text).map(([key, draft]) => [key, draft.text]));
-    const context = (draft: Unsent) => ({workspace: draft.workspace, settings: draft.settings, worktree: draft.worktree});
+    const context = (draft: Unsent) => ({workspace: draft.workspace, settings: draft.settings, worktree: draft.worktree, branch: draft.branch});
     const unsent = state.unsent && drafts[unsentKey(state.unsent.workspace)]
       ? context(state.unsent)
       : null;

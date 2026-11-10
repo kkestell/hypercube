@@ -38,7 +38,7 @@ harness.
 | Archive | Kept read-only and searchable; family leaves the active list. | Removed after Git checks. |
 | Delete | Family's chats deleted. | Removed after Git checks. |
 | End child | Kept read-only; child cannot resume. | Removed after Git checks. |
-| Unarchive | Returns to active use. | If the session had a managed worktree, it is recreated with its branch at the commit the branch held when archived. If Git no longer has that commit, the branch starts from the original checkout's HEAD. |
+| Unarchive | Returns to active use. | If the session had a managed worktree, it is recreated with its branch at the commit the branch held when archived. If Git no longer has that commit, the branch starts from the original checkout's HEAD. Unarchive is refused while a branch with the session's branch name exists. |
 
 Before removing a managed worktree, Hypercube checks that no work would be
 lost: the worktree has no uncommitted files, and Git keeps each of its commits

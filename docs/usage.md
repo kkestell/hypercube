@@ -33,6 +33,11 @@ Actions, or right-clicking the name, opens the workspace's menu, including
      changes.
    - **New worktree** creates a separate folder and branch from the current
      commit. It does **not** include uncommitted changes.
+   - **New worktree on branch…** opens **Create a branch**. Enter a **New
+     branch name** and choose a **Source**: a local or remote branch, or a
+     commit or ref you type and select with **Use “…”**. Choose **Save**. The
+     session's worktree starts on that new branch at the source's commit; the
+     branch is created when you send the prompt. The branch name must be new.
 4. Send the first prompt to create the session.
 
 New sessions initially use the workspace's newest session settings, or your

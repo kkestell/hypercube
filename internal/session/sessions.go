@@ -1,6 +1,7 @@
 package session
 
 import (
+	"cmp"
 	"errors"
 	"sync"
 
@@ -49,28 +50,33 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 	return w, err
 }
 
+// NewWorktree places a new top-level session in its own worktree. Empty Start
+// means the checkout's HEAD, any commit or ref that resolves in the checkout
+// otherwise; empty Branch means hypercube/session-<id>. The branch is new.
+type NewWorktree struct{ Start, Branch string }
+
 // Create starts a top-level session with the settings and the first prompt.
 // With worktree, the session runs in its own worktree on a new branch from
 // the checkout's HEAD.
 func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree bool, text string, images ...harness.Image) (store.Session, error) {
-	return r.create(workspaceID, settings, worktree, "", "", text, images...)
+	var wt *NewWorktree
+	if worktree {
+		wt = &NewWorktree{}
+	}
+	return r.create(workspaceID, settings, wt, "", text, images...)
 }
 
 // CreateSubmission retains the created session even if its first input fails,
-// and correlates that input with the browser's provisional prompt. A worktree
-// session's branch starts at start, any commit or ref that resolves in the
-// checkout; empty means the checkout's HEAD.
-func (r *Runtime) CreateSubmission(workspaceID string, settings harness.Settings, worktree bool, start, submission, text string, images ...harness.Image) (store.Session, error) {
+// and correlates that input with the browser's provisional prompt. A nil
+// worktree runs the session in the checkout.
+func (r *Runtime) CreateSubmission(workspaceID string, settings harness.Settings, worktree *NewWorktree, submission, text string, images ...harness.Image) (store.Session, error) {
 	if err := CheckSubmissionID(submission); err != nil {
 		return store.Session{}, err
 	}
-	return r.create(workspaceID, settings, worktree, start, submission, text, images...)
+	return r.create(workspaceID, settings, worktree, submission, text, images...)
 }
 
-func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree bool, start, submission, text string, images ...harness.Image) (store.Session, error) {
-	if start != "" && !worktree {
-		return store.Session{}, errors.New("a starting point needs a worktree session")
-	}
+func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree *NewWorktree, submission, text string, images ...harness.Image) (store.Session, error) {
 	if err := checkPrompt(text, images); err != nil {
 		return store.Session{}, err
 	}
@@ -101,26 +107,26 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 	}
 	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text),
 		Harness: settings.Harness, Model: settings.Model, Effort: settings.Effort, Activity: store.Idle, Dir: w.Path}
-	if worktree {
+	if worktree != nil {
 		if w.NoGit {
 			return store.Session{}, errors.New("a worktree session needs a Git checkout")
 		}
-		s.Dir, s.Branch = workspace.SessionDir(w.Path, s.ID), workspace.SessionBranch(s.ID)
-		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch, start); err != nil {
+		s.Dir, s.Branch = workspace.SessionDir(w.Path, s.ID), cmp.Or(worktree.Branch, workspace.SessionBranch(s.ID))
+		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch, worktree.Start); err != nil {
 			return store.Session{}, err
 		}
 		var err error
 		if s.Base, err = workspace.Head(s.Dir); err != nil {
-			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, start))
+			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, worktree.Start))
 		}
 	}
 	if err := r.save(func(tx *write) error { return tx.AddSession(s) }); err != nil {
-		if worktree {
+		if worktree != nil {
 			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch, s.Base))
 		}
 		return store.Session{}, err
 	}
-	if worktree {
+	if worktree != nil {
 		r.refreshMerges(workspaceID)
 	}
 	return s, r.input(s.ID, submission, text, images...)

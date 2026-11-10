@@ -10,7 +10,7 @@ export {emptySession, emptyEditor} from '../editor/attachment.ts';
 import {selectedWorkspace, selectionTarget, targetExists, workspaceKey} from '../editor/target.ts';
 import type {Settings} from '../agent/types.ts';
 import type {State} from '../state.ts';
-import type {Session, Unsent, Workspace} from './types.ts';
+import type {NewBranch, Session, Unsent, Workspace} from './types.ts';
 
 export const waitingCount = (state: State) => {
   const waiting = new Set(state.requests.map(request => request.session));
@@ -143,7 +143,7 @@ export function openUnsent(state: State, workspace?: string | null): State {
   const key = unsentKey(workspace);
   const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
-  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, settings: draftDefaults(next, workspace), worktree: null, sending: false};
+  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, settings: draftDefaults(next, workspace), worktree: null, branch: null, sending: false};
   return attach({...next, unsent, unsentDrafts, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
 }
 
@@ -159,9 +159,10 @@ export function inWorktree(state: State, unsent: Unsent) {
   return unsent.worktree ?? state.config?.default_worktree ?? false;
 }
 
-// unsentWorktree sets whether the unsent session runs in its own worktree.
-export const unsentWorktree = (state: State, worktree: boolean): State => state.unsent
-  ? {...state, unsent: {...state.unsent, worktree}}
+// unsentWorktree sets whether the unsent session runs in its own worktree, and
+// the new branch it creates there.
+export const unsentWorktree = (state: State, worktree: boolean, branch: NewBranch | null = null): State => state.unsent
+  ? {...state, unsent: {...state.unsent, worktree, branch}}
   : state;
 
 export function unsentSending(state: State, sending: boolean, key = state.unsent && unsentKey(state.unsent.workspace)): State {

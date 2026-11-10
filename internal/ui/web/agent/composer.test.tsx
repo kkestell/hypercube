@@ -2,7 +2,7 @@ import {afterEach, beforeEach, expect, mock, spyOn, test, type Mock} from 'bun:t
 import {act} from 'react';
 import {clickControl, element, type FetchHandler, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {emptySession, openUnsent, shownSession, unsentSettingsChosen} from '../sessions/selection.ts';
+import {emptySession, openUnsent, shownSession, unsentSettingsChosen, unsentWorktree} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import type {Merge, Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -151,7 +151,7 @@ test('pending creation keeps Send disabled and cannot interrupt a placeholder', 
   await settle();
 });
 
-test('the unsent composer offers Existing checkout or New worktree, Existing checkout first, only in a Git workspace', async () => {
+test('the unsent composer offers the three locations, Existing checkout first, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json([]));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   await act(async () => {});
@@ -172,7 +172,7 @@ test('choosing New worktree creates the session in a worktree and locks while se
   clickControl(toggle);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(['Existing checkout', 'New worktree']);
+  expect(options.map(o => o.textContent)).toEqual(['Existing checkout', 'New worktree', 'New worktree on branch…']);
   act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.worktree).toBe(true);
   expect(toggle.textContent).toBe('New worktree');
@@ -190,6 +190,84 @@ test('choosing New worktree creates the session in a worktree and locks while se
   expect(params.get('worktree')).toBe('1');
   releases[0]();
   await settle();
+});
+
+const pressEnter = (target: Element) => act(() => target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
+const branchList = {current: 'main', local: ['main', 'feature'], remote: ['origin/main']};
+
+// openBranchDialog chooses the third location, which opens the branch dialog.
+async function openBranchDialog(root: HTMLElement) {
+  clickControl(element(root, '[aria-label="Location"]', HTMLButtonElement));
+  await settle();
+  pressEnter([...document.querySelectorAll('[role=menuitemradio]')][2]);
+  await settle();
+}
+const nameBranch = (name: string) => {
+  const field = element(document.body, '#new-branch-name', HTMLInputElement);
+  setValue(field, name);
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
+};
+const saveButton = () => [...document.querySelectorAll('button')].find(b => b.textContent === 'Save') as HTMLButtonElement;
+
+test('a new worktree on a named branch sends the branch and its source, and New worktree clears it', async () => {
+  fetches = stubFetch(url => Response.json(url.startsWith('branches?') ? branchList : {session: 'n'}));
+  const s = worktreeStore(false);
+  s.update(state => unsentSettingsChosen(state, {harness: 'claude', model: 'opus', effort: 'high'}));
+  const root = mount(s, <Composer session={unsentSession} />);
+  await settle();
+  await openBranchDialog(root);
+  expect(new URL(fetches.mock.calls.find(([url]) => url.startsWith('branches?'))![0], 'http://x/').searchParams.get('workspace')).toBe('w');
+  nameBranch('feature/login');
+  clickControl(element(document.body, '#new-branch-source', HTMLButtonElement));
+  await settle();
+  const choice = [...document.querySelectorAll('[cmdk-item]')].find(i => i.textContent === 'origin/main')!;
+  act(() => clickControl(choice as HTMLElement));
+  expect(element(document.body, '#new-branch-source', HTMLButtonElement).textContent).toBe('origin/main');
+  clickControl(saveButton());
+  await settle();
+  expect(s.get().unsent).toMatchObject({worktree: true, branch: {name: 'feature/login', start: 'origin/main'}});
+  const toggle = element(root, '[aria-label="Location"]', HTMLButtonElement);
+  expect(toggle.textContent).toBe('feature/login');
+  expect(toggle.title).toBe('New worktree on feature/login from origin/main');
+
+  clickControl(toggle);
+  await settle();
+  pressEnter([...document.querySelectorAll('[role=menuitemradio]')][1]);
+  expect(s.get().unsent).toMatchObject({worktree: true, branch: null});
+  expect(toggle.textContent).toBe('New worktree');
+});
+
+test('sending a named branch posts its name and source', async () => {
+  fetches = stubFetch(() => Response.json({session: 'n'}));
+  const s = worktreeStore(false);
+  s.update(state => unsentSettingsChosen(unsentWorktree(state, true, {name: 'feature/login', start: 'origin/main'}), {harness: 'claude', model: 'opus', effort: 'high'}));
+  await act(async () => { await createSession(s, {text: 'hello', images: []}, unsentKey); });
+  expect(queryOf(fetches.mock.calls.at(-1)![0])).toMatchObject({action: 'new', worktree: '1', branch: 'feature/login', start: 'origin/main'});
+});
+
+test('the branch dialog refuses an existing branch name and offers a typed commit as the source', async () => {
+  fetches = stubFetch(() => Response.json(branchList));
+  const s = worktreeStore(false);
+  const root = mount(s, <Composer session={unsentSession} />);
+  await settle();
+  await openBranchDialog(root);
+  expect(element(document.body, '#new-branch-source', HTMLButtonElement).textContent).toBe('main');
+  nameBranch('feature');
+  expect(document.body.textContent).toContain('A branch named feature already exists.');
+  expect(saveButton().disabled).toBe(true);
+  nameBranch('fix');
+  expect(saveButton().disabled).toBe(false);
+  clickControl(element(document.body, '#new-branch-source', HTMLButtonElement));
+  await settle();
+  const input = element(document.body, '[cmdk-input]', HTMLInputElement);
+  setValue(input, 'abc1234');
+  act(() => input.dispatchEvent(new Event('input', {bubbles: true})));
+  const use = [...document.querySelectorAll('[cmdk-item]')].find(i => i.textContent === 'Use “abc1234”');
+  expect(use).toBeDefined();
+  act(() => clickControl(use as HTMLElement));
+  clickControl(saveButton());
+  await settle();
+  expect(s.get().unsent?.branch).toEqual({name: 'fix', start: 'abc1234'});
 });
 
 test.each([false, true])('a default of Worktree applies only in a Git workspace (noGit %p)', async noGit => {

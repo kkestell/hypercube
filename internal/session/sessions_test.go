@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -424,27 +425,62 @@ func TestWorktreeSession(t *testing.T) {
 	}
 }
 
-func TestWorktreeSessionAtStart(t *testing.T) {
+func TestWorktreeSessionOnNamedBranchAtStart(t *testing.T) {
 	f := newFixture(t)
+	f.idleAfter(time.Hour)
 	first, err := workspace.Head(f.root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "later")
-	if _, err := f.rt.CreateSubmission(f.workspace.ID, lead, false, first, "", "start"); err == nil || !strings.Contains(err.Error(), "worktree") {
-		t.Fatalf("a starting point without a worktree: %v", err)
-	}
-	s, err := f.rt.CreateSubmission(f.workspace.ID, lead, true, first, "", "start")
+	s, err := f.rt.CreateSubmission(f.workspace.ID, lead, &NewWorktree{Start: first, Branch: "feature/login"}, "", "start")
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.until("the worktree session idle", func() bool { return f.idle(s.ID) })
-	if got := f.storedSession(s.ID); got.Base != first {
-		t.Fatalf("base = %s, want %s", got.Base, first)
+	if got := f.storedSession(s.ID); got.Branch != "feature/login" || got.Base != first {
+		t.Fatalf("branch, base = %s, %s; want feature/login, %s", got.Branch, got.Base, first)
 	}
-	if head, err := workspace.Head(s.Dir); err != nil || head != first {
-		t.Fatalf("worktree HEAD = %s, %v; want %s", head, err, first)
+	if b, err := workspace.Branch(s.Dir); err != nil || b != "feature/login" {
+		t.Fatalf("worktree branch = %q, %v", b, err)
 	}
+	f.merge(s.ID, "the branch's merge status", func(m workspace.Merge) bool { return m.Branch == "feature/login" })
+
+	if err := f.rt.Archive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if tip, err := workspace.BranchTip(f.root, "feature/login"); err != nil || tip != "" {
+		t.Fatalf("archiving left the branch at %q, %v", tip, err)
+	}
+	f.git(f.root, "branch", "feature/login")
+	if err := f.rt.Unarchive(s.ID); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("unarchive over an existing branch = %v", err)
+	}
+	if f.storedSession(s.ID).Archived == 0 {
+		t.Fatal("a refused unarchive changed the session")
+	}
+	f.git(f.root, "branch", "-q", "-D", "feature/login")
+	if err := f.rt.Unarchive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := workspace.Branch(s.Dir); err != nil || b != "feature/login" {
+		t.Fatalf("recreated worktree branch = %q, %v", b, err)
+	}
+}
+
+func TestCreateRefusesAnExistingBranch(t *testing.T) {
+	f := newFixture(t)
+	f.git(f.root, "branch", "taken")
+	if _, err := f.rt.CreateSubmission(f.workspace.ID, lead, &NewWorktree{Branch: "taken"}, "", "start"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("create on an existing branch = %v", err)
+	}
+	f.read(func(tx *store.Tx) error {
+		sessions, err := tx.Sessions(f.workspace.ID)
+		if err != nil || len(sessions) != 0 {
+			t.Errorf("sessions = %v, %v", sessions, err)
+		}
+		return nil
+	})
 }
 
 func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {

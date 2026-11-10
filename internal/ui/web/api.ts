@@ -5,7 +5,7 @@ import type {Config, Grant} from './app/types.ts';
 import type {ChangeComparison, ChangesResult, DiffRead} from './changes/types.ts';
 import type {FileRead, FolderListing, SearchFile} from './files/types.ts';
 import {showError} from './notifications/errors.ts';
-import type {SessionSearchResult} from './sessions/types.ts';
+import type {BranchList, SessionSearchResult} from './sessions/types.ts';
 import type {Store} from './store.ts';
 
 // HttpError is a refused request, with the response's status.
@@ -29,6 +29,10 @@ async function get<T>(path: string, params: Record<string, string>, signal?: Abo
   if (!response.ok) throw new HttpError(await response.text(), response.status);
   return response.json();
 }
+
+// loadBranches lists a workspace's branches, throwing an HttpError when the
+// workspace is not a Git checkout.
+export const loadBranches = (workspace: string, signal?: AbortSignal) => get<BranchList>('branches', {workspace}, signal);
 
 // request fetches path and returns read(response), or null after showing the
 // user why the request failed or the server refused it.

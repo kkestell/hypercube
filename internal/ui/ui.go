@@ -29,6 +29,7 @@ func Handler(db *store.DB, rt *session.Runtime, gh *github.Watcher) http.Handler
 	mux.HandleFunc("GET /config", getConfig)
 	mux.HandleFunc("POST /config", saveConfig)
 	mux.HandleFunc("GET /harnesses", s.harnesses)
+	mux.HandleFunc("GET /branches", s.branches)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.HandleFunc("GET /grants", s.grants)
 	mux.HandleFunc("POST /grants", s.deleteGrant)

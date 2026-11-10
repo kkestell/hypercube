@@ -25,10 +25,11 @@ tool call hidden inside the parent's chat.
 In a shared checkout, a file edit or branch switch affects every session using
 that folder. Separate conversations do not prevent those collisions.
 
-A new worktree starts at the current commit, not the current uncommitted
-working files. A task that depends on uncommitted changes therefore needs
-either the shared checkout or a commit to start from. Ignored local files can
-be supplied through [`.worktreeinclude`](configuration.md#worktreeinclude).
+A new worktree starts at the current commit, or at a branch or commit you
+choose, not the current uncommitted working files. A task that depends on
+uncommitted changes therefore needs either the shared checkout or a commit to
+start from. Ignored local files can be supplied through
+[`.worktreeinclude`](configuration.md#worktreeinclude).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/worktrees-dark.png">

@@ -70,7 +70,7 @@ func (r *Runtime) Unarchive(id string) error {
 			start = s.Tip
 		}
 		if err := workspace.AddWorktree(checkout, s.Dir, s.Branch, start); err != nil {
-			return err
+			return fmt.Errorf("cannot recreate the session's worktree: %w", err)
 		}
 		if start == "" {
 			if base, err = workspace.Head(s.Dir); err != nil {

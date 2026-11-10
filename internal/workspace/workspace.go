@@ -241,10 +241,13 @@ func WorktreeDir(root, parent, name string) string {
 	return filepath.Join(root, ".hypercube", parent+"-"+name)
 }
 
-// AddWorktree creates a session's branch at start and checks it out in dir.
-// start is any commit or ref that resolves in root; empty means HEAD. It adds
-// .hypercube/ to the checkout's local excludes.
+// AddWorktree creates the new branch at start and checks it out in dir. It
+// refuses a branch that exists. start is any commit or ref that resolves in
+// root; empty means HEAD. It adds .hypercube/ to the checkout's local excludes.
 func AddWorktree(root, dir, branch, start string) error {
+	if err := CheckNewBranch(root, branch); err != nil {
+		return err
+	}
 	start = cmp.Or(start, "HEAD")
 	commit, err := git(root, "rev-parse", "--verify", "--end-of-options", start+"^{commit}")
 	if err != nil {
@@ -253,9 +256,8 @@ func AddWorktree(root, dir, branch, start string) error {
 	if err := excludeWorktrees(root); err != nil {
 		return err
 	}
-	existed := exists(root, branch)
 	if _, err := git(root, "worktree", "add", "-b", branch, dir, commit); err != nil {
-		if !existed {
+		if exists(root, branch) {
 			_, deleteErr := git(root, "branch", "-D", branch)
 			err = errors.Join(err, deleteErr)
 		}

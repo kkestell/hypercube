@@ -115,7 +115,14 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
-		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", q.Get("start"), in.Submission, in.Text, in.Images...)
+		var worktree *session.NewWorktree
+		if q.Get("worktree") == "1" {
+			worktree = &session.NewWorktree{Start: q.Get("start"), Branch: q.Get("branch")}
+		} else if q.Get("start") != "" || q.Get("branch") != "" {
+			http.Error(w, "a starting point or branch needs a worktree session", http.StatusBadRequest)
+			return
+		}
+		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, worktree, in.Submission, in.Text, in.Images...)
 		writeCreated(w, created.ID, err)
 		return
 	case "review":
@@ -207,7 +214,7 @@ func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	if refused(w, err) {
 		return
 	}
-	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", reviewPrompt(cfg.ReviewPrompt, number, url))
+	created, err := s.rt.CreateSubmission(workspaceID, settings, &session.NewWorktree{Start: commit}, "", reviewPrompt(cfg.ReviewPrompt, number, url))
 	writeCreated(w, created.ID, err)
 }
 

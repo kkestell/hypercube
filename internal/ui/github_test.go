@@ -29,6 +29,7 @@ func TestSnapshotShowsGitHubStatusAndPullRequests(t *testing.T) {
 		for _, s := range []store.Session{
 			{ID: "checkout", Workspace: "gh", Dir: "/src/w", Branch: "old"}, // its saved branch is stale
 			{ID: "worktree", Workspace: "gh", Dir: "/src/w/.hypercube/wt", Branch: "wt-branch"},
+			{ID: "named", Workspace: "gh", Dir: "/src/w/.hypercube/nm", Branch: "feature/login"},
 			{ID: "nobranch", Workspace: "gh", Dir: "/src/w/.hypercube/nb"},
 			{ID: "fork", Workspace: "gh", Dir: "/src/w/.hypercube/fk", Branch: "fork-branch"},
 			{ID: "ended", Workspace: "gh", Dir: "/src/w", Ended: true},
@@ -46,6 +47,7 @@ func TestSnapshotShowsGitHubStatusAndPullRequests(t *testing.T) {
 		{Number: 4, Branch: "old"},
 		{Number: 5, Branch: "feature"},
 		{Number: 8, Branch: "wt-branch"},
+		{Number: 10, Branch: "feature/login"},
 		{Number: 9, Branch: "fork-branch", Fork: true},
 	}}}
 	list, _, err := snapshot(db, nil, statuses)
@@ -68,7 +70,7 @@ func TestSnapshotShowsGitHubStatusAndPullRequests(t *testing.T) {
 			t.Errorf("workspace %s has GitHub status: %v", w.ID, has)
 		}
 	}
-	want := map[string]int{"checkout": 5, "worktree": 8, "child": 5}
+	want := map[string]int{"checkout": 5, "worktree": 8, "named": 10, "child": 5}
 	if len(pulls) != len(want) {
 		t.Fatalf("pull requests by session = %v, want %v", pulls, want)
 	}

@@ -72,13 +72,29 @@ export interface Session {
 // Unsent is a new session the user has opened but not yet sent a first prompt
 // to. It lives in unsent while shown, or unsentDrafts when another view is shown.
 // Its identity object tells it apart from a later unsent session. Null
-// settings and worktree follow the defaults until the user chooses.
+// settings and worktree follow the defaults until the user chooses. branch is
+// set only while worktree is true and names the session's new branch.
 export interface Unsent {
   identity: object;
   workspace: string | null;
   settings: Settings | null;
   worktree: boolean | null;
+  branch: NewBranch | null;
   sending: boolean;
+}
+
+// NewBranch is the branch a new worktree session creates and the commit or ref
+// it starts at.
+export interface NewBranch {
+  name: string;
+  start: string;
+}
+
+// BranchList is a workspace's branches; current is empty when HEAD is detached.
+export interface BranchList {
+  current: string;
+  local: string[];
+  remote: string[];
 }
 
 // AttachedSession holds only the real session's transcript and disclosures.

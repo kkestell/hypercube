@@ -34,15 +34,20 @@ test('reload restores text from multiple chats and request answers, without tran
 test.each([null, 'workspace'])('a new-session prompt restores with workspace %s and its settings and worktree choice', workspace => {
   const store = reload();
   store.update(state => openUnsent(state, workspace));
-  store.update(state => unsentChanged(state, {settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, sending: true}));
+  store.update(state => unsentChanged(state, {settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, branch: {name: 'feature/login', start: 'main'}, sending: true}));
   store.update(state => typed(state, unsentKey(workspace), 'new prompt'));
   const next = reload().get();
   expect(next.selected).toBeNull();
-  expect(next.unsent).toMatchObject({workspace, settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, sending: false});
+  expect(next.unsent).toMatchObject({workspace, settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, branch: {name: 'feature/login', start: 'main'}, sending: false});
   expect(draftOf(next, unsentKey(workspace)).text).toBe('new prompt');
   store.update(state => unsentCreated(state, 'created', unsentKey(workspace)));
   expect(reload().get().unsent).toBeNull();
   expect(draftOf(reload().get(), 'created').text).toBe('new prompt');
+});
+
+test('a draft saved before branch choices existed restores without a branch', () => {
+  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'prompt'}, unsent: {workspace: 'w', settings: null, worktree: true}, unsentDrafts: {}}));
+  expect(reload().get().unsent).toMatchObject({workspace: 'w', worktree: true, branch: null});
 });
 
 test('sent or erased text is removed from saved drafts', () => {
