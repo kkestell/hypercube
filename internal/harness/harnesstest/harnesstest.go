@@ -31,8 +31,7 @@
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
 // or the model "invalid" fails, and a start without an effort reports the
-// effort "low". With HYPERCUBE_TEST_CRASH set the plugin exits shortly after
-// starting.
+// effort "low".
 //
 // Its `describe` and `models` commands answer with Catalog's fixed models.
 // With HYPERCUBE_TEST_MODELS_HOLD set, `models` waits until it is killed.
@@ -52,7 +51,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
@@ -66,13 +64,7 @@ const (
 	exitBadCommand  = 91
 	exitChildFailed = 92
 	exitCrash       = 3
-	exitStartCrash  = 1
 )
-
-// startCrashDelay is how long a plugin started with HYPERCUBE_TEST_CRASH lives
-// after its start reply. The app has to see the agent start before the exit,
-// or it reports a failed start instead of an agent that ended.
-const startCrashDelay = 100 * time.Millisecond
 
 // Entry is one line of an agent's log. Which fields are set depends on Kind.
 type Entry struct {
@@ -230,8 +222,10 @@ func serve(in io.Reader, out io.Writer) {
 	for _, id := range p.onclose {
 		p.reply(id, "")
 	}
-	if delay, err := time.ParseDuration(os.Getenv("HYPERCUBE_TEST_END_DELAY")); err == nil {
-		time.Sleep(delay)
+	if gate, err := os.Open(os.Getenv("HYPERCUBE_TEST_END_GATE")); err == nil {
+		var b [1]byte
+		_, _ = gate.Read(b[:])
+		_ = gate.Close()
 	}
 }
 
@@ -286,10 +280,6 @@ func (p *standIn) start(cmd harness.Command) {
 	}
 	_ = p.enc.Encode(harness.Record{Reply: &reply})
 	p.event(harness.Event{Conversation: p.agent + "-conversation", State: harness.Idle})
-	if os.Getenv("HYPERCUBE_TEST_CRASH") != "" {
-		time.Sleep(startCrashDelay)
-		os.Exit(exitStartCrash)
-	}
 }
 
 func (p *standIn) input(cmd harness.Command) {

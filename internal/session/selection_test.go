@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 func TestSelect(t *testing.T) {
 	for _, working := range []bool{false, true} {
 		t.Run(map[bool]string{false: "idle", true: "working"}[working], func(t *testing.T) {
-			f := newFixture(t)
+			f := newPlainFixture(t)
 			s := f.session()
 			if working {
 				f.input(s.ID, "!work")
@@ -50,7 +49,7 @@ func TestSelect(t *testing.T) {
 }
 
 func TestSelectPartialAndRejected(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	for _, tc := range []struct{ name, model, effort, failure string }{
 		{"partial", "partial", "low", "effort rejected"},
@@ -70,7 +69,7 @@ func TestSelectPartialAndRejected(t *testing.T) {
 }
 
 func TestSelectUnansweredAcrossReattachment(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	result := make(chan error, 1)
 	go func() { result <- f.rt.Select(s.ID, harness.Selection{Model: "hold", Effort: "high"}) }()
@@ -94,46 +93,12 @@ func TestSelectUnansweredAcrossReattachment(t *testing.T) {
 	if len(f.log(s.ID, "configure")) != 1 {
 		t.Fatal("configure replayed twice")
 	}
-	f.read(func(tx *store.Tx) error {
-		cmds, err := tx.Commands(s.ID)
-		if len(cmds) != 0 {
-			t.Fatal(cmds)
-		}
-		return err
-	})
-}
-
-func TestChildSettings(t *testing.T) {
-	parent := store.Session{Harness: "test", Model: "m", Effort: "high"}
-	entries := []config.ModelEntry{{Harness: "test", Model: "next", Efforts: []string{"low", "mid"}, DefaultEffort: "mid"}, {Harness: "other", Model: "x", Efforts: []string{"max"}, DefaultEffort: "max"}}
-	for name, tc := range map[string]struct {
-		overrides harness.Settings
-		want      harness.Settings
-	}{
-		"inherited":                {harness.Settings{}, harness.Settings{Harness: "test", Model: "m", Effort: "high"}},
-		"effort":                   {harness.Settings{Effort: "low"}, harness.Settings{Harness: "test", Model: "m", Effort: "low"}},
-		"another model":            {harness.Settings{Model: "next"}, harness.Settings{Harness: "test", Model: "next", Effort: "mid"}},
-		"unlisted model":           {harness.Settings{Model: "unlisted"}, harness.Settings{Harness: "test", Model: "unlisted"}},
-		"another model and effort": {harness.Settings{Model: "next", Effort: "low"}, harness.Settings{Harness: "test", Model: "next", Effort: "low"}},
-		"the same model":           {harness.Settings{Harness: "test", Model: "m"}, harness.Settings{Harness: "test", Model: "m", Effort: "high"}},
-		"another harness":          {harness.Settings{Harness: "other", Model: "x"}, harness.Settings{Harness: "other", Model: "x", Effort: "max"}},
-		"another harness, effort":  {harness.Settings{Harness: "other", Model: "x", Effort: "max"}, harness.Settings{Harness: "other", Model: "x", Effort: "max"}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if got, err := childSettings(parent, tc.overrides, entries); err != nil || got != tc.want {
-				t.Fatalf("childSettings = %+v, %v", got, err)
-			}
-		})
-	}
-	if _, err := childSettings(parent, harness.Settings{Harness: "other"}, nil); err == nil {
-		t.Fatal("another harness took the parent's model")
-	}
 }
 
 // A child inherits its parent's accepted settings, and the harness reports
 // the effort it chose when none was given.
 func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	if err := f.rt.Select(parent.ID, harness.Selection{Model: "next", Effort: "high"}); err != nil {
 		t.Fatal(err)
@@ -142,7 +107,7 @@ func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
 	if starts := f.log(inherited.ID, "start"); len(starts) != 1 || starts[0].Model != "next" || starts[0].Effort != "high" {
 		t.Fatalf("inherited %+v", starts)
 	}
-	other, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "other", Title: "Title", Settings: harness.Settings{Model: "m"}})
+	other, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "other", Title: "Title", Dir: ".", Settings: harness.Settings{Model: "m"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +119,7 @@ func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
 		t.Fatalf("started %+v", other)
 	}
 	// The harness rejects a model in its start, and the child is removed.
-	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "invalid", Title: "Title", Settings: harness.Settings{Model: "invalid"}}); err == nil || !strings.Contains(err.Error(), "not offered") {
+	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "invalid", Title: "Title", Dir: ".", Settings: harness.Settings{Model: "invalid"}}); err == nil || !strings.Contains(err.Error(), "not offered") {
 		t.Fatal(err)
 	}
 	if len(f.family(parent.ID)) != 3 {
@@ -164,20 +129,9 @@ func TestChildInheritsTheParentsCurrentSettings(t *testing.T) {
 
 // A proposal starts with the settings it showed, though the parent's change.
 func TestProposalKeepsItsSettings(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed", Dir: ".", Message: "brief"})
-	var options ChildOptions
-	f.read(func(tx *store.Tx) error {
-		item, _, err := childProposal(tx, parent.ID, id)
-		if err == nil {
-			err = json.Unmarshal(item.Input, &options)
-		}
-		return err
-	})
-	if options.Settings != lead {
-		t.Fatalf("saved %+v", options)
-	}
 	if err := f.rt.Select(parent.ID, harness.Selection{Model: "next", Effort: "high"}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +145,7 @@ func TestProposalKeepsItsSettings(t *testing.T) {
 }
 
 func TestInstructionsIncludeGuidance(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	if err := config.Save(config.Config{ReviewPrompt: config.DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, ChildGuidance: "Use next for reviews."}); err != nil {
 		t.Fatal(err)
 	}

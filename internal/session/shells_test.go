@@ -11,7 +11,7 @@ import (
 )
 
 func TestWorkspaceShellSurvivesRestoreWithoutSessions(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	marker := filepath.Join(t.TempDir(), "shell-directory")
 	t.Setenv("HYPERCUBE_TEST_SHELL_DIRECTORY", marker)
 	f.rt.Terminals.Command = []string{"/bin/sh", "-c", `pwd > "$HYPERCUBE_TEST_SHELL_DIRECTORY"; exec /bin/cat`}
@@ -46,7 +46,7 @@ func TestWorkspaceShellSurvivesRestoreWithoutSessions(t *testing.T) {
 }
 
 func TestWorkspaceShellEndsOnQuit(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	if _, err := f.rt.WorkspaceShell(f.workspace.ID, 80, 24); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestWorkspaceShellEndsOnQuit(t *testing.T) {
 }
 
 func TestWorkspaceShellIsAdoptedBeforeServingDeletion(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	if _, err := f.rt.WorkspaceShell(f.workspace.ID, 80, 24); err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestWorkspaceShellIsAdoptedBeforeServingDeletion(t *testing.T) {
 }
 
 func TestSessionShellIsAdoptedBeforeServingDeletion(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.park(s.ID)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}

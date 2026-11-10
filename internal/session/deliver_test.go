@@ -9,7 +9,7 @@ import (
 )
 
 func TestSessionStartsAndDeliversInOrder(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	// The plugin starts in the parent's directory with its instructions.
 	start := f.log(s.ID, "start")
@@ -62,7 +62,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 }
 
 func TestRefusedMessageStaysQueued(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	refusals := func() (n int) {
 		for _, it := range f.transcript(parent.ID) {
@@ -90,7 +90,7 @@ func TestRefusedMessageStaysQueued(t *testing.T) {
 }
 
 func TestMessagesGoOutWhileTheAgentWorks(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })

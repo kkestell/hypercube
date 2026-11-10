@@ -10,7 +10,7 @@ import (
 // Launches and shells in a workspace get the environment the runtime's Env
 // hook returns for it.
 func TestWorkspaceEnvReachesAgentsAndShells(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	f.rt.Env = func(workspace string) []string {
 		if workspace != f.workspace.ID {
 			return nil

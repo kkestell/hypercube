@@ -79,6 +79,7 @@ func TestDiscard(t *testing.T) {
 
 // The session's branch is reset even when the agent left it for another one.
 func TestDiscardReturnsToTheSessionBranch(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	base, err := Head(root)
 	if err != nil {
@@ -116,6 +117,7 @@ func TestDiscardReturnsToTheSessionBranch(t *testing.T) {
 // A folder under .hypercube/ that is not a worktree belongs to the checkout
 // that encloses it, which Discard must leave alone.
 func TestDiscardRefusesAFolderThatIsNotAWorktree(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	base, err := Head(root)
 	if err != nil {
@@ -145,6 +147,7 @@ func TestDiscardRefusesAFolderThatIsNotAWorktree(t *testing.T) {
 // An agent stopped in the middle of a conflicted merge or rebase leaves Git's
 // operation state in the worktree.
 func TestDiscardAbandonsAnOperationInProgress(t *testing.T) {
+	t.Parallel()
 	for _, operation := range []string{"merge", "rebase"} {
 		t.Run(operation, func(t *testing.T) {
 			root, run := gitRepo(t)

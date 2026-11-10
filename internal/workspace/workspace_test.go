@@ -10,6 +10,7 @@ import (
 )
 
 func TestRoot(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if _, err := Root(dir); !errors.Is(err, ErrNotGit) {
 		t.Errorf("Root(%s) = %v, want ErrNotGit", dir, err)
@@ -38,6 +39,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestRootWorktree(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	dir := filepath.Join(t.TempDir(), "worktree")
 	run(root, "worktree", "add", "-qb", "linked", dir)
@@ -133,6 +135,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestWorktreeRemoval(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "branch", "other")
 	exclude := filepath.Join(root, ".git/info/exclude")
@@ -182,6 +185,7 @@ func TestWorktreeRemoval(t *testing.T) {
 // A child may work in the checkout, a Hypercube worktree, or another folder,
 // but not in a worktree of the same repository that Hypercube did not create.
 func TestCheckChildDir(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	managed := WorktreeDir(root, "parent", "w1")
 	if err := AddWorktree(root, managed, ChildBranch("parent", "w1"), ""); err != nil {
@@ -241,6 +245,7 @@ func gitRepo(t *testing.T) (string, func(dir string, args ...string)) {
 }
 
 func TestGitWithKeepsStderrOutOfOutput(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	hook := filepath.Join(root, ".git/fsmonitor-test")
 	write(t, hook, "#!/bin/sh\necho diagnostic-from-fsmonitor >&2\nprintf 'token\\0'\n")
@@ -374,6 +379,7 @@ func TestRemoveWorktreeKeepsUnpushedSubmoduleCommits(t *testing.T) {
 }
 
 func TestAddWorktreeAtStart(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	first, err := Head(root)
 	if err != nil {
@@ -399,6 +405,7 @@ func TestAddWorktreeAtStart(t *testing.T) {
 // A worktree is removable when its session's starting commit or a remote
 // branch holds its commits, even when the checkout's HEAD does not.
 func TestRemovableKeepsStartAndRemoteCommits(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "checkout", "-q", "-b", "side")
 	run(root, "commit", "-q", "--allow-empty", "-m", "side")
@@ -436,6 +443,7 @@ func TestRemovableKeepsStartAndRemoteCommits(t *testing.T) {
 }
 
 func TestWorktreeIncludesLiteralPaths(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{
 		"café.local", `quote"name.local`, "tab\tname.local",
 		"line\nname.local", " leading.local", "café/config",
@@ -461,6 +469,7 @@ func TestWorktreeIncludesLiteralPaths(t *testing.T) {
 }
 
 func TestWorktreeIncludesExcludeManagedWorktrees(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	write(t, filepath.Join(root, ".gitignore"), ".env\n.hypercube-local\n")
 	write(t, filepath.Join(root, ".worktreeinclude"), "*\n")
@@ -488,6 +497,7 @@ func TestWorktreeIncludesExcludeManagedWorktrees(t *testing.T) {
 }
 
 func TestRemoveMissingWorktree(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
 	if err := AddWorktree(root, dir, branch, ""); err != nil {
@@ -522,6 +532,7 @@ func TestRemoveMissingWorktree(t *testing.T) {
 }
 
 func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
+	t.Parallel()
 	root, _ := gitRepo(t)
 	exclude := filepath.Join(root, ".git/info/exclude")
 	write(t, exclude, "local-only\n")
@@ -534,6 +545,7 @@ func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
 }
 
 func TestMergeStatus(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
 	if err := AddWorktree(root, dir, branch, ""); err != nil {
@@ -571,6 +583,7 @@ func TestMergeStatus(t *testing.T) {
 }
 
 func TestMergeStatusCountsOnlyCommitsAfterStart(t *testing.T) {
+	t.Parallel()
 	root, run := gitRepo(t)
 	run(root, "checkout", "-q", "-b", "pr")
 	run(root, "commit", "-q", "--allow-empty", "-m", "pull request")

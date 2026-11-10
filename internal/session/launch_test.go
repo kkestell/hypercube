@@ -11,7 +11,7 @@ import (
 )
 
 func TestRelaunchAfterTheProcessEnds(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "hello")
 	f.until("the first turn", func() bool { return len(f.transcript(parent.ID)) == 4 })
@@ -34,12 +34,8 @@ func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 }
 
 func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
-	f := newFixture(t)
-	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
-	// The plugin can exit before the first prompt reaches it, which Create
-	// reports; the session and its parent remain.
-	s, _ := f.rt.Create(f.workspace.ID, lead, false, "start")
-	parent := s
+	f := newPlainFixture(t)
+	parent := f.session()
 	ended := func() (n int) {
 		for _, it := range f.transcript(parent.ID) {
 			if strings.HasPrefix(it.Text, "The agent exited: ") {
@@ -48,7 +44,14 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 		}
 		return n
 	}
-	f.until("the agent to end three times", func() bool { return ended() == maxQuickExits })
+	for exits := 1; exits <= maxQuickExits; exits++ {
+		f.input(parent.ID, "!crash")
+		f.until("the exit to be applied", func() bool { return ended() == exits })
+		if exits < maxQuickExits {
+			f.until("the replacement agent ready", func() bool { return f.idle(parent.ID) })
+		}
+	}
+	f.until("the agent to stay ended", func() bool { return f.storedSession(parent.ID).Launch == "" })
 	// CreateChild refuses only when the parent has no launch, even a starting one.
 	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "the session is not running") {
 		t.Fatalf("a session that stayed exited took a child: %v", err)
@@ -62,7 +65,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 }
 
 func TestFailedResumeIsAnError(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.park(s.ID)
 	if err := f.db.Tx(func(tx *store.Tx) error {
@@ -95,7 +98,7 @@ func TestFailedResumeIsAnError(t *testing.T) {
 }
 
 func TestFailedRelaunchStaysEnded(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		a, err := tx.Session(parent.ID)
@@ -122,7 +125,7 @@ func TestFailedRelaunchStaysEnded(t *testing.T) {
 }
 
 func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	script := "#!/bin/sh\necho 'unsupported harness: not ported' >&2\nexit 1\n"
 	if err := os.WriteFile(filepath.Join(f.plugins, "hypercube-harness-old"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)

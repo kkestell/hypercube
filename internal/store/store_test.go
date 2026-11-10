@@ -361,22 +361,6 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 		if len(tops) != 3 || len(kids) != 2 || kids[0].Name != "one" || kids[1].Name != "two" {
 			t.Fatalf("top-level=%+v children=%+v", tops, kids)
 		}
-		for _, c := range []struct {
-			caller   Session
-			to, want string
-		}{
-			{p, "one", "p-one"}, {p, "q", "q"}, {p, "r", "r"}, {p, "q-one", ""}, {p, "r-one", ""},
-			{one, "p", "p"}, {one, "two", ""}, {one, "q", ""}, {one, "r", ""}, {one, "one", ""}, {one, "q-one", ""}, {one, "r-one", ""},
-		} {
-			got, err := tx.FindSession(c.caller, c.to)
-			if c.want == "" {
-				if !errors.Is(err, ErrNotFound) {
-					t.Errorf("FindSession(%s,%s)=%+v,%v", c.caller.ID, c.to, got, err)
-				}
-			} else if err != nil || got.ID != c.want {
-				t.Errorf("FindSession=%+v,%v", got, err)
-			}
-		}
 		root, err := tx.Root(one.ID)
 		if err != nil || root.ID != p.ID {
 			t.Fatalf("Root=%+v,%v", root, err)

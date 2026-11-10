@@ -9,7 +9,7 @@ import (
 )
 
 func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("an unfinished item", func() bool {
@@ -38,7 +38,7 @@ func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
 }
 
 func TestRequestsNewestFirst(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "w1", "")
 	f.input(parent.ID, "!ask")
@@ -51,7 +51,7 @@ func TestRequestsNewestFirst(t *testing.T) {
 }
 
 func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("the unfinished item", func() bool { return len(f.transcript(parent.ID)) == 4 })

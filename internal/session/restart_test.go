@@ -27,7 +27,7 @@ func (f *fixture) holder(id string) *hold.Holder {
 	return h
 }
 func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.until("working", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
@@ -84,7 +84,7 @@ func (f *fixture) recordDetachedInput(id, text string, send bool) {
 	}
 }
 func TestRestartAnswersPersistedAttention(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
 	f.until("attention", func() bool { return len(f.requests()) == 1 })
@@ -100,7 +100,7 @@ func TestRestartAnswersPersistedAttention(t *testing.T) {
 	}
 }
 func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.queue("user", s.ID, "!hold", "later")
 	f.until("held delivery", func() bool { return len(f.inputs(s.ID)) == 2 })
@@ -136,7 +136,7 @@ func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
 	}
 }
 func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
 	// The message was saved, but the app stopped before delivering it.
@@ -146,7 +146,7 @@ func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
 	f.until("delivered", func() bool { return len(f.queued(s.ID)) == 0 })
 }
 func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
 	f.recordDetachedInput(s.ID, "!crash", true)
@@ -185,7 +185,7 @@ func killHolder(t *testing.T, dir string) {
 	}
 }
 func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	child := f.child(s, "child", "")
 	f.rt.Detach()
@@ -207,7 +207,7 @@ func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
 	})
 }
 func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	f.seed()
 	f.rt.mu.Lock()
 	var l *live
@@ -247,7 +247,7 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 }
 
 func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.input(s.ID, "!append")
@@ -272,7 +272,7 @@ func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
 	f.until("completed item once", func() bool { return count("working more done") == 1 })
 }
 func TestParkAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.queue("user", s.ID, "!onclose")
 	f.until("pending delivery", func() bool { return len(f.inputs(s.ID)) == 2 })
@@ -295,7 +295,7 @@ func TestParkAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
 	}
 }
 func TestQuickExitCountSurvivesRestarts(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	for exits := 1; exits <= maxQuickExits; exits++ {
 		f.rt.Detach()
@@ -316,11 +316,10 @@ func TestQuickExitCountSurvivesRestarts(t *testing.T) {
 }
 
 func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
-	f := newFixture(t)
-	f.rt.requestTimeout = 2 * time.Second
+	f := newPlainFixture(t)
 	s := f.session()
+	f.rt.requestTimeout = 100 * time.Millisecond
 	f.queue("user", s.ID, "!hold", "later")
-	deadline := time.Now().Add(f.rt.requestTimeout + 5*time.Second)
 	noted := func() int {
 		n := 0
 		for _, item := range f.transcript(s.ID) {
@@ -330,9 +329,7 @@ func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 		}
 		return n
 	}
-	for noted() == 0 && time.Now().Before(deadline) {
-		time.Sleep(25 * time.Millisecond)
-	}
+	f.until("the delivery timeout note", func() bool { return noted() != 0 })
 	if noted() != 1 || len(f.queued(s.ID)) != 2 || len(f.inputs(s.ID)) != 2 {
 		t.Fatal("timeout did not hold delivery")
 	}
@@ -346,8 +343,8 @@ func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 }
 
 func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
-	f := newFixture(t)
-	f.rt.startTimeout = 2 * time.Second
+	f := newPlainFixture(t)
+	f.rt.startTimeout = time.Millisecond
 	t.Setenv("HYPERCUBE_TEST_START_HOLD", "1")
 	f.seed()
 	f.rt.mu.Lock()
@@ -368,17 +365,14 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.restore()
-	deadline := time.Now().Add(f.rt.startTimeout + 5*time.Second)
-	for f.storedSession("s").Launch != "" && time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
-	}
+	f.until("the failed launch to end", func() bool { return f.storedSession("s").Launch == "" })
 	if !strings.Contains(f.summary("s"), "Could not start the agent: the plugin did not start in time") || f.storedSession("s").Launch != "" {
 		t.Fatal(f.summary("s"))
 	}
 }
 
 func TestAdoptedIdleSessionParks(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.rt.Detach()
 	f.rt = f.newRuntime()
@@ -391,7 +385,7 @@ func TestAdoptedIdleSessionParks(t *testing.T) {
 }
 
 func TestDetachReleasesBlockedPluginSender(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	s = f.storedSession(s.ID)
 	pid := f.log(s.ID, "start")[0].Pid
@@ -443,7 +437,7 @@ func TestDetachReleasesBlockedPluginSender(t *testing.T) {
 }
 
 func TestRestoreRegistersAllFamiliesBeforeServing(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	first := f.session()
 	child := f.child(first, "worker", "")
 	other := f.session()

@@ -16,7 +16,7 @@ import (
 )
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s, err := f.rt.Create(f.workspace.ID, lead, false, "\n  Fix the  parser \nand the lexer")
 	parent := s
 	if err != nil {
@@ -43,7 +43,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 }
 
 func TestCreateRefusesIncompleteSettings(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	for want, settings := range map[string]harness.Settings{
 		"missing harness":                 {Model: "m"},
 		"missing model":                   {Harness: "test"},
@@ -63,7 +63,7 @@ func TestCreateRefusesIncompleteSettings(t *testing.T) {
 }
 
 func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	for _, c := range []struct {
 		text   string
 		images []harness.Image
@@ -89,7 +89,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 }
 
 func TestParkedSessionWakesForInputAndMessages(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.park(s.ID)
 	if a := f.storedSession(s.ID); a.Activity != store.Exited || a.Launch != "" || syscall.Kill(f.log(s.ID, "start")[0].Pid, 0) != syscall.ESRCH {
@@ -115,7 +115,7 @@ func TestParkedSessionWakesForInputAndMessages(t *testing.T) {
 }
 
 func TestQuitLeavesSessionsParkedAndInputResumes(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
@@ -192,7 +192,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 }
 
 func TestShellsEndWithTheirSession(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	s := f.session()
 	open := func() string {
@@ -220,7 +220,7 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 }
 
 func TestWorkspaceAndSessionEdits(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	if w, err := f.rt.AddWorkspace(f.root); err != nil || w.ID != f.workspace.ID {
 		t.Fatalf("existing workspace = %+v, %v", w, err)
 	}
@@ -316,12 +316,14 @@ func TestDeleteMissingCheckout(t *testing.T) {
 // A session cannot wake while Delete waits for its plugins to end, so no
 // plugin of it outlives the delete.
 func TestDeletingSessionCannotStart(t *testing.T) {
-	t.Setenv("HYPERCUBE_TEST_END_DELAY", "500ms")
-	f := newFixture(t)
+	f := newPlainFixture(t)
+	release := f.pauseExit()
 	s := f.session()
 
 	deleted := make(chan error, 1)
-	go func() { deleted <- f.rt.Delete(s.ID) }()
+	done := make(chan struct{})
+	go func() { defer close(done); deleted <- f.rt.Delete(s.ID) }()
+	t.Cleanup(func() { release(); <-done })
 	f.until("delete to stop the session", func() bool {
 		f.rt.mu.Lock()
 		defer f.rt.mu.Unlock()
@@ -331,6 +333,7 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 	if err := f.wake(s.ID); !errors.Is(err, errDeleting) {
 		t.Fatalf("wake during delete: %v", err)
 	}
+	release()
 	if err := <-deleted; err != nil {
 		t.Fatal(err)
 	}

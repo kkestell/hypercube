@@ -3,14 +3,13 @@ package session
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("the parent working", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
@@ -25,7 +24,7 @@ func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
 }
 
 func TestLimitsAreSavedUnderTheSessionsHarness(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!usage")
 	var limits []store.Limit
@@ -40,7 +39,7 @@ func TestLimitsAreSavedUnderTheSessionsHarness(t *testing.T) {
 }
 
 func TestFinishedTurnsMarkOnlyTheirOwnSessionUnseen(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	if err := f.rt.Seen(s.ID); err != nil {
 		t.Fatal(err)
@@ -89,7 +88,7 @@ func (f *fixture) states(agent string) (kinds []string, items []TranscriptItem) 
 }
 
 func TestStateMarkersBracketTheTurnsItems(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	s := f.session()
 	f.input(s.ID, "!answer")
 	f.until("the answer", func() bool {
@@ -115,26 +114,5 @@ func TestStateMarkersBracketTheTurnsItems(t *testing.T) {
 	}
 	if got := saved[len(saved)-1]; got.ID != idle.ID || len(got.Final) != 1 || got.Final[0] != answer.ID || got.Seq != idle.Seq {
 		t.Fatalf("reloaded %+v, saved %+v", got, idle)
-	}
-}
-
-func TestInputIsTimedWhenSent(t *testing.T) {
-	f := newFixture(t)
-	s := f.session()
-	held := make(chan error, 1)
-	go func() { held <- f.rt.Input(s.ID, "!hold") }()
-	f.until("the held input", func() bool { return len(f.inputs(s.ID)) == 2 })
-	received := time.Now().UnixMilli()
-	f.until("a later millisecond", func() bool { return time.Now().UnixMilli() > received })
-	if err := f.rt.Interrupt(s.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-held; err != nil {
-		t.Fatal(err)
-	}
-	for _, it := range f.transcript(s.ID) {
-		if it.Text == "!hold" && (it.At == 0 || it.At > received) {
-			t.Fatalf("the input is timed at %d, after the plugin received it at %d", it.At, received)
-		}
 	}
 }

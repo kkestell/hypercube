@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -19,8 +21,7 @@ import (
 // lead is the settings of the fixture's top-level sessions.
 var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 
-// fixture is a runtime whose agents are the stand-in plugin, in a Git
-// workspace.
+// fixture is a runtime whose agents are the stand-in plugin.
 type fixture struct {
 	t         *testing.T
 	dir       string // removed after the runtimes quit
@@ -33,6 +34,18 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	return newWorkspaceFixture(t, true)
+}
+
+// newPlainFixture avoids Git setup and child worktrees when a test only needs
+// agents, not repository behavior.
+func newPlainFixture(t *testing.T) *fixture {
+	t.Helper()
+	return newWorkspaceFixture(t, false)
+}
+
+func newWorkspaceFixture(t *testing.T, git bool) *fixture {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "hc")
 	if err != nil {
@@ -49,8 +62,10 @@ func newFixture(t *testing.T) *fixture {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", f.logs)
 	harnesstest.Install(t, f.plugins, "test")
-	f.git(f.root, "init", "-q", "-b", "main")
-	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "init")
+	if git {
+		f.git(f.root, "init", "-q", "-b", "main")
+		f.git(f.root, "commit", "-q", "--allow-empty", "-m", "init")
+	}
 	if f.root, err = filepath.EvalSymlinks(f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +86,31 @@ func (f *fixture) newRuntime() *Runtime {
 	rt := New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp", Holder: holdtest.Path})
 	f.t.Cleanup(rt.Quit)
 	return rt
+}
+
+// pauseExit holds the first plugin that reaches EOF until release. Removing
+// the pipe before releasing it leaves later launches free to exit normally.
+func (f *fixture) pauseExit() (release func()) {
+	f.t.Helper()
+	path := filepath.Join(f.dir, "exit")
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		f.t.Fatal(err)
+	}
+	pipe, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.t.Setenv("HYPERCUBE_TEST_END_GATE", path)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			_ = os.Remove(path)
+			_, _ = pipe.Write([]byte{1})
+			_ = pipe.Close()
+		})
+	}
+	f.t.Cleanup(release)
+	return release
 }
 
 func (f *fixture) git(dir string, args ...string) {
@@ -117,7 +157,11 @@ func (f *fixture) seed(children ...store.Session) {
 
 func (f *fixture) child(parent store.Session, name, message string) store.Session {
 	f.t.Helper()
-	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Title", Dir: "", Message: message})
+	dir := ""
+	if f.workspace.NoGit {
+		dir = "."
+	}
+	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Title", Dir: dir, Message: message})
 	if err != nil {
 		f.t.Fatal(err)
 	}

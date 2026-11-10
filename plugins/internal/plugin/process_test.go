@@ -86,6 +86,7 @@ func TestDoneFollowsTheLastLine(t *testing.T) {
 
 // Children that keep stdout open do not hold the reader.
 func TestReadEndsSoonAfterTheExit(t *testing.T) {
+	t.Parallel()
 	p := start(t, "sh", "-c", "sleep 3 & exit 0")
 	begun := time.Now()
 	if err := p.Read(func([]byte) {}); err == nil || !strings.HasPrefix(err.Error(), "sh exited") {
@@ -98,6 +99,7 @@ func TestReadEndsSoonAfterTheExit(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
+	t.Parallel()
 	t.Run("closing stdin", func(t *testing.T) {
 		p := start(t, "cat")
 		go p.Read(func([]byte) {})

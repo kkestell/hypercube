@@ -7,7 +7,7 @@ import (
 )
 
 func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
 	f.input(two.ID, "!work")
@@ -48,7 +48,7 @@ func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
 }
 
 func TestReportArrivingDuringDeliveryIsNotLost(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
 	f.input(child.ID, "!report "+strconv.Quote("!hold first report"))
@@ -67,7 +67,7 @@ func TestReportArrivingDuringDeliveryIsNotLost(t *testing.T) {
 // A child waiting on the user's answer does not hold back another child's
 // report, and the parent learns that it waits.
 func TestWaitingChildIsNamedWithReports(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
 	f.input(bob.ID, "!ask")
@@ -84,7 +84,7 @@ func TestWaitingChildIsNamedWithReports(t *testing.T) {
 
 // Reports wait while the parent works.
 func TestParentWorkDelaysReports(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
 	f.input(parent.ID, "!work")
@@ -99,7 +99,7 @@ func TestParentWorkDelaysReports(t *testing.T) {
 }
 
 func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
 	f.input(two.ID, "!work")
@@ -120,7 +120,7 @@ func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
 }
 
 func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
 	f.input(two.ID, "!accept")
@@ -137,7 +137,7 @@ func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
 }
 
 func TestForkChildUsesItsOwnConversationOnRestart(t *testing.T) {
-	f := newFixture(t)
+	f := newPlainFixture(t)
 	parent := f.session()
 	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: lead, Fork: true})
 	if err != nil || child.Dir != f.root {
