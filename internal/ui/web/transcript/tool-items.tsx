@@ -3,6 +3,7 @@
 import type {ReactNode} from 'react';
 import {BusyDot} from '../shared/busy-dot.tsx';
 import {Icon} from '../shared/icon.tsx';
+import {Message} from '../shared/message.tsx';
 import {tones} from '../shared/tones.ts';
 import {Disclosure} from './disclosure.tsx';
 import {TranscriptDetails} from './transcript-details.tsx';
@@ -111,7 +112,7 @@ export function ToolCall({call}: {call: ToolRow}) {
       marker={<ToolStatus item={item} />} summary={<Title item={item} />}>
       <div className="mt-2 space-y-2">
         {!sections.length && !children.length && !item.images?.length && (
-          <p className="text-xs text-muted-foreground">{item.done ? 'No details recorded.' : 'Waiting for tool details…'}</p>
+          <Message>{item.done ? 'No details recorded.' : 'Waiting for tool details…'}</Message>
         )}
         {sections.length > 0 && <TranscriptDetails sections={sections} />}
         {children.length > 0 && (
