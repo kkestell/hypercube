@@ -50,10 +50,10 @@ Files, and Settings. On Linux, terminal copy/paste uses **Ctrl+Shift+C** /
 | --- | --- |
 | Breathing dot | Agent is working. |
 | Amber dot | An answer is needed. |
-| Blue dot | Unseen reply. |
+| Blue dot | Unseen reply from a top-level session. |
 | Gray dot | Idle. |
 | Dimmed outline | Ended. |
-| Hollow dot | Child session; its state is shown with the same conventions. |
+| Hollow dot | Child session; its state is shown with the same conventions. A child that finishes its turn goes idle and reports to its parent, without a blue dot. |
 | Dimmed row | Agent is not running, or the session has ended. Opening a parked session resumes its conversation. |
 
 Click a workspace heading to open its dashboard of recent sessions, including
@@ -73,6 +73,8 @@ are hidden until **Show Ended Sessions** is chosen in its menu.
   Closing one hides the card without answering.
 - Reply cards close after 15 seconds or when the agent works again. Hover or
   keyboard focus pauses expiry. Closing a card does not mark the reply seen.
+  Child sessions report their replies to their parent and raise no reply
+  alerts; their requests still do.
 - Desktop notifications arrive while the desktop app is open and its window
   lacks focus. Clicking one opens its session.
 - Alerts that arrive while the app is closed are not replayed later. The badge

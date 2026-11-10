@@ -249,8 +249,8 @@ func (r *Runtime) stateMarker(l *live, ev harness.Event, next, at int64) *pendin
 	return &pendingItem{seq: r.nextSeq(l.id), item: item}
 }
 
-// applyEvent records an event's conversation, work state, and usage. A session that finishes a
-// turn has a reply for the user to see.
+// applyEvent records an event's conversation, work state, and usage. A top-level session that
+// finishes a turn has a reply for the user to see; a child session reports to its parent instead.
 func applyEvent(s *store.Session, ev harness.Event) {
 	if ev.Conversation != "" {
 		s.Conversation = ev.Conversation
@@ -261,7 +261,7 @@ func applyEvent(s *store.Session, ev harness.Event) {
 		s.Activity = store.Busy
 		s.InputPending = false
 	case harness.Idle:
-		if s.Activity == store.Busy {
+		if s.Activity == store.Busy && s.Parent == "" {
 			s.Unseen = true
 		}
 		if s.Activity == store.Busy || len(ev.Items) > 0 || len(ev.Final) > 0 || ev.InputPending {

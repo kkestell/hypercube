@@ -61,6 +61,7 @@ func TestRequestAlerts(t *testing.T) {
 	}
 }
 
+// Only top-level sessions alert on replies; a child reports to its parent.
 func TestReplyAlerts(t *testing.T) {
 	t.Parallel()
 	f := newPlainFixture(t)
@@ -71,9 +72,13 @@ func TestReplyAlerts(t *testing.T) {
 	f.input(child.ID, "!work")
 	f.until("the child working", func() bool { return !f.idle(child.ID) })
 	f.input(child.ID, "!finish")
+	f.until("the child idle again", func() bool { return f.idle(child.ID) })
+	f.input(s.ID, "!work")
+	f.until("the parent working", func() bool { return !f.idle(s.ID) })
+	f.input(s.ID, "!finish")
 	a := f.nextAlert(alerts)
-	if !strings.HasPrefix(a.Key, "reply:"+child.ID+":") || a.Session != child.ID || a.Text != "finished" ||
-		a.Subtitle != filepath.Base(f.root)+" › "+f.storedSession(s.ID).Title {
+	if !strings.HasPrefix(a.Key, "reply:"+s.ID+":") || a.Session != s.ID || a.Text != "finished" ||
+		a.Subtitle != filepath.Base(f.root) {
 		t.Fatalf("reply alert = %+v", a)
 	}
 }

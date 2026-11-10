@@ -102,33 +102,29 @@ func (w *alertWatch) readStored(requests []Request, notify func(Alert)) error {
 			if err != nil {
 				return err
 			}
-			for _, top := range tops {
-				children, err := tx.Children(top.ID)
+			// Only top-level sessions alert on replies; a child session reports
+			// to its parent.
+			for _, s := range tops {
+				wasBusy := w.busy[s.ID]
+				w.busy[s.ID] = s.Activity == store.Busy
+				// Startup seeds replies even for busy sessions: answering an
+				// existing question may make the old reply eligible again.
+				if notify != nil && (s.Activity != store.Idle || !(s.Unseen || wasBusy)) {
+					continue
+				}
+				text, seq, err := tx.LastText(s.ID)
 				if err != nil {
 					return err
 				}
-				for _, s := range append([]store.Session{top}, children...) {
-					wasBusy := w.busy[s.ID]
-					w.busy[s.ID] = s.Activity == store.Busy
-					// Startup seeds replies even for busy sessions: answering an
-					// existing question may make the old reply eligible again.
-					if notify != nil && (s.Activity != store.Idle || !(s.Unseen || wasBusy)) {
-						continue
-					}
-					text, seq, err := tx.LastText(s.ID)
-					if err != nil {
-						return err
-					}
-					if seq <= w.replies[s.ID] {
-						continue
-					}
-					w.replies[s.ID] = seq
-					a, err := w.alert(tx, s.ID, "reply:"+s.ID+":"+strconv.FormatInt(seq, 10), text)
-					if err != nil {
-						return err
-					}
-					alerts = append(alerts, a)
+				if seq <= w.replies[s.ID] {
+					continue
 				}
+				w.replies[s.ID] = seq
+				a, err := w.alert(tx, s.ID, "reply:"+s.ID+":"+strconv.FormatInt(seq, 10), text)
+				if err != nil {
+					return err
+				}
+				alerts = append(alerts, a)
 			}
 		}
 		return nil
