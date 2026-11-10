@@ -2,7 +2,8 @@
 
 - Task ID: 2026-11-09-011-verified-review-fixes
 - Status: ready
-- Source HEAD: 310c5a6945ab50f0d0c79f3df2036d83b7c410af
+- Source HEAD: 310c5a6945ab50f0d0c79f3df2036d83b7c410af (revised at
+  4063381fe97d6aa6b1ef2c00df69f75d3479e876, after plan review round 1)
 - Author: planner, Hypercube child session plan-verified-fixes-opus (Claude
   Code, claude-opus-5-5, effort not exposed); native conversation ID
   unavailable (not exposed to this session). Parent: coordinator 0987244a
@@ -45,13 +46,13 @@ effort policy, legacy saved-view formats, packaging, or user global config.
 
 ## Current system and decisions
 
-### 1. Submodule commits (`internal/workspace/workspace.go`)
+### 1. Submodule commits (`internal/workspace/workspace.go`, `docs/storage.md`)
 
 `Removable` checks the worktree's branch and HEAD against kept refs and checks
 `git status`. When the agent commits inside a submodule and then commits the
 gitlink, status is clean. The submodule's repository lives under the worktree's
-own Git dir (`.git/worktrees/<name>/modules/<path>`; confirmed by the reviewer's
-`TestReviewSubmoduleCommitLost` on Git 2.50). `git worktree remove --force`
+own Git dir (`.git/worktrees/<name>/modules/<path>`; confirmed on Git 2.50 by
+the earlier review's scratch test and by the plan reviewer's experiment). `git worktree remove --force`
 deletes it, so if that commit was never pushed, the only copy is gone and the
 checkout's gitlink points at a missing commit.
 
@@ -63,16 +64,26 @@ branches are included because an agent may leave work on a submodule branch
 that HEAD no longer points at.
 
 - List submodules with
-  `git -C dir submodule foreach --quiet --recursive 'printf "%s\0" "$toplevel/$sm_path"'`.
-  `foreach` visits only initialized submodules, and `$toplevel/$sm_path` is
-  absolute at every nesting level. Skip this step when `dir` has no
-  `.gitmodules`, as `setUp` does.
-- Error: `submodule <path relative to dir> has commits that are not on a remote branch`.
+  `git -C dir submodule foreach --quiet --recursive 'printf "%s\0" "$displaypath"'`.
+  `foreach` visits only initialized submodules, whatever their
+  `submodule.<name>.ignore` setting, and `$displaypath` is relative to `dir`
+  at every nesting level (`s`, `s/n`). Run `rev-list` in
+  `filepath.Join(dir, path)`. Do not build paths from `$toplevel`, which Git
+  resolves through symlinks (`/private/var/...` on macOS), so the error path
+  would be wrong. Skip this step when `dir` has no `.gitmodules`, as `setUp`
+  does.
+- Error: `submodule <displaypath> has commits that are not on a remote branch`.
   Name it in a small helper next to `unkept`, for example `unpushedSubmodule(dir) (string, error)`.
 - `RemoveWorktree` keeps `worktree remove --force`, because `Removable` has
   now checked submodules too. Update its comment to say so.
 - Accepted limit: a submodule pinned to a commit that upstream has only by
   SHA, on no branch, blocks removal. This does not happen in normal use.
+- Docs: in the removal-check paragraph of `docs/storage.md` (lines 43–50),
+  add that each submodule's commits must be on a remote branch of that
+  submodule. This rule applies whatever Git's submodule ignore settings say.
+  Narrow the last sentence so that it describes the uncommitted-files check
+  only: it honors Git's submodule settings, including settings that ignore
+  submodule changes. Read `docs/dev/documentation.md` first.
 
 ### 2. Merge target (`internal/ui/web/changes/merge-button.tsx`, `internal/session/merges.go`)
 
@@ -85,8 +96,11 @@ the prompt.
 **Decision:** the backend checks the target at the moment the user clicks.
 
 - Add `func (r *Runtime) Merge(id, target string) error` in `internal/session/merges.go`.
-  It reads the session and its workspace, and fails if the session has no
-  worktree branch. It reads `workspace.Branch(root)`. If that differs from
+  It reads the session and its workspace. It uses the same eligibility as
+  `refreshMerges`: it refuses an ended session and a session with
+  `s.Base == ""`, which covers non-worktree sessions and children whose
+  checkout is their parent's directory. It refuses before reading any branch or
+  sending input. It then reads `workspace.Branch(root)`. If that differs from
   `target`, it calls `r.refreshMerges(workspaceID)` (which publishes the
   current target) and returns
   `fmt.Errorf("the checkout is now on %s, not %s", live, target)`. A detached
@@ -205,7 +219,8 @@ so the next load throws and every saved view falls back to defaults.
 Each step can be tested on its own. Commit all task code together after
 `make check`, as `docs/dev/development.md` requires.
 
-1. Workspace submodule check, its comment, and its tests.
+1. Workspace submodule check, its comment, its tests, and the
+   `docs/storage.md` removal-check paragraph.
 2. `workspace.Clone` signature and arguments, `github.Clone`, and the clone
    tests.
 3. `Runtime.Merge`, the `merge` action, `requestMerge`/`MergeButton`, and their
@@ -219,8 +234,8 @@ Each step can be tested on its own. Commit all task code together after
 
 Real Git and HTTP in temp directories; no network.
 
-- **#1** `internal/workspace/workspace_test.go`. Adapt
-  `TestReviewSubmoduleCommitLost` into a pass/fail test: an agent commit in the
+- **#1** `internal/workspace/workspace_test.go`. Write a new test for this
+  scenario (the earlier scratch test is outside this checkout): an agent commit in the
   worktree's submodule plus a gitlink commit fast-forward merged into root, so
   `RemoveWorktree` errors, naming the submodule. The worktree dir still exists,
   and `git cat-file -e <commit>` succeeds in the worktree's submodule. Then
@@ -232,7 +247,9 @@ Real Git and HTTP in temp directories; no network.
   `input_test.go`). Switch root to another branch after measuring. `Merge(id, "main")`
   returns an error, delivers no input, and `Merges()[id].Target` becomes the
   new branch. `Merge(id, <live branch>)` delivers the prompt naming that branch
-  and root. Update `changes/git-panel.test.tsx` so the button posts
+  and root. A child session with its own worktree (`Base` empty) and a
+  non-worktree session are refused with no input delivered. Update
+  `changes/git-panel.test.tsx` so the button posts
   `action=merge&target=main` and no prompt body.
 - **#3** `internal/workspace/remote_test.go`. Serve a bare repository over dumb
   HTTP (`update-server-info`, `http.FileServer`) behind Basic auth that
@@ -252,7 +269,9 @@ Real Git and HTTP in temp directories; no network.
   It must read the request's `variables`. A pull request with 20 resolved
   threads on the first page and a 21st unresolved thread from someone else on
   the next page gives Unanswered 1 and is not ready to merge. A pull request
-  with `hasNextPage: false` makes no follow-up request.
+  with `hasNextPage: false` makes no follow-up request. The fake counts thread
+  follow-up queries separately from permission queries, so `Requests()` still
+  counts only permission queries while paging.
 - **#6** `web/shared/split.test.tsx` using its `geometry()` helper. Keyboard
   collapse of a fixed end split calls `onCollapse` once and never reports 0.
   Re-show restores at least the minimum, as the existing tests check. In
@@ -277,7 +296,7 @@ interface changes, and its acceptance tests. Coding details are left to the
 implementer.
 
 Metrics (`plan_metrics.py`, experimental default band 600–1,500, no curated
-references): about 2,240 words, 49 in code fences, above the band. The excess
+references): about 2,500 words after the round 1 corrections, 49 in code fences, above the band. The excess
 comes from six unrelated root causes, at about 370 words each. Each needs its
 evidence, rule, and acceptance cases. Splitting would produce six brief-sized
 units, which the parent asked to avoid. No section repeats another, and none
